@@ -1,0 +1,38 @@
+{
+  "name": "invento",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "keywords": [
+    "invento",
+    "full-stack",
+    "backend",
+    "frontend"
+  ],
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "homepage": "https://github.com/B2-anuragC/invento#readme",
+  "bugs": {
+    "url": "https://github.com/B2-anuragC/invento/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/B2-anuragC/invento.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "scripts": {
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "run": "npm run run:backend & npm run run:frontend",
+    "run:backend": "npm --prefix backend run start",
+    "run:frontend": "npm --prefix frontend run start",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test"
+  }
+}
