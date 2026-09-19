@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: invento-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: invento_dev
+      POSTGRES_USER: invento
+      POSTGRES_PASSWORD: invento
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U invento -d invento_dev']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: invento-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      APP_API_PREFIX: api
+      DATABASE_URL: postgresql://invento:invento@postgres:5432/invento_dev?schema=public
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./backend:/app/backend
+      - ./packages/shared:/app/packages/shared
+      - backend_node_modules:/app/backend/node_modules
+      - shared_node_modules:/app/packages/shared/node_modules
+    command: sh -c "npx prisma generate --schema=./prisma/schema.prisma && npx prisma migrate deploy --schema=./prisma/schema.prisma && node dist/main"
+
+volumes:
+  postgres_data:
+  backend_node_modules:
+  shared_node_modules:
