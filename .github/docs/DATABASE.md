@@ -372,5 +372,5 @@ or roll back together. SalesService does not directly read/write inventory table
 or duplicate inventory locking, stock arithmetic or direction classification.
 The ledger note includes the sale ID, following the purchase audit convention.
 
-See ADR-011 for immutable sale fields and STATUS.md for the pre-existing local
-database migration mismatch and isolated verification database.
+See ADR-011 for immutable sale fields and STATUS.md for the resolved local
+database reconciliation and isolated verification database.

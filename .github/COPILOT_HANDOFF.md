@@ -1,8 +1,9 @@
-# Invento handoff ? Phase 6
+# Invento handoff - Phase 6
 
-Phases 1?5 are committed through `7d886dc` (Phase 5). Phase 6 Customers & Sales
-is implemented in the working tree; inspect git status before editing. Do not
-begin Phase 7 (Dashboard) without explicit user instruction.
+Phases 1-6 are committed through `abb195e` (Phase 6). Focused database,
+authentication, inventory-validation and documentation fixes are uncommitted;
+inspect git status before editing. Do not begin Phase 7 (Dashboard) without
+explicit user instruction.
 
 Read copilot-instructions.md, PROJECT_CONTEXT.md, DEVELOPMENT_PLAN.md and the
 relevant docs before changing code. Existing implementation is authoritative.
@@ -13,8 +14,8 @@ relevant docs before changing code. Existing implementation is authoritative.
   active membership and OWNER/ADMIN write authorization.
 - `backend/src/sales/`: create/list/detail and metadata-only PATCH; required
   customer, sale date, payment method and positive unique product lines.
-- `backend/prisma/migrations/20260920120000_phase6_customers_sales/`: Customer,
-  Sale, SaleItem and enums with restricted historical customer/product references.
+- Phase 6 migration `20260920085540` is restored from Git; `20260920120000`
+  reconciles it with the current Customer/Sale/SaleItem schema.
 - Sale totals use Decimal with half-up cent rounding per line before summation.
 - Stock changes exclusively use InventoryService.applyMovement(input, tx).
   The inventory engine locks/checks stock before each item insert; all writes
@@ -50,22 +51,31 @@ The runner uses container credentials, substitutes the database name with
 remove their own fixtures; the verification database/schema is retained.
 Regenerate the container Prisma client after schema edits.
 
-## Existing development database mismatch
+## Database reconciliation (resolved)
 
-`invento_dev` already has `20260920085540_phase6_customers_sales`, absent from
-this checkout. Its customer lacks contactName, sale customerId is nullable and
-PaymentMethod additionally allows CREDIT. The new migration cannot be applied
-over it as-is. Its failed attempt was marked rolled back; existing data/schema
-were preserved. Reconcile the earlier migration before running this checkout's
-customer/sales APIs on that database. Do not reset it or mark mismatching
-migrations applied. Fresh migrations and tests passed in `invento_phase6_verify`.
+Recovered `20260920085540_phase6_customers_sales` from Git with its exact
+original checksum. The newer migration now applies only the schema differences
+in one transaction. It was successfully applied to invento_dev without resetting
+or deleting application data, and Prisma reports no schema difference. The
+empty verification database was rebuilt to test the complete migration chain.
+The newer migration originally applied only to that disposable verification DB;
+any other copy with the old migration checksum must be reconciled before reuse.
+A pre-change backup is at /tmp/invento_before_phase6_reconciliation.sql inside
+the invento-postgres container.
+
+## Focused hardening
+
+Refresh tokens are conditionally consumed and replaced in one transaction;
+concurrent reuse returns 401. Replacement failures roll back consumption.
+Inventory methods validate finite, positive quantities and database precision/
+range before writes; opening stock still permits zero.
 
 ## Boundaries and known debt
 
 Frontend business screens and Phase 7+ are not implemented. Existing Phase 2
-technical debt includes HTTP auth coverage gaps, refresh rotation atomicity and
-generic Prisma error mapping. Keep unrelated changes outside the phase scope.
+technical debt includes remaining HTTP auth coverage gaps and generic Prisma
+error mapping. Refresh rotation atomicity is now fixed and concurrency-tested. Keep unrelated changes outside the phase scope.
 
-Final verification: 76/76 backend unit tests, 7/7 end-to-end tests (including
-6 PostgreSQL sales tests), backend lint, Prisma validation and full monorepo
-build passed. Phase 6 changes are uncommitted.
+Final verification: 86/86 unit tests, 8/8 end-to-end tests, backend build and
+lint passed. The development database matches Prisma with no schema diff.
+The full monorepo build passed during Phase 6 implementation.

@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { hashPassword, hashToken, signToken, verifyPassword, verifyToken } from './auth.crypto.js';
 import type { AccessTokenPayload, AuthenticatedUser, RefreshTokenPayload } from './auth.types.js';
@@ -38,8 +39,15 @@ export class AuthService {
     if (!record || record.revokedAt || record.expiresAt <= new Date() || record.id !== payload.jti || !record.user.isActive) {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
-    await this.prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
-    return this.issueSession(record.user);
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const consumed = await tx.refreshToken.updateMany({
+        where: { id: record.id, revokedAt: null, expiresAt: { gt: now } },
+        data: { revokedAt: now },
+      });
+      if (consumed.count !== 1) throw new UnauthorizedException('Invalid or expired refresh token.');
+      return this.issueSession(record.user, tx);
+    });
   }
 
   async logout(token: string) {
@@ -53,12 +61,12 @@ export class AuthService {
     return { id: payload.sub, name: '', email: '' };
   }
 
-  private async issueSession(user: { id: string; name: string; email: string; phone?: string | null; avatarUrl?: string | null }) {
+  private async issueSession(user: { id: string; name: string; email: string; phone?: string | null; avatarUrl?: string | null }, tx: Prisma.TransactionClient = this.prisma) {
     const now = Math.floor(Date.now() / 1000);
     const accessToken = signToken({ sub: user.id, type: 'access', exp: now + 900 }, this.config.getOrThrow('JWT_ACCESS_SECRET'));
     const id = randomUUID();
     const refreshToken = signToken({ sub: user.id, jti: id, type: 'refresh', exp: now + 2_592_000 }, this.config.getOrThrow('JWT_REFRESH_SECRET'));
-    await this.prisma.refreshToken.create({ data: { id, tokenHash: hashToken(refreshToken), userId: user.id, expiresAt: new Date((now + 2_592_000) * 1000) } });
+    await tx.refreshToken.create({ data: { id, tokenHash: hashToken(refreshToken), userId: user.id, expiresAt: new Date((now + 2_592_000) * 1000) } });
     return { accessToken, refreshToken, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatarUrl: user.avatarUrl } };
   }
 }

@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-**Phase 5 — Suppliers & Purchases (completed)**
+**Phase 6 - Customers & Sales (completed and verified)**
 
 The repository foundation is already created as an npm-workspaces monorepo
 with:
@@ -189,7 +189,7 @@ and a live end-to-end Docker smoke test (register → business → product →
 opening stock → supplier → purchase → verify stock/ledger/tenant isolation).
 
 
-## Phase 6 ? Customers & Sales
+## Phase 6 - Customers & Sales
 
 Implemented customer CRUD with ACTIVE/INACTIVE lifecycle and sales create/list/
 detail/metadata-update APIs under `/api/customers` and `/api/sales`. Reads require
@@ -211,22 +211,25 @@ Verification includes unit tests, HTTP/PostgreSQL rollback and concurrent overse
 tests, tenant/role checks, customer lifecycle, metadata-only PATCH, and the
 mandatory stock sequence 100 + 50 - 20 = 130 with oversell rejected.
 
-### Local database mismatch discovered during verification
+### Database reconciliation and focused hardening
 
-The running `invento_dev` database already contains migration
-`20260920085540_phase6_customers_sales`, which is absent from this checkout.
-Its schema allows nullable sale customerId, lacks customer contactName, and has
-an additional CREDIT payment method. This checkout's new migration is
-`20260920120000_phase6_customers_sales`. Applying it to that database fails on
-an existing enum; the failed attempt was marked rolled back without changing
-its schema or existing data. Do not reset the database or mark the new migration
-applied: these schemas differ. Reconcile the earlier migration/history before
-using this checkout's customer/sales APIs against that existing database.
+Recovered the original `20260920085540_phase6_customers_sales` migration from
+Git history and verified its checksum against the development database. The
+newer `20260920120000_phase6_customers_sales` migration now applies only the
+schema differences in one transaction: customer contactName, required sale
+customerId, and the supported PaymentMethod values. No sales existed in the
+legacy database; existing application records were preserved. Both invento_dev
+and a fresh migration replay now match schema.prisma; the mismatch is resolved.
+The empty invento_phase6_verify database was rebuilt with the reconciled chain.
 
-All migrations and PostgreSQL tests passed against the separate local database
-`invento_phase6_verify`. Its schema is retained for repeatable verification;
-test fixtures are removed after each test. Phase 7 has not been started.
+Refresh-token rotation now conditionally consumes an unrevoked/unexpired token
+and creates its replacement in the same transaction. Concurrent reuse is
+rejected; replacement failures roll back consumption. Inventory's internal
+movement/opening-stock APIs now reject non-finite, negative, overprecision and
+out-of-range quantities, with zero allowed only for opening stock.
 
-Final verification: 76/76 backend unit tests, 7/7 end-to-end tests (including
-6 PostgreSQL sales tests), backend lint, Prisma validation and full monorepo
-build passed. Phase 6 changes are uncommitted.
+Final verification: 86/86 backend unit tests, 8/8 end-to-end tests (including
+PostgreSQL concurrent refresh and sales tests), backend build and lint passed.
+Prisma reports no schema difference for invento_dev. The earlier full monorepo
+build passed. Phase 6 is committed as abb195e; these fixes are uncommitted.
+Phase 7 has not been started.

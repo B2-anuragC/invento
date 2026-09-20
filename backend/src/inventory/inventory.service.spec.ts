@@ -56,6 +56,29 @@ function createFakePrisma(options: { role?: string; isActive?: boolean; product?
 }
 
 describe('InventoryService', () => {
+  it.each(['-1', '0', 'NaN', 'Infinity', 'invalid', '0.0001', '1000000000'])('rejects invalid internal movement quantity %s before writes', async (quantity) => {
+    const { prisma, store, txClient } = createFakePrisma();
+    const service = new InventoryService(prisma);
+    const input = { businessId: 'business-a', productId: 'product-a', userId: 'user-a', type: InventoryTransactionType.SALE, quantity };
+    await expect(service.applyMovement(input)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.applyMovement(input, txClient as never)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(txClient.$queryRaw).not.toHaveBeenCalled();
+    expect(store.transactions).toEqual([]);
+  });
+
+  it('allows zero opening stock but rejects invalid Decimal quantities', async () => {
+    const { prisma, txClient } = createFakePrisma();
+    const service = new InventoryService(prisma);
+    const input = { businessId: 'business-a', productId: 'product-a', userId: 'user-a' };
+    for (const quantity of ['-1', 'NaN', 'Infinity', '0.0001', '1000000000']) {
+      await expect(service.recordOpeningStock({ ...input, quantity: new Prisma.Decimal(quantity) }, txClient as never)).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(txClient.inventory.create).not.toHaveBeenCalled();
+    const result = await service.recordOpeningStock({ ...input, quantity: '0' }, txClient as never);
+    expect(result.quantity.toString()).toBe('0');
+  });
+
   it('records opening stock and creates the projection plus ledger entry', async () => {
     const { prisma, store } = createFakePrisma();
     const service = new InventoryService(prisma);

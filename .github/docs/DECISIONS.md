@@ -116,7 +116,9 @@ database-backed refresh tokens. Passwords are stored as salted scrypt hashes.
 Access tokens remain lightweight for API authentication, while persisted
 refresh tokens can be rotated and revoked on logout or suspected compromise.
 The design avoids coupling the backend to an unnecessary authentication
-framework and leaves room for future token/session policy changes.
+framework and leaves room for future token/session policy changes. Rotation
+conditionally consumes an unrevoked, unexpired token and persists its replacement
+in one transaction, preventing concurrent reuse and partial rotation.
 
 ## ADR-010 — Purchase Line Items Are Immutable After Creation
 
@@ -138,7 +140,7 @@ future documented reversal/return flow), not a retroactive edit of a settled
 purchase's items.
 
 
-## ADR-011 ? Immutable Sale Items and Atomic Stock Validation
+## ADR-011 - Immutable Sale Items and Atomic Stock Validation
 
 **Decision:** Sales are completed at creation. PATCH may update only
 invoiceNumber, saleDate and note. Items, customer, payment method, totals and

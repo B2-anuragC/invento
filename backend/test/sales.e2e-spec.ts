@@ -14,6 +14,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   let app: INestApplication;
   let prisma: PrismaService;
   let token: string;
+  let refreshToken: string;
   let userId: string;
   let businessId: string;
   let customerId: string;
@@ -44,6 +45,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const id = randomUUID();
     const auth = await request(app.getHttpServer()).post('/api/auth/register').send({ name: 'Sales Test', email: `${id}@sales.test`, password: 'Test-password-123!' }).expect(201);
     token = auth.body.data.accessToken;
+    refreshToken = auth.body.data.refreshToken;
     userId = auth.body.data.user.id;
     const business = await api('post', '/businesses', 'unused').send({ name: 'Sales Test', slug: id }).expect(201);
     businessId = business.body.data.id;
@@ -72,6 +74,17 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (app) await app.close();
+  });
+
+  it('allows only one concurrent refresh and rejects replay of the consumed token', async () => {
+    const refresh = () => request(app.getHttpServer()).post('/api/auth/refresh').send({ refreshToken });
+    const results = await Promise.all([refresh(), refresh()]);
+    expect(results.map((result) => result.status).sort()).toEqual([201, 401]);
+    await refresh().expect(401);
+    expect(await prisma.refreshToken.count({ where: { userId, revokedAt: null } })).toBe(1);
+    const replacement = results.find((result) => result.status === 201)!.body.data.refreshToken;
+    await request(app.getHttpServer()).post('/api/auth/refresh').send({ refreshToken: replacement }).expect(201);
+    expect(await prisma.refreshToken.count({ where: { userId, revokedAt: null } })).toBe(1);
   });
 
   it('verifies 100 + 50 - 20 = 130, rejects oversell, and preserves immutable items', async () => {

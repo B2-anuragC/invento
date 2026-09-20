@@ -83,8 +83,7 @@ export class InventoryService {
    * caller's existing transaction and no nested `$transaction` is started.
    */
   async recordOpeningStock(input: OpeningStockInput, tx?: Prisma.TransactionClient) {
-    const quantity = input.quantity instanceof Prisma.Decimal ? input.quantity : new Prisma.Decimal(input.quantity);
-    if (quantity.lessThan(0)) throw new BadRequestException('Opening stock quantity cannot be negative.');
+    const quantity = this.validateQuantity(input.quantity, true);
 
     const run = async (client: Prisma.TransactionClient) => {
       const inventory = await client.inventory.create({
@@ -139,7 +138,7 @@ export class InventoryService {
    * caller's existing transaction and no nested `$transaction` is started.
    */
   async applyMovement(input: ApplyMovementInput, tx?: Prisma.TransactionClient) {
-    const magnitude = input.quantity instanceof Prisma.Decimal ? input.quantity : new Prisma.Decimal(input.quantity);
+    const magnitude = this.validateQuantity(input.quantity);
 
     const run = async (client: Prisma.TransactionClient) => {
       const locked = await client.$queryRaw<{ id: string; quantity: Prisma.Decimal }[]>(
@@ -171,6 +170,19 @@ export class InventoryService {
     };
 
     return tx ? run(tx) : this.prisma.$transaction((client) => run(client));
+  }
+
+  private validateQuantity(value: Prisma.Decimal | string, allowZero = false) {
+    let quantity: Prisma.Decimal;
+    try {
+      quantity = new Prisma.Decimal(value);
+    } catch {
+      throw new BadRequestException('Invalid inventory quantity.');
+    }
+    if (!quantity.isFinite() || quantity.lessThan(0) || (!allowZero && quantity.isZero()) || quantity.decimalPlaces() > 3 || quantity.greaterThan('999999999.999')) {
+      throw new BadRequestException('Inventory quantity must be finite, within range, and positive (zero is allowed for opening stock).');
+    }
+    return quantity;
   }
 
   private async requireProduct(businessId: string, productId: string) {
