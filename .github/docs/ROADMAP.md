@@ -24,15 +24,15 @@
 
 ## Phase 3 — Products
 
-- [ ] Product model
-- [ ] Product CRUD
-- [ ] Product search
-- [ ] SKU
-- [ ] Barcode
-- [ ] Units
-- [ ] Pricing
-- [ ] Minimum stock
-- [ ] Product deactivation
+- [x] Product model
+- [x] Product CRUD
+- [x] Product search
+- [x] SKU
+- [x] Barcode
+- [x] Units
+- [x] Pricing
+- [x] Minimum stock
+- [x] Product deactivation
 
 ## Phase 4 — Inventory Engine
 

@@ -13,6 +13,7 @@ Business
 User
 BusinessUser
 RefreshToken
+Product
 
 Product
 ProductAlias

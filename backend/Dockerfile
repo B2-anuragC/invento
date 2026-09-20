@@ -25,7 +25,7 @@ WORKDIR /app/packages/shared
 RUN npm run build
 
 WORKDIR /app/backend
-RUN npm run build && npx prisma generate --schema=./prisma/schema.prisma
+RUN npx prisma generate --schema=./prisma/schema.prisma && npm run build
 
 FROM node:24-bookworm-slim AS runner
 

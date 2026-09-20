@@ -12,6 +12,12 @@
     "strict": true,
     "target": "ES2022"
   },
+  "watchOptions": {
+    "watchFile": "fixedPollingInterval",
+    "watchDirectory": "fixedPollingInterval",
+    "fallbackPolling": "dynamicPriority",
+    "synchronousWatchDirectory": true
+  },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }
