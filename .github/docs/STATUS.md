@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-**Backend/API development**
+**Phase 2 — Authentication, Users & Business (completed)**
 
 The repository foundation is already created as an npm-workspaces monorepo
 with:
@@ -20,7 +20,7 @@ Build the backend core before major mobile UI development.
 1. Database
 2. Authentication
 3. Business/User
-4. Products
+4. Products (next phase; not started)
 5. Inventory
 6. Purchases
 7. Sales

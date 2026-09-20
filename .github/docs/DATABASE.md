@@ -12,6 +12,7 @@ Prisma is the ORM.
 Business
 User
 BusinessUser
+RefreshToken
 
 Product
 ProductAlias
@@ -52,6 +53,10 @@ Examples:
 - InventoryTransaction
 
 Always enforce business ownership at the service/authorization layer.
+
+Authentication credentials are stored as salted scrypt password hashes.
+Refresh tokens are stored only as HMAC hashes, are single-use during refresh,
+and can be revoked on logout.
 
 ## Inventory Source of Truth
 

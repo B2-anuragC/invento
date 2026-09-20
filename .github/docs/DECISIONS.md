@@ -105,3 +105,15 @@ utilities.
 
 The frontend should not become coupled to NestJS or Prisma implementation
 details.
+
+## ADR-009 — Stateful Refresh Token Rotation
+
+**Decision:** Use short-lived HMAC-signed access tokens and single-use,
+database-backed refresh tokens. Passwords are stored as salted scrypt hashes.
+
+**Reason:**
+
+Access tokens remain lightweight for API authentication, while persisted
+refresh tokens can be rotated and revoked on logout or suspected compromise.
+The design avoids coupling the backend to an unnecessary authentication
+framework and leaves room for future token/session policy changes.

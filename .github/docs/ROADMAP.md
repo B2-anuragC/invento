@@ -15,12 +15,12 @@
 
 ## Phase 2 — Authentication & Business
 
-- [ ] Authentication
-- [ ] Users
-- [ ] Businesses
-- [ ] Business membership
-- [ ] Roles
-- [ ] Authorization
+- [x] Authentication
+- [x] Users
+- [x] Businesses
+- [x] Business membership
+- [x] Roles
+- [x] Authorization
 
 ## Phase 3 — Products
 
