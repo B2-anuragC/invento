@@ -1,247 +1,71 @@
-# Invento Copilot Handoff Context
+# Invento handoff ? Phase 6
 
-Use this document together with `.github/copilot-instructions.md` and
-`.github/DEVELOPMENT_PLAN.md` when continuing development with another Copilot
-account.
+Phases 1?5 are committed through `7d886dc` (Phase 5). Phase 6 Customers & Sales
+is implemented in the working tree; inspect git status before editing. Do not
+begin Phase 7 (Dashboard) without explicit user instruction.
 
-## Continuation prompt
+Read copilot-instructions.md, PROJECT_CONTEXT.md, DEVELOPMENT_PLAN.md and the
+relevant docs before changing code. Existing implementation is authoritative.
 
-```text
-You are continuing development of Invento in this repository.
+## Phase 6 implementation
 
-Before making changes, read:
-- .github/copilot-instructions.md
-- .github/DEVELOPMENT_PLAN.md
-- .github/PROJECT_CONTEXT.md
-- .github/PROJECT_STRUCTURE.md
-- .github/docs/ARCHITECTURE.md
-- .github/docs/DATABASE.md
-- .github/docs/DECISIONS.md
-- .github/docs/REQUIREMENTS.md
-- .github/docs/STATUS.md
+- `backend/src/customers/`: customer CRUD, active/inactive lifecycle, search,
+  active membership and OWNER/ADMIN write authorization.
+- `backend/src/sales/`: create/list/detail and metadata-only PATCH; required
+  customer, sale date, payment method and positive unique product lines.
+- `backend/prisma/migrations/20260920120000_phase6_customers_sales/`: Customer,
+  Sale, SaleItem and enums with restricted historical customer/product references.
+- Sale totals use Decimal with half-up cent rounding per line before summation.
+- Stock changes exclusively use InventoryService.applyMovement(input, tx).
+  The inventory engine locks/checks stock before each item insert; all writes
+  share the sale transaction. Insufficient stock rolls back everything.
+- Sale line items and financial fields are immutable; see ADR-011.
 
-Phase 1, Phase 2, and Phase 3 are implemented. Phase 3 Products is complete
-and verified. The next phase is Phase 4 — Inventory Engine.
+## Verification
 
-Do not start Phase 5 or any later phase. Before coding, inspect the current
-repository, Prisma schema/migrations, authentication, business membership,
-product module, tests, and Docker development setup. Follow the phase-specific
-acceptance criteria and verification gate in DEVELOPMENT_PLAN.md. Update
-documentation when implementation state changes. Stop after the requested
-phase verification and provide the required Phase Completion Report.
-```
+Unit tests include snapshot/restore rollback using the real InventoryService.
+`backend/test/sales.e2e-spec.ts` adds opt-in PostgreSQL HTTP tests for the stock
+sequence, rollback on item two, concurrent oversell, lifecycle, tenant/role
+isolation, validation and immutable sale items.
 
-## Repository and stack
+Standard checks:
 
-- Monorepo root: `D:\projects\personal\invento`
-- Backend: NestJS + TypeScript + Prisma + PostgreSQL
-- Frontend: Expo Router / React Native
-- Shared package: `@invento/shared`
-- Backend layering: Controller → Service → Prisma → PostgreSQL
-- Multi-tenancy: business membership must be checked before business-owned
-  resource access.
-
-## Completed phases
-
-### Phase 1 — Backend Foundation
-
-- NestJS application structure.
-- PostgreSQL/Prisma setup.
-- Global validation, response, and exception handling.
-- Health endpoint.
-- Swagger at `/docs`.
-- Vitest unit/e2e configuration.
-
-### Phase 2 — Authentication, Users & Business
-
-Important files:
-
-- `backend/src/auth/auth.controller.ts`
-- `backend/src/auth/auth.service.ts`
-- `backend/src/auth/auth.guard.ts`
-- `backend/src/auth/auth.crypto.ts`
-- `backend/src/businesses/businesses.controller.ts`
-- `backend/src/businesses/businesses.service.ts`
-- `backend/prisma/migrations/20260920000000_phase2_auth/migration.sql`
-
-Endpoints:
-
-```text
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/refresh
-POST /api/auth/logout
-GET  /api/auth/me
-
-POST   /api/businesses
-GET    /api/businesses/:id
-PATCH  /api/businesses/:id
-GET    /api/businesses/:id/users
-POST   /api/businesses/:id/users
-PATCH  /api/businesses/:id/users/:userId
-DELETE /api/businesses/:id/users/:userId
-```
-
-Authentication uses scrypt password hashes, short-lived HMAC access tokens, and
-database-backed single-use refresh tokens. Roles are `OWNER`, `ADMIN`, and
-`MEMBER`.
-
-### Phase 3 — Products
-
-Important files:
-
-- `backend/src/products/products.module.ts`
-- `backend/src/products/products.controller.ts`
-- `backend/src/products/products.service.ts`
-- `backend/src/products/dto/product.dto.ts`
-- `backend/src/products/products.service.spec.ts`
-- `backend/prisma/migrations/20260920000001_phase3_products/migration.sql`
-- `backend/prisma/schema.prisma`
-
-Endpoints:
-
-```text
-POST   /api/products
-GET    /api/products
-GET    /api/products/search
-GET    /api/products/:id
-PATCH  /api/products/:id
-DELETE /api/products/:id
-GET    /api/products/:id/stock
-GET    /api/products/:id/transactions
-```
-
-Product requests require:
-
-```http
-Authorization: Bearer <access-token>
-X-Business-Id: <business-id>
-```
-
-Products have:
-
-- business ownership
-- name
-- SKU
-- optional barcode
-- validated unit
-- purchase price
-- selling price
-- minimum stock
-- `ACTIVE`/`INACTIVE` status
-
-SKU and barcode uniqueness are scoped per business. `DELETE` deactivates rather
-than physically deleting. Product stock and transaction endpoints intentionally
-return `501 Not Implemented`; those belong to Phase 4.
-
-## Phase 4 next scope
-
-Implement only the Inventory Engine:
-
-```text
-POST /api/inventory/opening-stock
-POST /api/inventory/adjustments
-GET  /api/inventory
-GET  /api/inventory/:productId
-GET  /api/inventory/:productId/history
-```
-
-Required transaction types include:
-
-```text
-PURCHASE
-SALE
-RETURN_IN
-RETURN_OUT
-ADJUSTMENT_IN
-ADJUSTMENT_OUT
-DAMAGE
-EXPIRED
-```
-
-Inventory transaction history is the source of truth. Current stock is a
-projection. Stock must not become negative, operations must be auditable and
-atomic, and all inventory data must be business-scoped.
-
-Do not implement suppliers, purchases, sales, dashboard, or AI during Phase 4.
-
-## Docker development workflow
-
-Development Compose files:
-
-- `docker-compose.yml`
-- `docker-compose.dev.yml`
-- `backend/Dockerfile`
-- `docs/DOCKER_DEVELOPMENT.md`
-
-Start:
-
-```bash
-npm run docker:dev
-```
-
-View backend logs:
-
-```bash
-npm run docker:dev:logs
-```
-
-Stop:
-
-```bash
-npm run docker:dev:down
-```
-
-The backend and shared source use bind mounts. `node_modules` and PostgreSQL
-data use named Docker volumes. TypeScript polling is enabled in:
-
-- `backend/tsconfig.json`
-- `packages/shared/tsconfig.json`
-
-Polling is required because Windows Docker bind mounts may not reliably emit
-native filesystem events. After changing Compose or watcher settings, recreate
-the stack with `docker:dev:down` followed by `docker:dev`.
-
-The Dockerfile generates Prisma before compiling the backend. This ordering is
-required whenever the Prisma schema changes.
-
-## Verification commands
-
-From the repository root:
-
-```bash
+```sh
 npm run build
 npm --prefix backend test
-npm --prefix backend run test:e2e
 npm --prefix backend run lint
 npm --prefix backend run prisma:validate
-npm --prefix backend run prisma:migrate:deploy
+npm --prefix backend run test:e2e
 ```
 
-Docker must be running for migration deployment and live container verification.
+The PostgreSQL sales suite requires RUN_DATABASE_TESTS=1 and a migrated database.
+Without opt-in it is skipped. For the isolated database already created locally:
 
-## Current verification state
+```sh
+docker exec invento-backend node test/run-phase6-verification.mjs
+```
 
-Before handoff:
+The runner uses container credentials, substitutes the database name with
+`invento_phase6_verify`, applies migrations and runs the full e2e suite. Tests
+remove their own fixtures; the verification database/schema is retained.
+Regenerate the container Prisma client after schema edits.
 
-- Phase 3 migration applied successfully to the configured PostgreSQL database.
-- Full repository build passed.
-- Backend tests passed.
-- Backend lint passed.
-- Prisma validation passed.
-- Docker Compose development stack was recreated successfully.
-- Product routes appeared in container logs.
-- A host source edit updated compiled output inside the backend container.
+## Existing development database mismatch
 
-## Important known considerations
+`invento_dev` already has `20260920085540_phase6_customers_sales`, absent from
+this checkout. Its customer lacks contactName, sale customerId is nullable and
+PaymentMethod additionally allows CREDIT. The new migration cannot be applied
+over it as-is. Its failed attempt was marked rolled back; existing data/schema
+were preserved. Reconcile the earlier migration before running this checkout's
+customer/sales APIs on that database. Do not reset it or mark mismatching
+migrations applied. Fresh migrations and tests passed in `invento_phase6_verify`.
 
-- Phase 2 has known technical debt around missing HTTP-level auth/tenant
-  integration coverage, refresh rotation atomicity, and generic Prisma error
-  mapping. Do not silently expand scope unless the requested phase requires it.
-- Product APIs currently use `X-Business-Id` as the business context.
-- Product stock/history routes are explicit Phase 4 boundaries.
-- Do not add inventory fields or stock mutation logic to Product services.
-- Do not commit secrets. Development JWT values are only in the Compose
-  development override.
-- Inspect `git status` before editing because the working tree may contain
-  uncommitted implementation and generated-file changes.
+## Boundaries and known debt
+
+Frontend business screens and Phase 7+ are not implemented. Existing Phase 2
+technical debt includes HTTP auth coverage gaps, refresh rotation atomicity and
+generic Prisma error mapping. Keep unrelated changes outside the phase scope.
+
+Final verification: 76/76 backend unit tests, 7/7 end-to-end tests (including
+6 PostgreSQL sales tests), backend lint, Prisma validation and full monorepo
+build passed. Phase 6 changes are uncommitted.

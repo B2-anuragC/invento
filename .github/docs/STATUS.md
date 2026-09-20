@@ -24,8 +24,8 @@ Build the backend core before major mobile UI development.
 5. Inventory (completed)
 6. Suppliers (completed)
 7. Purchases (completed)
-8. Sales
-9. Customers
+8. Sales (completed)
+9. Customers (completed)
 10. Dashboard
 11. Tests
 12. API documentation
@@ -188,3 +188,45 @@ rollback when an inventory operation fails mid-transaction — via unit tests
 and a live end-to-end Docker smoke test (register → business → product →
 opening stock → supplier → purchase → verify stock/ledger/tenant isolation).
 
+
+## Phase 6 ? Customers & Sales
+
+Implemented customer CRUD with ACTIVE/INACTIVE lifecycle and sales create/list/
+detail/metadata-update APIs under `/api/customers` and `/api/sales`. Reads require
+active business membership; writes require OWNER/ADMIN. Customers and products
+must be active and belong to the selected business when creating a sale.
+
+Sales require `customerId`, `saleDate`, `paymentMethod` and positive item
+`quantity`/`sellingPrice` decimal strings. Supported payment methods are CASH,
+UPI, CARD, BANK_TRANSFER and OTHER. Totals are computed server-side from rounded
+line totals. Sale items, customer, payment method, total and status are immutable;
+PATCH accepts only invoiceNumber, saleDate and note (ADR-011).
+
+A single transaction creates the sale and calls InventoryService.applyMovement
+with SALE and the outer transaction client before inserting each item. Stock
+checks and locks remain in the inventory engine. Any failure rolls back all sale,
+item, ledger and projection changes. Product IDs are processed in stable order.
+
+Verification includes unit tests, HTTP/PostgreSQL rollback and concurrent oversell
+tests, tenant/role checks, customer lifecycle, metadata-only PATCH, and the
+mandatory stock sequence 100 + 50 - 20 = 130 with oversell rejected.
+
+### Local database mismatch discovered during verification
+
+The running `invento_dev` database already contains migration
+`20260920085540_phase6_customers_sales`, which is absent from this checkout.
+Its schema allows nullable sale customerId, lacks customer contactName, and has
+an additional CREDIT payment method. This checkout's new migration is
+`20260920120000_phase6_customers_sales`. Applying it to that database fails on
+an existing enum; the failed attempt was marked rolled back without changing
+its schema or existing data. Do not reset the database or mark the new migration
+applied: these schemas differ. Reconcile the earlier migration/history before
+using this checkout's customer/sales APIs against that existing database.
+
+All migrations and PostgreSQL tests passed against the separate local database
+`invento_phase6_verify`. Its schema is retained for repeatable verification;
+test fixtures are removed after each test. Phase 7 has not been started.
+
+Final verification: 76/76 backend unit tests, 7/7 end-to-end tests (including
+6 PostgreSQL sales tests), backend lint, Prisma validation and full monorepo
+build passed. Phase 6 changes are uncommitted.

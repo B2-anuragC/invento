@@ -137,3 +137,20 @@ mistaken purchase should instead be modeled as an inventory adjustment (or a
 future documented reversal/return flow), not a retroactive edit of a settled
 purchase's items.
 
+
+## ADR-011 ? Immutable Sale Items and Atomic Stock Validation
+
+**Decision:** Sales are completed at creation. PATCH may update only
+invoiceNumber, saleDate and note. Items, customer, payment method, totals and
+status cannot be changed after creation. Corrections require an explicit audited
+adjustment or a future documented reversal flow.
+
+**Reason:** Editing settled items would disconnect the sale from its immutable
+inventory effects. Sales reuse InventoryService.applyMovement(input, tx) inside
+a single outer transaction. The inventory engine checks the locked stock balance
+before each SaleItem insert, avoiding duplicated stock checks and stale preflight
+reads. Failure on any item rolls back the whole sale. Stable product ordering
+avoids opposite lock ordering between concurrent sales.
+
+Line totals are rounded half-up to two decimal places before summation so the
+stored sale total exactly matches the sum of stored monetary line totals.

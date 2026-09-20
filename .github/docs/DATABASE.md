@@ -345,3 +345,32 @@ exclusively. Purchase totals are always computed server-side from
 `PATCH /purchases/:id` only updates purchase metadata (`invoiceNumber`,
 `purchaseDate`, `note`) — see ADR-010 in `DECISIONS.md` for why purchase
 items are immutable after creation.
+
+## Implemented: Customers & Sales (Phase 6)
+
+`Customer` mirrors Supplier contact fields and ACTIVE/INACTIVE lifecycle, with
+business/status and business/name indexes. DELETE deactivates the customer.
+`Sale` requires businessId, customerId, saleDate, paymentMethod and createdByUserId;
+optional metadata is invoiceNumber and note. Status defaults to COMPLETED.
+`SaleItem` stores productId, quantity (NUMERIC(12,3)), sellingPrice (NUMERIC(12,2))
+and lineTotal (NUMERIC(14,2)); Sale.total is NUMERIC(14,2).
+Customer and product references use ON DELETE RESTRICT to preserve history.
+
+PaymentMethod values: CASH, UPI, CARD, BANK_TRANSFER, OTHER. Draft/cancelled enum
+values are reserved; this phase exposes no draft, cancellation or reversal flow.
+
+Sales validate tenant membership/role, customer/product ownership and status,
+nonempty unique items, decimal precision/range, positive quantity/price, payment
+method and sale date. Line totals use Decimal multiplication rounded half-up to
+two places; the sale total sums those rounded lines. Overflow is rejected.
+
+Within one outer Prisma transaction, the sale is created, then products are
+processed in sorted ID order. For each product, InventoryService.applyMovement
+receives SALE and the outer client. Its locked balance check rejects overselling
+before the SaleItem insert. Ledger/projection writes and all sale records commit
+or roll back together. SalesService does not directly read/write inventory tables
+or duplicate inventory locking, stock arithmetic or direction classification.
+The ledger note includes the sale ID, following the purchase audit convention.
+
+See ADR-011 for immutable sale fields and STATUS.md for the pre-existing local
+database migration mismatch and isolated verification database.
