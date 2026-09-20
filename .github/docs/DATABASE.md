@@ -168,6 +168,81 @@ Sale
 
 must commit atomically.
 
+## Implemented: Inventory & InventoryTransaction (Phase 4)
+
+```prisma
+model Inventory {
+  id         String   @id @default(cuid())
+  businessId String
+  productId  String   @unique
+  quantity   Decimal  @db.Decimal(12, 3)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model InventoryTransaction {
+  id              String                   @id @default(cuid())
+  businessId      String
+  productId       String
+  type            InventoryTransactionType
+  quantity        Decimal                  @db.Decimal(12, 3)
+  balanceAfter    Decimal                  @db.Decimal(12, 3)
+  note            String?
+  createdByUserId String
+  createdAt       DateTime                 @default(now())
+}
+
+enum InventoryTransactionType {
+  OPENING_STOCK
+  PURCHASE
+  SALE
+  RETURN_IN
+  RETURN_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  DAMAGE
+  EXPIRED
+}
+```
+
+`InventoryTransaction` rows are immutable and are the source of truth.
+`Inventory` holds one row per product with the current quantity as a fast-read
+projection. `quantity` on the transaction is signed (positive for inflow
+types, negative for outflow types); `balanceAfter` records the resulting
+projection value at the time of the transaction for auditability.
+
+Every mutation (`backend/src/inventory/inventory.service.ts`) runs inside a
+Prisma interactive transaction: the `Inventory` row is locked with
+`SELECT ... FOR UPDATE`, the new balance is computed, and the operation is
+rejected before any write if the balance would go negative. Opening stock may
+only be recorded once per product (enforced by the unique `productId` index);
+a second attempt is rejected as a conflict. `PURCHASE` and `SALE` are reserved
+for the Purchases/Sales phases and are not written by any Phase 4 endpoint.
+
+### Transaction composability (for Phase 5/6)
+
+`InventoryService.applyMovement()` and `InventoryService.recordOpeningStock()`
+both accept an optional `Prisma.TransactionClient` as their last argument.
+When omitted, the method starts its own `$transaction` (today's standalone
+behavior, used by the `/inventory/*` HTTP endpoints). When a caller passes an
+existing transaction client, the row lock, negative-stock check, ledger
+insert, and projection update all join that caller's transaction instead of
+starting a nested one.
+
+This lets `PurchaseService`/`SaleService` (Phase 5/6) compose
+`Purchase + PurchaseItems + InventoryTransactions + Inventory projection` (or
+the equivalent for a Sale) inside a single atomic `prisma.$transaction`, by
+calling `inventoryService.applyMovement(input, tx)` for each line item using
+the same transaction client used for the Purchase/Sale/Item writes — instead
+of re-implementing stock calculation, negative-stock validation, ledger
+creation, or row locking.
+
+The inflow/outflow direction for each `InventoryTransactionType` is defined
+once in `backend/src/inventory/inventory.movement-types.ts`
+(`isInflowTransaction`) and is not duplicated anywhere else. Any future caller
+(including Purchase/Sale services) must reuse this function rather than
+re-deriving which transaction types increase vs. decrease stock.
+
 ## Future Schema Considerations
 
 Potential future entities may include:

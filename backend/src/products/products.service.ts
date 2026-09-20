@@ -1,6 +1,7 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import { productStatuses } from './dto/product.dto.js';
 
 type ProductInput = {
@@ -16,7 +17,7 @@ type ProductInput = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
 
   async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode'>) {
     await this.requireManagerMembership(userId, businessId);
@@ -94,19 +95,12 @@ export class ProductsService {
     return this.prisma.product.update({ where: { id: productId }, data: { status: ProductStatus.INACTIVE } });
   }
 
-  async stock(userId: string, businessId: string, productId: string): Promise<never> {
-    await this.requireProductAccess(userId, businessId, productId);
-    throw new NotImplementedException('Inventory stock is available in Phase 4.');
+  async stock(userId: string, businessId: string, productId: string) {
+    return this.inventory.get(userId, businessId, productId);
   }
 
-  async transactions(userId: string, businessId: string, productId: string): Promise<never> {
-    await this.requireProductAccess(userId, businessId, productId);
-    throw new NotImplementedException('Inventory transactions are available in Phase 4.');
-  }
-
-  private async requireProductAccess(userId: string, businessId: string, productId: string) {
-    await this.requireMembership(userId, businessId);
-    return this.requireProduct(businessId, productId);
+  async transactions(userId: string, businessId: string, productId: string) {
+    return this.inventory.history(userId, businessId, productId);
   }
 
   private async requireProduct(businessId: string, productId: string) {

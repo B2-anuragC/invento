@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
 import { ProductsModule } from './products/products.module.js';
+import { InventoryModule } from './inventory/inventory.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ProductsModule } from './products/products.module.js';
     AuthModule,
     BusinessesModule,
     ProductsModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

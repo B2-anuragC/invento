@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AccessTokenGuard } from '../auth/auth.guard.js';
 import { CreateProductDto, ProductListQueryDto, UpdateProductDto } from './dto/product.dto.js';
@@ -30,15 +30,13 @@ export class ProductsController {
   }
 
   @Get(':id/stock')
-  @ApiOperation({ summary: 'Get product stock (implemented in Phase 4).' })
-  @ApiResponse({ status: 501, description: 'Inventory is not implemented until Phase 4.' })
+  @ApiOperation({ summary: 'Get current inventory stock for a product.' })
   stock(@Req() req: Request, @Param('id') id: string) {
     return this.products.stock(req.user.id, this.businessId(req), id);
   }
 
   @Get(':id/transactions')
-  @ApiOperation({ summary: 'Get product inventory transactions (implemented in Phase 4).' })
-  @ApiResponse({ status: 501, description: 'Inventory is not implemented until Phase 4.' })
+  @ApiOperation({ summary: 'Get the inventory transaction history for a product.' })
   transactions(@Req() req: Request, @Param('id') id: string) {
     return this.products.transactions(req.user.id, this.businessId(req), id);
   }

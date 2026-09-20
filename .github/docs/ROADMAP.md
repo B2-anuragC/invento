@@ -36,15 +36,15 @@
 
 ## Phase 4 — Inventory Engine
 
-- [ ] Inventory model
-- [ ] Inventory transaction model
-- [ ] Opening stock
-- [ ] Adjustments
-- [ ] Damage
-- [ ] Expiry
-- [ ] Returns
-- [ ] Stock history
-- [ ] Transaction safety
+- [x] Inventory model
+- [x] Inventory transaction model
+- [x] Opening stock
+- [x] Adjustments
+- [x] Damage
+- [x] Expiry
+- [x] Returns
+- [x] Stock history
+- [x] Transaction safety
 
 ## Phase 5 — Purchases
 
