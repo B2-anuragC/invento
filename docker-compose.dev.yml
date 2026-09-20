@@ -1,0 +1,24 @@
+services:
+  backend:
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      APP_API_PREFIX: api
+      JWT_ACCESS_SECRET: development-access-secret-change-me-32-chars
+      JWT_REFRESH_SECRET: development-refresh-secret-change-me-32-chars
+    volumes:
+      - ./backend:/app/backend
+      - ./packages/shared:/app/packages/shared
+      - backend_node_modules:/app/backend/node_modules
+      - shared_node_modules:/app/packages/shared/node_modules
+    command:
+      - sh
+      - -c
+      - >-
+        npx prisma generate --schema=./prisma/schema.prisma &&
+        npx prisma migrate deploy --schema=./prisma/schema.prisma &&
+        npm --prefix /app/packages/shared run build &&
+        (npm --prefix /app/packages/shared run build -- --watch &) &&
+        npm run start:dev
+    stdin_open: true
+    tty: true
