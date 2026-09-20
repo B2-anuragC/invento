@@ -117,3 +117,23 @@ Access tokens remain lightweight for API authentication, while persisted
 refresh tokens can be rotated and revoked on logout or suspected compromise.
 The design avoids coupling the backend to an unnecessary authentication
 framework and leaves room for future token/session policy changes.
+
+## ADR-010 — Purchase Line Items Are Immutable After Creation
+
+**Decision:** `PATCH /purchases/:id` may only update purchase metadata
+(invoice number, purchase date, note). Purchase items (product, quantity,
+price) cannot be edited once a purchase is created.
+
+**Reason:**
+
+Purchase items drive inventory transactions the moment a purchase is
+created (`InventoryTransaction` type `PURCHASE`, applied atomically with the
+purchase inside the same database transaction). If item quantities/prices
+could be edited afterward, the already-applied inventory ledger entries and
+projection would silently diverge from the purchase record, corrupting
+historical stock data — `DEVELOPMENT_PLAN.md`'s Phase 5 acceptance criteria
+explicitly requires "partial purchase updates cannot occur." Correcting a
+mistaken purchase should instead be modeled as an inventory adjustment (or a
+future documented reversal/return flow), not a retroactive edit of a settled
+purchase's items.
+

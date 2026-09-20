@@ -256,3 +256,92 @@ Potential future entities may include:
 - Business insights
 
 Do not add these before the product requires them.
+
+## Implemented: Suppliers & Purchases (Phase 5)
+
+```prisma
+model Supplier {
+  id          String         @id @default(cuid())
+  businessId  String
+  name        String
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  status      SupplierStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Purchase {
+  id              String         @id @default(cuid())
+  businessId      String
+  supplierId      String
+  invoiceNumber   String?
+  purchaseDate    DateTime
+  total           Decimal        @db.Decimal(14, 2)
+  status          PurchaseStatus @default(COMPLETED)
+  note            String?
+  createdByUserId String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+enum PurchaseStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+model PurchaseItem {
+  id            String   @id @default(cuid())
+  purchaseId    String
+  productId     String
+  quantity      Decimal  @db.Decimal(12, 3)
+  purchasePrice Decimal  @db.Decimal(12, 2)
+  lineTotal     Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
+}
+```
+
+Suppliers follow the same deactivation convention as Products: `DELETE
+/suppliers/:id` sets `status = INACTIVE` rather than deleting the row, so
+historical purchases remain attached to a valid (if inactive) supplier
+reference (`Purchase.supplierId` has no `onDelete: Cascade`; it uses
+`onDelete: Restrict` to make this explicit at the database level).
+`PurchaseItem.productId` also uses `onDelete: Restrict` for the same reason —
+a product referenced by historical purchase items cannot be hard-deleted.
+
+`PurchaseService.create()` composes the entire purchase inside one
+`prisma.$transaction`:
+
+```text
+prisma.$transaction(async (tx) => {
+  validate supplier (active, belongs to business)
+  validate every product (active, belongs to business)
+  validate quantity/price (positive, no duplicate products in one purchase)
+  compute lineTotal = quantity * purchasePrice, total = sum(lineTotal)
+  tx.purchase.create(...)
+  tx.purchaseItem.createMany(...)
+  for each item: inventoryService.applyMovement({ type: PURCHASE, ... }, tx)
+})
+```
+
+Every purchase item's inventory effect is applied via
+`InventoryService.applyMovement(input, tx)` — the same transaction-composable
+primitive documented above — passing the outer transaction client so the
+Purchase row, PurchaseItems, InventoryTransactions, and Inventory projection
+update all commit or roll back together. `PurchaseService` does not
+recompute stock, re-lock rows, or re-derive inflow/outflow direction; it
+reuses the Inventory Engine and the shared `isInflowTransaction()` utility
+exclusively. Purchase totals are always computed server-side from
+`quantity × purchasePrice`; client-supplied totals are never trusted.
+
+`PATCH /purchases/:id` only updates purchase metadata (`invoiceNumber`,
+`purchaseDate`, `note`) — see ADR-010 in `DECISIONS.md` for why purchase
+items are immutable after creation.

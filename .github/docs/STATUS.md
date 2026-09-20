@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-**Phase 4 — Inventory Engine (completed)**
+**Phase 5 — Suppliers & Purchases (completed)**
 
 The repository foundation is already created as an npm-workspaces monorepo
 with:
@@ -22,9 +22,9 @@ Build the backend core before major mobile UI development.
 3. Business/User
 4. Products (completed)
 5. Inventory (completed)
-6. Purchases
-7. Sales
-8. Suppliers
+6. Suppliers (completed)
+7. Purchases (completed)
+8. Sales
 9. Customers
 10. Dashboard
 11. Tests
@@ -144,3 +144,47 @@ identical standalone behavior to before. Inflow/outflow direction for each
 `backend/src/inventory/inventory.movement-types.ts::isInflowTransaction` as
 the single shared source of truth, so no future service duplicates that
 determination. See `.github/docs/DATABASE.md` for details.
+
+## Phase 5 — Suppliers & Purchases Implementation Notes
+
+Implemented `Supplier`, `Purchase`, and `PurchaseItem` models plus
+`SupplierStatus` (`ACTIVE`/`INACTIVE`) and `PurchaseStatus`
+(`DRAFT`/`COMPLETED`/`CANCELLED`) enums.
+
+Endpoints:
+
+```text
+POST   /api/suppliers
+GET    /api/suppliers
+GET    /api/suppliers/:id
+PATCH  /api/suppliers/:id
+DELETE /api/suppliers/:id      (deactivates; does not delete)
+
+POST   /api/purchases
+GET    /api/purchases
+GET    /api/purchases/:id
+PATCH  /api/purchases/:id      (metadata only — see ADR-010)
+```
+
+`PurchasesService.create()` validates the supplier (belongs to the business,
+`ACTIVE`), every product (belongs to the business, `ACTIVE`), rejects
+non-positive quantities/prices and duplicate products within one purchase,
+and computes `lineTotal`/`total` server-side — client-supplied totals are
+never trusted. The whole operation (`Purchase` + `PurchaseItem`s + one
+`InventoryTransaction` per line item + the `Inventory` projection update)
+runs inside a single `prisma.$transaction`, calling
+`InventoryService.applyMovement(input, tx)` for each item so the Inventory
+Engine remains the only place that locks rows, validates non-negative stock,
+or writes ledger/projection changes — `PurchaseService` never touches
+`Inventory`/`InventoryTransaction` directly. If any step fails (invalid
+product, insufficient handling, DB error), the entire transaction rolls
+back: no `Purchase`, `PurchaseItem`, or inventory change persists.
+
+Verified: purchase creation with single/multiple items, correct totals,
+correct `PurchaseItem` rows, inventory increasing correctly with a `PURCHASE`
+inventory transaction, supplier/product/quantity/price validation, duplicate
+product rejection, tenant isolation, manager-only authorization, and full
+rollback when an inventory operation fails mid-transaction — via unit tests
+and a live end-to-end Docker smoke test (register → business → product →
+opening stock → supplier → purchase → verify stock/ledger/tenant isolation).
+
