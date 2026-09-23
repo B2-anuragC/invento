@@ -50,7 +50,7 @@ function createFakePrisma(options: { role?: string; isActive?: boolean; product?
     inventory: txClient.inventory,
     inventoryTransaction: txClient.inventoryTransaction,
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => callback(txClient)),
-  } as never;
+  };
 
   return { prisma, store, txClient };
 }
@@ -58,7 +58,7 @@ function createFakePrisma(options: { role?: string; isActive?: boolean; product?
 describe('InventoryService', () => {
   it.each(['-1', '0', 'NaN', 'Infinity', 'invalid', '0.0001', '1000000000'])('rejects invalid internal movement quantity %s before writes', async (quantity) => {
     const { prisma, store, txClient } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
     const input = { businessId: 'business-a', productId: 'product-a', userId: 'user-a', type: InventoryTransactionType.SALE, quantity };
     await expect(service.applyMovement(input)).rejects.toBeInstanceOf(BadRequestException);
     await expect(service.applyMovement(input, txClient as never)).rejects.toBeInstanceOf(BadRequestException);
@@ -69,7 +69,7 @@ describe('InventoryService', () => {
 
   it('allows zero opening stock but rejects invalid Decimal quantities', async () => {
     const { prisma, txClient } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
     const input = { businessId: 'business-a', productId: 'product-a', userId: 'user-a' };
     for (const quantity of ['-1', 'NaN', 'Infinity', '0.0001', '1000000000']) {
       await expect(service.recordOpeningStock({ ...input, quantity: new Prisma.Decimal(quantity) }, txClient as never)).rejects.toBeInstanceOf(BadRequestException);
@@ -81,7 +81,7 @@ describe('InventoryService', () => {
 
   it('records opening stock and creates the projection plus ledger entry', async () => {
     const { prisma, store } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     const result = await service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '100.000' });
 
@@ -92,14 +92,14 @@ describe('InventoryService', () => {
 
   it('rejects opening stock when it has already been recorded', async () => {
     const { prisma } = createFakePrisma({ failOpeningStockConflict: true });
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await expect(service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '100.000' })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('applies the mandatory verification sequence: 100 + 50 - 20 - 5 = 125', async () => {
     const { prisma } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '100.000' });
     await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '50.000' });
@@ -114,7 +114,7 @@ describe('InventoryService', () => {
 
   it('rejects an adjustment that would make stock negative and leaves stock unchanged', async () => {
     const { prisma, store } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '10.000' });
     const transactionCountBefore = store.transactions.length;
@@ -127,28 +127,28 @@ describe('InventoryService', () => {
 
   it('rejects adjustments before opening stock has been recorded', async () => {
     const { prisma } = createFakePrisma();
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '5.000' })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('enforces tenant isolation by rejecting products outside the business', async () => {
     const { prisma } = createFakePrisma({ product: null });
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await expect(service.openingStock('user-a', 'business-a', { productId: 'product-b', quantity: '10.000' })).rejects.toThrow();
   });
 
   it('rejects adjustments from members without manager permissions', async () => {
     const { prisma } = createFakePrisma({ role: 'MEMBER' });
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '5.000' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('allows any active member to read current stock', async () => {
     const { prisma } = createFakePrisma({ role: 'MEMBER' });
-    const service = new InventoryService(prisma);
+    const service = new InventoryService(prisma as never);
 
     await expect(service.get('user-a', 'business-a', 'product-a')).resolves.toBeDefined();
   });
@@ -156,7 +156,7 @@ describe('InventoryService', () => {
   describe('transaction composability', () => {
     it('applyMovement starts its own transaction when no tx client is provided (standalone behavior preserved)', async () => {
       const { prisma, store } = createFakePrisma();
-      const service = new InventoryService(prisma);
+      const service = new InventoryService(prisma as never);
 
       await service.recordOpeningStock({ businessId: 'business-a', productId: 'product-a', quantity: '100.000', userId: 'user-a' });
       await service.applyMovement({ businessId: 'business-a', productId: 'product-a', type: InventoryTransactionType.ADJUSTMENT_IN, quantity: '10.000', userId: 'user-a' });
@@ -167,7 +167,7 @@ describe('InventoryService', () => {
 
     it('applyMovement joins an existing transaction client without starting a nested transaction', async () => {
       const { prisma, store, txClient } = createFakePrisma();
-      const service = new InventoryService(prisma);
+      const service = new InventoryService(prisma as never);
 
       await service.recordOpeningStock({ businessId: 'business-a', productId: 'product-a', quantity: '100.000', userId: 'user-a' });
 
@@ -186,7 +186,7 @@ describe('InventoryService', () => {
 
     it('recordOpeningStock joins an existing transaction client without starting a nested transaction', async () => {
       const { prisma, txClient } = createFakePrisma();
-      const service = new InventoryService(prisma);
+      const service = new InventoryService(prisma as never);
 
       const transactionSpy = (prisma as { $transaction: ReturnType<typeof vi.fn> }).$transaction;
 
@@ -198,7 +198,7 @@ describe('InventoryService', () => {
 
     it('propagates insufficient-stock rejection when composed inside a caller-provided transaction, without writing anything', async () => {
       const { prisma, store, txClient } = createFakePrisma();
-      const service = new InventoryService(prisma);
+      const service = new InventoryService(prisma as never);
 
       await service.recordOpeningStock({ businessId: 'business-a', productId: 'product-a', quantity: '10.000', userId: 'user-a' });
       const transactionsBefore = store.transactions.length;
@@ -213,7 +213,7 @@ describe('InventoryService', () => {
 
     it('shares the same inflow/outflow determination for PURCHASE and SALE as ADJUSTMENT_IN/OUT', async () => {
       const { prisma, store } = createFakePrisma();
-      const service = new InventoryService(prisma);
+      const service = new InventoryService(prisma as never);
 
       await service.recordOpeningStock({ businessId: 'business-a', productId: 'product-a', quantity: '100.000', userId: 'user-a' });
       const purchase = await service.applyMovement({ businessId: 'business-a', productId: 'product-a', type: InventoryTransactionType.PURCHASE, quantity: '50.000', userId: 'user-a' });

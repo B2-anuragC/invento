@@ -102,10 +102,10 @@ function createFakeEnvironment(
         throw error;
       }
     }),
-  } as never;
+  };
 
-  const inventory = new InventoryService(prisma);
-  const service = new SalesService(prisma, inventory);
+  const inventory = new InventoryService(prisma as never);
+  const service = new SalesService(prisma as never, inventory);
 
   return { prisma, store, service, txClient };
 }
@@ -181,8 +181,8 @@ describe('SalesService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       sale: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
-    } as never;
-    const service = new SalesService(prisma, {} as never);
+    };
+    const service = new SalesService(prisma as never, {} as never);
     await service.list('user-a', 'business-a', { customerId: 'customer-a', search: 'INV' });
     expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { businessId: 'business-a', customerId: 'customer-a', invoiceNumber: { contains: 'INV', mode: 'insensitive' } } }));
     await expect(service.get('user-a', 'business-a', 'sale-b')).rejects.toBeInstanceOf(NotFoundException);
@@ -193,9 +193,9 @@ describe('SalesService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'ADMIN' }) },
       sale: { findFirst: vi.fn().mockResolvedValue({ id: 'sale-a' }), update: vi.fn().mockResolvedValue({ id: 'sale-a', note: 'corrected' }) },
-    } as never;
-    const inventory = { applyMovement: vi.fn() } as never;
-    const service = new SalesService(prisma, inventory);
+    };
+    const inventory = { applyMovement: vi.fn() };
+    const service = new SalesService(prisma as never, inventory as never);
     await expect(service.update('user-a', 'business-a', 'sale-a', { note: 'corrected' })).resolves.toMatchObject({ note: 'corrected' });
     expect(inventory.applyMovement).not.toHaveBeenCalled();
     prisma.sale.findFirst.mockResolvedValue(null);

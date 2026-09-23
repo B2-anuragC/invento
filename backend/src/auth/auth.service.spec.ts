@@ -15,8 +15,8 @@ describe('AuthService', () => {
     const prisma = {
       refreshToken: { findUnique: vi.fn().mockResolvedValue({ id: 'refresh-1', expiresAt: new Date(Date.now() + 60000), user: { isActive: true } }) },
       $transaction: vi.fn(async (callback) => callback(tx)),
-    } as never;
-    await expect(new AuthService(prisma, config).refresh(token)).rejects.toBeInstanceOf(UnauthorizedException);
+    };
+    await expect(new AuthService(prisma as never, config).refresh(token)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(tx.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'refresh-1', revokedAt: null, expiresAt: { gt: expect.any(Date) } } }));
     expect(tx.refreshToken.create).not.toHaveBeenCalled();
   });
@@ -34,8 +34,8 @@ describe('AuthService', () => {
         const before = record.revokedAt;
         try { return await callback(tx); } catch (error) { record.revokedAt = before; throw error; }
       }),
-    } as never;
-    await expect(new AuthService(prisma, config).refresh(token)).rejects.toThrow('Session write failed');
+    };
+    await expect(new AuthService(prisma as never, config).refresh(token)).rejects.toThrow('Session write failed');
     expect(record.revokedAt).toBeNull();
     expect(tx.refreshToken.create).toHaveBeenCalledOnce();
     expect(prisma.refreshToken.create).not.toHaveBeenCalled();
@@ -48,8 +48,8 @@ describe('AuthService', () => {
         create: vi.fn().mockImplementation(async ({ data }) => ({ id: 'user-1', name: data.name, email: data.email, phone: null, avatarUrl: null })),
       },
       refreshToken: { create: vi.fn().mockResolvedValue({}) },
-    } as never;
-    const result = await new AuthService(prisma, config).register({ name: 'Shop Owner', email: 'OWNER@example.com', password: 'Correct Horse Battery Staple1!' });
+    };
+    const result = await new AuthService(prisma as never, config).register({ name: 'Shop Owner', email: 'OWNER@example.com', password: 'Correct Horse Battery Staple1!' });
     expect(result.user.email).toBe('owner@example.com');
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBeTruthy();
@@ -58,8 +58,8 @@ describe('AuthService', () => {
   it('rejects invalid login credentials', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, passwordHash: await hashPassword('different password') }) },
-    } as never;
-    await expect(new AuthService(prisma, config).login({ email: 'owner@example.com', password: 'wrong password' }))
+    };
+    await expect(new AuthService(prisma as never, config).login({ email: 'owner@example.com', password: 'wrong password' }))
       .rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

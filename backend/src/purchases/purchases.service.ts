@@ -40,13 +40,16 @@ export class PurchasesService {
     const lines = input.items.map((item) => {
       if (seen.has(item.productId)) throw new BadRequestException('Duplicate product in purchase items.');
       seen.add(item.productId);
+      if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.quantity) || !/^\d{1,10}(?:\.\d{1,2})?$/.test(item.purchasePrice)) {
+        throw new BadRequestException('Invalid purchase quantity or price precision.');
+      }
 
       const quantity = new Prisma.Decimal(item.quantity);
       const purchasePrice = new Prisma.Decimal(item.purchasePrice);
       if (quantity.lessThanOrEqualTo(0)) throw new BadRequestException('Purchase item quantity must be greater than zero.');
       if (purchasePrice.lessThanOrEqualTo(0)) throw new BadRequestException('Purchase item price must be greater than zero.');
 
-      return { productId: item.productId, quantity, purchasePrice, lineTotal: quantity.times(purchasePrice) };
+      return { productId: item.productId, quantity, purchasePrice, lineTotal: quantity.times(purchasePrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP) };
     });
 
     const products = await this.prisma.product.findMany({ where: { businessId, id: { in: lines.map((line) => line.productId) } } });
@@ -58,6 +61,7 @@ export class PurchasesService {
     }
 
     const total = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
+    if (total.greaterThan('999999999999.99')) throw new BadRequestException('Purchase total exceeds the supported amount.');
     const purchaseDate = new Date(input.purchaseDate);
     if (Number.isNaN(purchaseDate.getTime())) throw new BadRequestException('Invalid purchase date.');
 
@@ -84,7 +88,7 @@ export class PurchasesService {
         })),
       });
 
-      for (const line of lines) {
+      for (const line of [...lines].sort((a, b) => a.productId.localeCompare(b.productId))) {
         await this.inventory.applyMovement(
           {
             businessId,

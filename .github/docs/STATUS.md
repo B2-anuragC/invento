@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-**Phase 6 - Customers & Sales (completed and verified)**
+**Phases 6-8 - Non-AI backend MVP (completed and verified)**
 
 The repository foundation is already created as an npm-workspaces monorepo
 with:
@@ -26,9 +26,9 @@ Build the backend core before major mobile UI development.
 7. Purchases (completed)
 8. Sales (completed)
 9. Customers (completed)
-10. Dashboard
-11. Tests
-12. API documentation
+10. Dashboard (completed)
+11. Tests (completed)
+12. API documentation (completed)
 
 ## Not Current Priority
 
@@ -228,8 +228,65 @@ rejected; replacement failures roll back consumption. Inventory's internal
 movement/opening-stock APIs now reject non-finite, negative, overprecision and
 out-of-range quantities, with zero allowed only for opening stock.
 
-Final verification: 86/86 backend unit tests, 8/8 end-to-end tests (including
-PostgreSQL concurrent refresh and sales tests), backend build and lint passed.
-Prisma reports no schema difference for invento_dev. The earlier full monorepo
-build passed. Phase 6 is committed as abb195e; these fixes are uncommitted.
-Phase 7 has not been started.
+Phase 6 verification on 2026-09-20 passed 86 unit tests and 8 end-to-end tests.
+The current verification results below supersede that checkpoint.
+
+## Phases 7-8 - Dashboard and Non-AI Backend Completion
+
+Implemented all five dashboard APIs with authenticated business membership,
+India business dates, Decimal monetary totals, completed-transaction filtering,
+bounded queries, and consistent empty responses. Summary metrics use one
+repeatable-read snapshot. See [DASHBOARD.md](DASHBOARD.md) for the API contract.
+
+Resolved the four previously reported regressions: disabled-user access tokens,
+purchase line rounding, null supplier updates, and inventory balance overflow.
+Additional hardening covers explicit HTTP-adapter startup, purchase amount bounds and lock ordering, product
+numeric bounds, strict calendar dates, blank names, null updates across older
+DTOs, owner demotion, and unique conflicts returning 409 instead of 500.
+
+Verification on 2026-09-21:
+
+- 94 backend unit tests and 19 HTTP/PostgreSQL end-to-end tests pass.
+- Backend source and test TypeScript checks pass.
+- Backend lint, frontend lint, and full workspace production build pass.
+- All seven migrations replayed into a fresh isolated database; migration status
+  is current and Prisma reports no schema difference.
+- Known-data dashboard totals, India midnight boundaries, zero-activity days,
+  empty/cross-business data, pagination, inactive products, and rankings pass.
+- The full register/business/product/opening-stock/purchase/customer/sale/
+  inventory-history/dashboard workflow passes.
+- Rounding, overflow rollback, opposite-order concurrent purchases/sales,
+  refresh rotation, disabled accounts, authorization, and Swagger registration
+  are covered by PostgreSQL API tests.
+
+Repeatable checks from the repository root:
+
+```powershell
+npm test
+npm run build
+npm --prefix backend run lint
+npm --prefix backend run typecheck
+$env:TEST_DATABASE_URL = 'postgresql://invento:invento@localhost:5432/invento_phase8_verify?schema=public'
+npm --prefix backend run test:mvp
+```
+
+Create the isolated database once before the last command, for example with
+`docker exec invento-postgres createdb -U invento invento_phase8_verify`.
+The runner never resets a database and fixtures remove only their own records.
+Its default uses DATABASE_URL credentials with the database name changed to
+invento_phase8_verify; TEST_DATABASE_URL can override this with a test/verify
+database. The old run-phase6-verification.mjs entrypoint delegates to this runner.
+
+## Remaining Boundaries
+
+No known critical defect remains in the reviewed Phase 6-8 workflows.
+This is a backend MVP checkpoint, not a production readiness certification:
+
+- Dashboard business dates are fixed to Asia/Kolkata; per-business time zones
+  and multiple currencies are not implemented.
+- Older catalog, purchase/sale list, and inventory-history APIs remain
+  unpaginated. Dashboard output is bounded.
+- Authentication rate limiting and production-scale load testing remain
+  deployment follow-ups.
+- The mobile frontend remains the existing starter; AI processing is not part
+  of this checkpoint.

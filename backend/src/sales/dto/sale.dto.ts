@@ -16,7 +16,7 @@ export class CreateSaleDto {
   @ApiProperty({ enum: PaymentMethod }) @IsEnum(PaymentMethod) paymentMethod!: PaymentMethod;
   @ApiProperty() @IsString() customerId!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;
-  @ApiProperty({ example: '2026-01-15' }) @IsDateString() saleDate!: string;
+  @ApiProperty({ example: '2026-01-15' }) @IsDateString({ strict: true }) saleDate!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(500) note?: string;
   @ApiProperty({ type: [SaleItemDto] })
   @IsArray()
@@ -28,7 +28,7 @@ export class CreateSaleDto {
 
 export class UpdateSaleDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;
-  @ApiPropertyOptional({ example: '2026-01-15' }) @ValidateIf((_object, value) => value !== undefined) @IsDateString() saleDate?: string;
+  @ApiPropertyOptional({ example: '2026-01-15' }) @ValidateIf((_object, value) => value !== undefined) @IsDateString({ strict: true }) saleDate?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(500) note?: string;
 }
 

@@ -57,33 +57,33 @@
 
 ## Phase 6 — Sales
 
-- [ ] Customers
-- [ ] Sales model
-- [ ] Sale items
-- [ ] Sale APIs
-- [ ] Stock validation
-- [ ] Atomic inventory update
-- [ ] Sales history
+- [x] Customers
+- [x] Sales model
+- [x] Sale items
+- [x] Sale APIs
+- [x] Stock validation
+- [x] Atomic inventory update
+- [x] Sales history
 
 ## Phase 7 — Dashboard
 
-- [ ] Summary API
-- [ ] Sales metrics
-- [ ] Purchase metrics
-- [ ] Low-stock API
-- [ ] Recent transactions
-- [ ] Top products
+- [x] Summary API
+- [x] Sales metrics
+- [x] Purchase metrics
+- [x] Low-stock API
+- [x] Recent transactions
+- [x] Top products
 
 ## Phase 8 — API Hardening
 
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] E2E tests
-- [ ] Authorization tests
-- [ ] Multi-tenant isolation tests
-- [ ] Inventory consistency tests
-- [ ] Swagger completeness
-- [ ] Error consistency
+- [x] Unit tests
+- [x] Integration tests
+- [x] E2E tests
+- [x] Authorization tests
+- [x] Multi-tenant isolation tests
+- [x] Inventory consistency tests
+- [x] Swagger completeness
+- [x] Error consistency
 
 ## Phase 9 — Mobile Application
 

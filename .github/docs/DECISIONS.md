@@ -156,3 +156,32 @@ avoids opposite lock ordering between concurrent sales.
 
 Line totals are rounded half-up to two decimal places before summation so the
 stored sale total exactly matches the sum of stored monetary line totals.
+
+## ADR-012 - Dashboard Business Dates and Bounded Aggregates
+
+**Decision:** Dashboard dates use Asia/Kolkata for the India-focused MVP.
+Date ranges are inclusive calendar dates, translated to an inclusive start and
+exclusive end in UTC. Only completed sales/purchases contribute monetary
+metrics. Top products rank by revenue, while low stock compares active product
+quantity strictly below its configured minimum. Missing stock reads as zero.
+
+**Reason:** Consistent filtering and grouping prevent midnight double-counting.
+Revenue supports comparisons across product units. PostgreSQL aggregates,
+bounded date ranges and result sizes use existing indexes without additional
+analytics infrastructure. Summary reads one repeatable-read snapshot.
+See DASHBOARD.md for the complete API contract.
+
+## ADR-013 - Non-AI MVP Hardening
+
+**Decision:** Access-token requests re-check the user's active state. Purchases
+round each line half-up to cents before summing and acquire inventory locks in
+the same product-ID order as sales. Inventory rejects out-of-range resulting
+balances before writes. Optional DTO fields reject null; names must contain a
+non-whitespace character. Owner memberships cannot be demoted, matching the
+existing prohibition on removing owners. Unique database conflicts return 409.
+
+**Reason:** These checks close reproduced authorization, numeric, validation,
+and concurrency failures without changing the ledger/projection transaction
+model or allowing historical item edits. Preventing owner demotion avoids
+concurrent requests leaving a business without an owner. Test mocks preserve
+their concrete types so source and tests can both be type-checked.

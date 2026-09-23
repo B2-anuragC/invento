@@ -878,21 +878,21 @@ Commit
 ## Acceptance Criteria
 
 ```text
-[ ] Customer CRUD works
-[ ] Customer belongs to business
-[ ] Sale can be created
-[ ] Sale items work
-[ ] Sale totals are correct
-[ ] Stock validation works
-[ ] Inventory decreases correctly
-[ ] Inventory transaction is created
-[ ] Payment method is validated
-[ ] Sale history works
-[ ] Sale details work
-[ ] Invalid sale is rejected
-[ ] Failed sale does not modify inventory
-[ ] Multi-tenant isolation works
-[ ] Tests exist
+[x] Customer CRUD works
+[x] Customer belongs to business
+[x] Sale can be created
+[x] Sale items work
+[x] Sale totals are correct
+[x] Stock validation works
+[x] Inventory decreases correctly
+[x] Inventory transaction is created
+[x] Payment method is validated
+[x] Sale history works
+[x] Sale details work
+[x] Invalid sale is rejected
+[x] Failed sale does not modify inventory
+[x] Multi-tenant isolation works
+[x] Tests exist
 ```
 
 ## Mandatory Verification
@@ -972,17 +972,17 @@ Do not introduce unnecessary analytics infrastructure.
 ## Acceptance Criteria
 
 ```text
-[ ] Summary API works
-[ ] Today's sales are correct
-[ ] Today's purchases are correct
-[ ] Product count is correct
-[ ] Low-stock products are correct
-[ ] Top products are calculated correctly
-[ ] Business isolation works
-[ ] Date/time handling is consistent
-[ ] Empty data is handled correctly
-[ ] Performance is acceptable for MVP
-[ ] Tests exist
+[x] Summary API works
+[x] Today's sales are correct
+[x] Today's purchases are correct
+[x] Product count is correct
+[x] Low-stock products are correct
+[x] Top products are calculated correctly
+[x] Business isolation works
+[x] Date/time handling is consistent
+[x] Empty data is handled correctly
+[x] Performance is acceptable for MVP
+[x] Tests exist
 ```
 
 ## Verification
@@ -1079,15 +1079,15 @@ Verify dashboard
 Verify:
 
 ```text
-[ ] Authentication
-[ ] Authorization
-[ ] Multi-tenant isolation
-[ ] Input validation
-[ ] Sensitive data handling
-[ ] Error responses
-[ ] No accidental data leakage
-[ ] No unrestricted businessId access
-[ ] No unrestricted resource access
+[x] Authentication
+[x] Authorization
+[x] Multi-tenant isolation
+[x] Input validation
+[x] Sensitive data handling
+[x] Error responses
+[x] No accidental data leakage
+[x] No unrestricted businessId access
+[x] No unrestricted resource access
 ```
 
 ## Database Review
@@ -1095,14 +1095,14 @@ Verify:
 Verify:
 
 ```text
-[ ] Foreign keys
-[ ] Unique constraints
-[ ] Required fields
-[ ] Indexes
-[ ] Decimal/numeric money handling
-[ ] Quantity precision
-[ ] Transactions
-[ ] Inventory consistency
+[x] Foreign keys
+[x] Unique constraints
+[x] Required fields
+[x] Indexes
+[x] Decimal/numeric money handling
+[x] Quantity precision
+[x] Transactions
+[x] Inventory consistency
 ```
 
 ## API Review
@@ -1110,28 +1110,28 @@ Verify:
 Verify:
 
 ```text
-[ ] HTTP status codes
-[ ] Validation errors
-[ ] Authentication errors
-[ ] Authorization errors
-[ ] Not-found handling
-[ ] Swagger documentation
-[ ] Consistent response format
+[x] HTTP status codes
+[x] Validation errors
+[x] Authentication errors
+[x] Authorization errors
+[x] Not-found handling
+[x] Swagger documentation
+[x] Consistent response format
 ```
 
 ## Acceptance Criteria
 
 ```text
-[ ] All critical tests pass
-[ ] Build passes
-[ ] TypeScript passes
-[ ] Lint passes where configured
-[ ] E2E flows pass
-[ ] Inventory calculations are verified
-[ ] Purchase/sale atomicity verified
-[ ] Tenant isolation verified
-[ ] API documentation is complete
-[ ] No known critical bugs remain
+[x] All critical tests pass
+[x] Build passes
+[x] TypeScript passes
+[x] Lint passes where configured
+[x] E2E flows pass
+[x] Inventory calculations are verified
+[x] Purchase/sale atomicity verified
+[x] Tenant isolation verified
+[x] API documentation is complete
+[x] No known critical bugs remain
 ```
 
 ## NON-AI MVP CHECKPOINT

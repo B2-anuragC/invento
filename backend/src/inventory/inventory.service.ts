@@ -154,6 +154,7 @@ export class InventoryService {
       if (balanceAfter.lessThan(0)) {
         throw new BadRequestException('Insufficient stock for this operation.');
       }
+      this.validateQuantity(balanceAfter, true);
 
       await client.inventory.update({ where: { id: locked[0].id }, data: { quantity: balanceAfter } });
       return client.inventoryTransaction.create({

@@ -26,7 +26,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema=./prisma/schema.prisma",
     "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down --volumes"
+    "db:down": "docker compose down --volumes",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test:mvp": "node test/run-mvp-verification.mjs"
   },
   "dependencies": {
     "@invento/shared": "file:../packages/shared",

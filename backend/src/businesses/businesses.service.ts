@@ -54,6 +54,7 @@ export class BusinessesService {
   async updateUser(actorId: string, businessId: string, userId: string, role: Role) {
     const actor = await this.requireRole(actorId, businessId, managerRoles);
     const target = await this.requireMembership(userId, businessId);
+    if (target.role === 'OWNER' && role !== 'OWNER') throw new ForbiddenException('Owner memberships cannot be demoted.');
     if (target.role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can change an owner membership.');
     if (role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can assign owner membership.');
     return this.prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role } });

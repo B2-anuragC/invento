@@ -17,9 +17,9 @@ describe('ProductsService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
       product: { create: vi.fn().mockResolvedValue(product) },
-    } as never;
+    };
 
-    const result = await new ProductsService(prisma).create('user-a', 'business-a', productInput);
+    const result = await new ProductsService(prisma as never, {} as never).create('user-a', 'business-a', productInput);
 
     expect(result).toEqual(product);
     expect(prisma.product.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -31,9 +31,9 @@ describe('ProductsService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: false, role: 'MEMBER' }) },
       product: { findFirst: vi.fn() },
-    } as never;
+    };
 
-    await expect(new ProductsService(prisma).get('user-a', 'business-b', 'product-b'))
+    await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-b', 'product-b'))
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.product.findFirst).not.toHaveBeenCalled();
   });
@@ -43,18 +43,18 @@ describe('ProductsService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       product: { findFirst: vi.fn().mockResolvedValue(product) },
-    } as never;
+    };
 
-    await expect(new ProductsService(prisma).get('user-a', 'business-a', 'product-a')).resolves.toEqual(product);
+    await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-a')).resolves.toEqual(product);
   });
 
   it('returns not found when a product does not belong to the business', async () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       product: { findFirst: vi.fn().mockResolvedValue(null) },
-    } as never;
+    };
 
-    await expect(new ProductsService(prisma).get('user-a', 'business-a', 'product-b'))
+    await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-b'))
       .rejects.toBeInstanceOf(NotFoundException);
   });
 });

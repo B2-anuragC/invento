@@ -15,9 +15,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
       supplier: { create: vi.fn().mockResolvedValue(supplier) },
-    } as never;
+    };
 
-    const result = await new SuppliersService(prisma).create('user-a', 'business-a', supplierInput);
+    const result = await new SuppliersService(prisma as never).create('user-a', 'business-a', supplierInput);
 
     expect(result).toEqual(supplier);
     expect(prisma.supplier.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -29,9 +29,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       supplier: { findMany: vi.fn().mockResolvedValue([]) },
-    } as never;
+    };
 
-    await new SuppliersService(prisma).list('user-a', 'business-a', {});
+    await new SuppliersService(prisma as never).list('user-a', 'business-a', {});
 
     expect(prisma.supplier.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ businessId: 'business-a', status: 'ACTIVE' }),
@@ -43,9 +43,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(supplier) },
-    } as never;
+    };
 
-    await expect(new SuppliersService(prisma).get('user-a', 'business-a', 'supplier-a')).resolves.toEqual(supplier);
+    await expect(new SuppliersService(prisma as never).get('user-a', 'business-a', 'supplier-a')).resolves.toEqual(supplier);
   });
 
   it('updates a supplier that belongs to the business', async () => {
@@ -54,9 +54,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(updated) },
-    } as never;
+    };
 
-    const result = await new SuppliersService(prisma).update('user-a', 'business-a', 'supplier-a', { name: 'Acme Renamed' });
+    const result = await new SuppliersService(prisma as never).update('user-a', 'business-a', 'supplier-a', { name: 'Acme Renamed' });
 
     expect(result).toEqual(updated);
   });
@@ -65,9 +65,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       supplier: { findFirst: vi.fn(), update: vi.fn() },
-    } as never;
+    };
 
-    await expect(new SuppliersService(prisma).update('user-a', 'business-a', 'supplier-a', { name: 'x' }))
+    await expect(new SuppliersService(prisma as never).update('user-a', 'business-a', 'supplier-a', { name: 'x' }))
       .rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.supplier.findFirst).not.toHaveBeenCalled();
   });
@@ -76,9 +76,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(null) },
-    } as never;
+    };
 
-    await expect(new SuppliersService(prisma).get('user-a', 'business-a', 'supplier-b'))
+    await expect(new SuppliersService(prisma as never).get('user-a', 'business-a', 'supplier-b'))
       .rejects.toBeInstanceOf(NotFoundException);
   });
 
@@ -88,9 +88,9 @@ describe('SuppliersService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(deactivated) },
-    } as never;
+    };
 
-    const result = await new SuppliersService(prisma).deactivate('user-a', 'business-a', 'supplier-a');
+    const result = await new SuppliersService(prisma as never).deactivate('user-a', 'business-a', 'supplier-a');
 
     expect(result.status).toBe('INACTIVE');
     expect(prisma.supplier.update).toHaveBeenCalledWith({ where: { id: 'supplier-a' }, data: { status: 'INACTIVE' } });
