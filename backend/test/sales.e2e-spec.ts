@@ -212,8 +212,13 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const login = await request(app.getHttpServer()).post('/api/auth/login').send({ email: user.email, password: 'Test-password-123!' }).expect(201);
     expect(login.body.data.user).not.toHaveProperty('passwordHash');
+    await api('patch', '/auth/me').send({ name: ' ' }).expect(422);
+    const updatedProfile = await api('patch', '/auth/me').send({ name: 'Updated Sales Test', phone: '5551234567' }).expect(200);
+    expect(updatedProfile.body.data).toMatchObject({ id: userId, name: 'Updated Sales Test', phone: '5551234567' });
+    expect(updatedProfile.body.data).not.toHaveProperty('passwordHash');
     const me = await api('get', '/auth/me').expect(200);
     expect(me.body.data).toMatchObject({ id: userId, isActive: true });
+    expect(me.body.data).toMatchObject({ name: 'Updated Sales Test', phone: '5551234567' });
     expect(me.body.data).not.toHaveProperty('passwordHash');
     const members = await api('get', `/businesses/${businessId}/users`).expect(200);
     expect(members.body.data[0].user).not.toHaveProperty('passwordHash');

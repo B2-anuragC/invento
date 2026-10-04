@@ -2,6 +2,22 @@ import { ForbiddenException } from '@nestjs/common';
 import { BusinessesService } from './businesses.service.js';
 
 describe('BusinessesService authorization', () => {
+  it('lists only active business memberships for the requested user', async () => {
+    const memberships = [{ role: 'OWNER', business: { id: 'business-a', name: 'Shop A', slug: 'shop-a' } }];
+    const prisma = {
+      businessUser: { findMany: vi.fn().mockResolvedValue(memberships) },
+    } as never;
+    const service = new BusinessesService(prisma);
+
+    await expect(service.listForUser('user-a')).resolves.toEqual(memberships);
+    expect((prisma as { businessUser: { findMany: ReturnType<typeof vi.fn> } }).businessUser.findMany)
+      .toHaveBeenCalledWith({
+        where: { userId: 'user-a', isActive: true, business: { isActive: true } },
+        select: { role: true, business: { select: { id: true, name: true, slug: true } } },
+        orderBy: { business: { name: 'asc' } },
+      });
+  });
+
   it('rejects users who are not active members', async () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: false }) },

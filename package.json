@@ -45,5 +45,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "expo-secure-store": "~57.0.4"
   }
 }

@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
 import { AccessTokenGuard } from './auth.guard.js';
-import { LoginDto, RefreshDto, RegisterDto } from './dto/auth.dto.js';
+import { LoginDto, RefreshDto, RegisterDto, UpdateProfileDto } from './dto/auth.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @ApiTags('Authentication')
@@ -23,5 +23,12 @@ export class AuthController {
     const user = await this.prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true, name: true, email: true, phone: true, avatarUrl: true, isActive: true } });
     if (!user?.isActive) throw new UnauthorizedException('User account is inactive or does not exist.');
     return user;
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(AccessTokenGuard)
+  @Patch('me')
+  updateMe(@Req() req: Request, @Body() dto: UpdateProfileDto) {
+    return this.auth.updateProfile(req.user.id, dto);
   }
 }

@@ -16,3 +16,8 @@ export class LoginDto {
 export class RefreshDto {
   @ApiProperty() @IsString() refreshToken!: string;
 }
+
+export class UpdateProfileDto {
+  @ApiProperty() @IsString() @MinLength(2) @Matches(/\S/) @MaxLength(100) name!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
+}

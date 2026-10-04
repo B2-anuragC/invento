@@ -31,7 +31,6 @@ invento/
 │   │   └── (tabs)/
 │   │       ├── _layout.tsx       # Tab navigator layout
 │   │       ├── index.tsx         # Home tab
-│   │       └── explore.tsx       # Explore tab
 │   ├── components/               # Reusable UI components
 │   │   ├── ui/                   # Platform-aware UI primitives
 │   │   └── haptic-tab.tsx        # Haptic tab button

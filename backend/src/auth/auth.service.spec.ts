@@ -55,6 +55,39 @@ describe('AuthService', () => {
     expect(result.refreshToken).toBeTruthy();
   });
 
+  it('updates only the authenticated user profile fields and clears a blank phone', async () => {
+    const updatedUser = { id: 'user-1', name: 'Updated Owner', email: 'owner@test.local', phone: null, avatarUrl: null };
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ isActive: true }),
+        update: vi.fn().mockResolvedValue(updatedUser),
+      },
+    };
+    const result = await new AuthService(prisma as never, config).updateProfile('user-1', {
+      name: ' Updated Owner ',
+      phone: '   ',
+    });
+
+    expect(result).toEqual(updatedUser);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { name: 'Updated Owner', phone: null },
+      select: { id: true, name: true, email: true, phone: true, avatarUrl: true },
+    });
+  });
+
+  it('rejects profile updates for inactive or missing users', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        update: vi.fn(),
+      },
+    };
+    await expect(new AuthService(prisma as never, config).updateProfile('user-1', { name: 'Updated Owner' }))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid login credentials', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, passwordHash: await hashPassword('different password') }) },

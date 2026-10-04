@@ -11,6 +11,7 @@ import { BusinessesService } from './businesses.service.js';
 @Controller('businesses')
 export class BusinessesController {
   constructor(private readonly businesses: BusinessesService) {}
+  @Get() list(@Req() req: Request) { return this.businesses.listForUser(req.user.id); }
   @Post() create(@Req() req: Request, @Body() dto: CreateBusinessDto) { return this.businesses.create(req.user.id, dto); }
   @Get(':id') get(@Req() req: Request, @Param('id') id: string) { return this.businesses.get(req.user.id, id); }
   @Patch(':id') update(@Req() req: Request, @Param('id') id: string, @Body() dto: UpdateBusinessDto) { return this.businesses.update(req.user.id, id, dto); }

@@ -17,6 +17,17 @@ export class BusinessesService {
     });
   }
 
+  async listForUser(userId: string) {
+    return this.prisma.businessUser.findMany({
+      where: { userId, isActive: true, business: { isActive: true } },
+      select: {
+        role: true,
+        business: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: { business: { name: 'asc' } },
+    });
+  }
+
   async get(userId: string, businessId: string) {
     await this.requireMembership(userId, businessId);
     const business = await this.prisma.business.findUnique({ where: { id: businessId } });

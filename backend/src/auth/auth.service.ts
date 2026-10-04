@@ -55,6 +55,16 @@ export class AuthService {
     return { loggedOut: true };
   }
 
+  async updateProfile(userId: string, input: { name: string; phone?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+    if (!user?.isActive) throw new UnauthorizedException('User account is inactive or does not exist.');
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { name: input.name.trim(), phone: input.phone?.trim() || null },
+      select: { id: true, name: true, email: true, phone: true, avatarUrl: true },
+    });
+  }
+
   verifyAccessToken(token: string, secret: string): AuthenticatedUser {
     const payload = verifyToken<AccessTokenPayload>(token, secret);
     if (payload.type !== 'access' || !payload.sub) throw new Error('Invalid token');

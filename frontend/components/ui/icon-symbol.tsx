@@ -15,6 +15,11 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'cube.fill': 'inventory-2',
+  'dollarsign.circle.fill': 'attach-money',
+  'cart.fill': 'shopping-cart',
+  'shippingbox.fill': 'inventory-2',
+  'person.fill': 'person',
 } satisfies Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 
 type IconSymbolName = keyof typeof MAPPING;
