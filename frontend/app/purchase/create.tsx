@@ -46,6 +46,8 @@ export default function CreatePurchaseScreen() {
   const [error, setError] = useState('');
   const [dialogMode, setDialogMode] = useState<'confirm' | 'success' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
 
   const clearErrorOnEdit = () => {
     if (error) setError('');
@@ -89,6 +91,33 @@ export default function CreatePurchaseScreen() {
 
     void loadFormData();
   }, []);
+
+  const filteredSuppliers = useMemo(
+    () =>
+      suppliers.filter((supplier) => {
+        const query = supplierSearch.trim().toLowerCase();
+        if (!query) return true;
+        return (
+          supplier.name.toLowerCase().includes(query) ||
+          supplier.phone?.toLowerCase().includes(query)
+        );
+      }),
+    [supplierSearch, suppliers],
+  );
+
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((product) => {
+        const query = productSearch.trim().toLowerCase();
+        if (!query) return true;
+        return (
+          product.name.toLowerCase().includes(query) ||
+          product.sku.toLowerCase().includes(query) ||
+          (product.barcode ?? '').toLowerCase().includes(query)
+        );
+      }),
+    [productSearch, products],
+  );
 
   const purchaseItems = useMemo(
     () =>
@@ -198,9 +227,20 @@ export default function CreatePurchaseScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.sectionTitle}>Supplier</Text>
-        {suppliers.length ? (
+        <TextInput
+          value={supplierSearch}
+          onChangeText={(value) => {
+            setSupplierSearch(value);
+            clearErrorOnEdit();
+          }}
+          placeholder="Search supplier or recent names"
+          placeholderTextColor="#9CA3AF"
+          style={styles.textInput}
+          autoCapitalize="words"
+        />
+        {filteredSuppliers.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceList}>
-            {suppliers.map((supplier) => {
+            {filteredSuppliers.map((supplier) => {
               const selected = supplier.id === supplierId;
               return (
                 <Pressable
@@ -213,7 +253,7 @@ export default function CreatePurchaseScreen() {
             })}
           </ScrollView>
         ) : (
-          <Text style={styles.helperText}>Add a supplier to continue.</Text>
+          <Text style={styles.helperText}>No supplier matches. Add a new supplier below.</Text>
         )}
         <View style={styles.addRow}>
           <TextInput
@@ -250,8 +290,19 @@ export default function CreatePurchaseScreen() {
         />
 
         <Text style={styles.sectionTitle}>Products received</Text>
-        {products.length ? (
-          products.map((product) => {
+        <TextInput
+          value={productSearch}
+          onChangeText={(value) => {
+            setProductSearch(value);
+            clearErrorOnEdit();
+          }}
+          placeholder="Search products by name, SKU, or barcode"
+          placeholderTextColor="#9CA3AF"
+          style={styles.textInput}
+          autoCapitalize="none"
+        />
+        {filteredProducts.length ? (
+          filteredProducts.map((product) => {
             const quantity = quantities[product.id] ?? '';
             const price = prices[product.id] ?? '';
             const invalidPrice = Number(quantity) > 0 && Number(price) <= 0;
@@ -294,7 +345,7 @@ export default function CreatePurchaseScreen() {
             );
           })
         ) : (
-          <Text style={styles.helperText}>No active products found for this business.</Text>
+          <Text style={styles.helperText}>No products match the current search.</Text>
         )}
 
         <View style={styles.totalRow}>

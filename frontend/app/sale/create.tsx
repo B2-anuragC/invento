@@ -56,6 +56,8 @@ export default function CreateSaleScreen() {
   const [error, setError] = useState('');
   const [dialogMode, setDialogMode] = useState<'confirm' | 'success' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
 
   const clearErrorOnEdit = () => {
     if (error) setError('');
@@ -93,6 +95,33 @@ export default function CreateSaleScreen() {
 
     void loadFormData();
   }, []);
+
+  const filteredCustomers = useMemo(
+    () =>
+      customers.filter((customer) => {
+        const query = customerSearch.trim().toLowerCase();
+        if (!query) return true;
+        return (
+          customer.name.toLowerCase().includes(query) ||
+          customer.phone?.toLowerCase().includes(query)
+        );
+      }),
+    [customerSearch, customers],
+  );
+
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((product) => {
+        const query = productSearch.trim().toLowerCase();
+        if (!query) return true;
+        return (
+          product.name.toLowerCase().includes(query) ||
+          product.sku.toLowerCase().includes(query) ||
+          (product.barcode ?? '').toLowerCase().includes(query)
+        );
+      }),
+    [productSearch, products],
+  );
 
   const saleItems = useMemo(
     () =>
@@ -197,9 +226,20 @@ export default function CreateSaleScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.sectionTitle}>Customer</Text>
-        {customers.length ? (
+        <TextInput
+          value={customerSearch}
+          onChangeText={(value) => {
+            setCustomerSearch(value);
+            clearErrorOnEdit();
+          }}
+          placeholder="Search customer or recent names"
+          placeholderTextColor="#9CA3AF"
+          style={styles.customerInput}
+          autoCapitalize="words"
+        />
+        {filteredCustomers.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.customerList}>
-            {customers.map((customer) => {
+            {filteredCustomers.map((customer) => {
               const selected = customer.id === customerId;
               return (
                 <Pressable
@@ -214,7 +254,7 @@ export default function CreateSaleScreen() {
             })}
           </ScrollView>
         ) : (
-          <Text style={styles.helperText}>Add a customer to continue.</Text>
+          <Text style={styles.helperText}>No customer matches. Add a new customer below.</Text>
         )}
         <View style={styles.addCustomerRow}>
           <TextInput
@@ -238,8 +278,19 @@ export default function CreateSaleScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>Products</Text>
-        {products.length ? (
-          products.map((product) => {
+        <TextInput
+          value={productSearch}
+          onChangeText={(value) => {
+            setProductSearch(value);
+            clearErrorOnEdit();
+          }}
+          placeholder="Search products by name, SKU, or barcode"
+          placeholderTextColor="#9CA3AF"
+          style={styles.customerInput}
+          autoCapitalize="none"
+        />
+        {filteredProducts.length ? (
+          filteredProducts.map((product) => {
             const available = stock[product.id] ?? 0;
             const quantity = quantities[product.id] ?? '';
             const invalid = Number(quantity) > available;
@@ -280,7 +331,7 @@ export default function CreateSaleScreen() {
             );
           })
         ) : (
-          <Text style={styles.helperText}>No active products found for this business.</Text>
+          <Text style={styles.helperText}>No products match the current search.</Text>
         )}
 
         <Text style={styles.sectionTitle}>Payment method</Text>

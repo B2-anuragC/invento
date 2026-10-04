@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
@@ -16,6 +16,7 @@ type StockItem = {
 export default function InventoryScreen() {
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [inventory, setInventory] = useState<Record<string, InventoryRecord>>({});
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestId = useRef(0);
@@ -68,6 +69,23 @@ export default function InventoryScreen() {
     minimumStock: Number(product.minimumStock),
     unit: product.unit,
   }));
+
+  const filteredStockItems = stockItems
+    .filter((item) => {
+      const query = search.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        item.name.toLowerCase().includes(query) ||
+        item.unit.toLowerCase().includes(query)
+      );
+    })
+    .sort((left, right) => {
+      const leftRisk = left.quantity <= 0 ? 0 : left.quantity < left.minimumStock ? 1 : 2;
+      const rightRisk = right.quantity <= 0 ? 0 : right.quantity < right.minimumStock ? 1 : 2;
+      if (leftRisk !== rightRisk) return leftRisk - rightRisk;
+      return left.name.localeCompare(right.name);
+    });
+
   const outOfStockCount = stockItems.filter((item) => item.quantity <= 0).length;
   const reorderCount = stockItems.filter((item) => item.quantity <= 0 || item.quantity < item.minimumStock).length;
 
@@ -76,6 +94,15 @@ export default function InventoryScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Inventory</Text>
         <Text style={styles.subtitle}>Current stock health and reorder risk</Text>
+
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          style={styles.searchInput}
+          placeholder="Search product or stock risk"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="none"
+        />
 
         <SectionHeader title="Health" />
         <View style={styles.cardsRow}>
@@ -102,10 +129,10 @@ export default function InventoryScreen() {
 
         <ListCard title="Stock levels">
           {loading ? <ActivityIndicator color="#1F9D68" style={styles.stateMessage} /> : null}
-          {!loading && !error && stockItems.length === 0 ? (
-            <Text style={styles.stateMessage}>No active products yet.</Text>
+          {!loading && !error && filteredStockItems.length === 0 ? (
+            <Text style={styles.stateMessage}>{search ? 'No matching inventory items.' : 'No active products yet.'}</Text>
           ) : null}
-          {stockItems.map((item) => (
+          {filteredStockItems.map((item) => (
             <View key={item.id} style={styles.row}>
               <View>
                 <Text style={styles.name}>{item.name}</Text>
@@ -141,6 +168,17 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     color: '#6B7280',
     fontSize: 13,
+  },
+  searchInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 18,
+    fontSize: 15,
+    color: '#111827',
   },
   cardsRow: {
     flexDirection: 'row',
