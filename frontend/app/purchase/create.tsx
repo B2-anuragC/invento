@@ -47,6 +47,10 @@ export default function CreatePurchaseScreen() {
   const [dialogMode, setDialogMode] = useState<'confirm' | 'success' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
+  const clearErrorOnEdit = () => {
+    if (error) setError('');
+  };
+
   useEffect(() => {
     const loadFormData = async () => {
       const session = appSession.current;
@@ -106,12 +110,14 @@ export default function CreatePurchaseScreen() {
     if (/^\d*(?:\.\d{0,3})?$/.test(value)) {
       setQuantities((current) => ({ ...current, [productId]: value }));
     }
+    clearErrorOnEdit();
   };
 
   const changePrice = (productId: string, value: string) => {
     if (/^\d*(?:\.\d{0,2})?$/.test(value)) {
       setPrices((current) => ({ ...current, [productId]: value }));
     }
+    clearErrorOnEdit();
   };
 
   const addSupplier = async () => {
@@ -212,7 +218,10 @@ export default function CreatePurchaseScreen() {
         <View style={styles.addRow}>
           <TextInput
             value={supplierName}
-            onChangeText={setSupplierName}
+            onChangeText={(value) => {
+              setSupplierName(value);
+              clearErrorOnEdit();
+            }}
             placeholder="New supplier name"
             placeholderTextColor="#9CA3AF"
             style={styles.textInput}
@@ -230,7 +239,10 @@ export default function CreatePurchaseScreen() {
         <Text style={styles.sectionTitle}>Invoice</Text>
         <TextInput
           value={invoiceNumber}
-          onChangeText={setInvoiceNumber}
+          onChangeText={(value) => {
+            setInvoiceNumber(value);
+            clearErrorOnEdit();
+          }}
           placeholder="Invoice number (optional)"
           placeholderTextColor="#9CA3AF"
           style={styles.textInput}

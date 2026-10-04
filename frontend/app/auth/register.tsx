@@ -14,6 +14,10 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const clearErrorOnEdit = () => {
+    if (error) setError('');
+  };
+
   const handleRegister = async () => {
     if (loading) return;
     setLoading(true);
@@ -43,7 +47,10 @@ export default function RegisterScreen() {
           <Text style={styles.label}>Your name</Text>
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={(value) => {
+              setName(value);
+              clearErrorOnEdit();
+            }}
             placeholder="Name"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="words"
@@ -53,7 +60,10 @@ export default function RegisterScreen() {
           <Text style={styles.label}>Email</Text>
           <TextInput
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => {
+              setEmail(value);
+              clearErrorOnEdit();
+            }}
             placeholder="name@example.com"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
@@ -63,7 +73,10 @@ export default function RegisterScreen() {
           <Text style={styles.label}>Password</Text>
           <TextInput
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => {
+              setPassword(value);
+              clearErrorOnEdit();
+            }}
             placeholder="Create a strong password"
             placeholderTextColor="#9CA3AF"
             secureTextEntry

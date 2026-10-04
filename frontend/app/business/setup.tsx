@@ -20,6 +20,10 @@ export default function BusinessSetupScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const clearErrorOnEdit = () => {
+    if (error) setError('');
+  };
+
   useEffect(() => {
     let active = true;
     const session = appSession.current;
@@ -138,6 +142,7 @@ export default function BusinessSetupScreen() {
             value={name}
             onChangeText={(value) => {
               setName(value);
+              clearErrorOnEdit();
               if (!slugEdited) setSlug(toSlug(value));
             }}
             placeholder="e.g. Mohan General Store"
@@ -151,6 +156,7 @@ export default function BusinessSetupScreen() {
             onChangeText={(value) => {
               setSlugEdited(true);
               setSlug(toSlug(value));
+              clearErrorOnEdit();
             }}
             placeholder="mohan-general-store"
             placeholderTextColor="#9CA3AF"

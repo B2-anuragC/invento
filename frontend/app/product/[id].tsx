@@ -70,6 +70,10 @@ export default function ProductDetailsScreen() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
 
+  const clearErrorOnEdit = () => {
+    if (error) setError('');
+  };
+
   useEffect(() => {
     if (isNew) return;
     let active = true;
@@ -246,11 +250,43 @@ export default function ProductDetailsScreen() {
           <View style={styles.form}>
             <Text style={styles.sectionTitle}>Product details</Text>
             <Text style={styles.label}>Product name</Text>
-            <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="e.g. Basmati Rice" placeholderTextColor="#9CA3AF" maxLength={160} />
+            <TextInput
+              value={name}
+              onChangeText={(value) => {
+                setName(value);
+                clearErrorOnEdit();
+              }}
+              style={styles.input}
+              placeholder="e.g. Basmati Rice"
+              placeholderTextColor="#9CA3AF"
+              maxLength={160}
+            />
             <Text style={styles.label}>SKU</Text>
-            <TextInput value={sku} onChangeText={setSku} style={styles.input} placeholder="e.g. RICE-001" placeholderTextColor="#9CA3AF" autoCapitalize="characters" maxLength={64} />
+            <TextInput
+              value={sku}
+              onChangeText={(value) => {
+                setSku(value);
+                clearErrorOnEdit();
+              }}
+              style={styles.input}
+              placeholder="e.g. RICE-001"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="characters"
+              maxLength={64}
+            />
             <Text style={styles.label}>Barcode (optional)</Text>
-            <TextInput value={barcode} onChangeText={setBarcode} style={styles.input} placeholder="Scan or enter barcode" placeholderTextColor="#9CA3AF" keyboardType="number-pad" maxLength={100} />
+            <TextInput
+              value={barcode}
+              onChangeText={(value) => {
+                setBarcode(value);
+                clearErrorOnEdit();
+              }}
+              style={styles.input}
+              placeholder="Scan or enter barcode"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="number-pad"
+              maxLength={100}
+            />
 
             <Text style={styles.label}>Unit</Text>
             <View style={styles.units}>
@@ -267,15 +303,51 @@ export default function ProductDetailsScreen() {
             <View style={styles.fieldsRow}>
               <View style={styles.field}>
                 <Text style={styles.label}>Purchase price</Text>
-                <TextInput value={purchasePrice} onChangeText={(value) => moneyPattern.test(value) && setPurchasePrice(value)} style={styles.input} placeholder="0.00" placeholderTextColor="#9CA3AF" keyboardType="decimal-pad" />
+                <TextInput
+                  value={purchasePrice}
+                  onChangeText={(value) => {
+                    if (moneyPattern.test(value)) {
+                      setPurchasePrice(value);
+                    }
+                    clearErrorOnEdit();
+                  }}
+                  style={styles.input}
+                  placeholder="0.00"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="decimal-pad"
+                />
               </View>
               <View style={styles.field}>
                 <Text style={styles.label}>Selling price</Text>
-                <TextInput value={sellingPrice} onChangeText={(value) => moneyPattern.test(value) && setSellingPrice(value)} style={styles.input} placeholder="0.00" placeholderTextColor="#9CA3AF" keyboardType="decimal-pad" />
+                <TextInput
+                  value={sellingPrice}
+                  onChangeText={(value) => {
+                    if (moneyPattern.test(value)) {
+                      setSellingPrice(value);
+                    }
+                    clearErrorOnEdit();
+                  }}
+                  style={styles.input}
+                  placeholder="0.00"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="decimal-pad"
+                />
               </View>
             </View>
             <Text style={styles.label}>Low-stock alert level</Text>
-            <TextInput value={minimumStock} onChangeText={(value) => quantityPattern.test(value) && setMinimumStock(value)} style={styles.input} placeholder="0" placeholderTextColor="#9CA3AF" keyboardType="decimal-pad" />
+            <TextInput
+              value={minimumStock}
+              onChangeText={(value) => {
+                if (quantityPattern.test(value)) {
+                  setMinimumStock(value);
+                }
+                clearErrorOnEdit();
+              }}
+              style={styles.input}
+              placeholder="0"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="decimal-pad"
+            />
 
             <Pressable disabled={saving} onPress={() => void saveProduct()} style={[styles.primaryButton, saving && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}</Text>
@@ -298,7 +370,12 @@ export default function ProductDetailsScreen() {
                 <View style={styles.openingRow}>
                   <TextInput
                     value={openingStock}
-                    onChangeText={(value) => quantityPattern.test(value) && setOpeningStock(value)}
+                    onChangeText={(value) => {
+                      if (quantityPattern.test(value)) {
+                        setOpeningStock(value);
+                      }
+                      clearErrorOnEdit();
+                    }}
                     style={[styles.input, styles.openingInput]}
                     placeholder={`Quantity in ${product?.unit.toLowerCase()}`}
                     placeholderTextColor="#9CA3AF"

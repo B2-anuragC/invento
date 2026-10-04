@@ -57,6 +57,10 @@ export default function CreateSaleScreen() {
   const [dialogMode, setDialogMode] = useState<'confirm' | 'success' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
+  const clearErrorOnEdit = () => {
+    if (error) setError('');
+  };
+
   useEffect(() => {
     const loadFormData = async () => {
       const session = appSession.current;
@@ -112,6 +116,7 @@ export default function CreateSaleScreen() {
       return;
     }
     setQuantities((current) => ({ ...current, [productId]: value }));
+    clearErrorOnEdit();
   };
 
   const addCustomer = async () => {
@@ -214,7 +219,10 @@ export default function CreateSaleScreen() {
         <View style={styles.addCustomerRow}>
           <TextInput
             value={customerName}
-            onChangeText={setCustomerName}
+            onChangeText={(value) => {
+              setCustomerName(value);
+              clearErrorOnEdit();
+            }}
             placeholder="New customer name"
             placeholderTextColor="#9CA3AF"
             style={styles.customerInput}

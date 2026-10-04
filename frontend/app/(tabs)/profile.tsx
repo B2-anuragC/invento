@@ -13,26 +13,32 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState(() => appSession.current?.user.phone ?? '');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   const beginEditing = () => {
     setName(profile?.name ?? '');
     setPhone(profile?.phone ?? '');
-    setError('');
+    setNameError('');
+    setPhoneError('');
+    setSubmitError('');
     setEditing(true);
   };
 
   const cancelEditing = () => {
     setName(profile?.name ?? '');
     setPhone(profile?.phone ?? '');
-    setError('');
+    setNameError('');
+    setPhoneError('');
+    setSubmitError('');
     setEditing(false);
   };
 
-  const clearErrorOnEdit = () => {
-    if (error) {
-      setError('');
-    }
+  const clearFieldErrorsOnEdit = (field: 'name' | 'phone' | 'submit') => {
+    if (field === 'name') setNameError('');
+    if (field === 'phone') setPhoneError('');
+    if (field === 'submit') setSubmitError('');
   };
 
   const handleSaveProfile = async () => {
@@ -40,16 +46,19 @@ export default function ProfileScreen() {
     const session = appSession.current;
     const cleanName = name.trim();
     if (!session) {
-      setError('Sign in again to edit your profile.');
+      setSubmitError('Sign in again to edit your profile.');
       return;
     }
     if (cleanName.length < 2) {
-      setError('Name must contain at least 2 characters.');
+      setNameError('Name must contain at least 2 characters.');
+      setSubmitError('');
       return;
     }
 
     setSaving(true);
-    setError('');
+    setNameError('');
+    setPhoneError('');
+    setSubmitError('');
     try {
       const updatedUser = await updateProfile(session, { name: cleanName, phone: phone.trim() });
       const updatedSession = { ...session, user: updatedUser };
@@ -61,10 +70,10 @@ export default function ProfileScreen() {
       try {
         await persistSession(updatedSession);
       } catch {
-        setError('Profile updated, but could not save the session on this device.');
+        setSubmitError('Profile updated, but could not save the session on this device.');
       }
     } catch (saveError: unknown) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not update your profile.');
+      setSubmitError(saveError instanceof Error ? saveError.message : 'Could not update your profile.');
     } finally {
       setSaving(false);
     }
@@ -98,7 +107,8 @@ export default function ProfileScreen() {
                 value={name}
                 onChangeText={(value) => {
                   setName(value);
-                  clearErrorOnEdit();
+                  clearFieldErrorsOnEdit('name');
+                  clearFieldErrorsOnEdit('submit');
                 }}
                 style={styles.input}
                 placeholder="Your name"
@@ -106,12 +116,14 @@ export default function ProfileScreen() {
                 autoCapitalize="words"
                 maxLength={100}
               />
+              {nameError ? <Text style={styles.error}>{nameError}</Text> : null}
               <Text style={styles.fieldLabel}>Phone</Text>
               <TextInput
                 value={phone}
                 onChangeText={(value) => {
                   setPhone(value);
-                  clearErrorOnEdit();
+                  clearFieldErrorsOnEdit('phone');
+                  clearFieldErrorsOnEdit('submit');
                 }}
                 style={styles.input}
                 placeholder="Add a phone number"
@@ -119,6 +131,7 @@ export default function ProfileScreen() {
                 keyboardType="phone-pad"
                 maxLength={30}
               />
+              {phoneError ? <Text style={styles.error}>{phoneError}</Text> : null}
             </View>
           ) : (
             <>
@@ -127,7 +140,7 @@ export default function ProfileScreen() {
               <Text style={styles.role}>{profile?.phone || 'Phone not added'}</Text>
             </>
           )}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
         </View>
 
         <ListCard title="Business info">
