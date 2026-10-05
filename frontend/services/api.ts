@@ -28,7 +28,7 @@ export type DashboardSummary = {
   date: string;
   timezone: string;
   todaySales: string | number;
-  todayPurchases: string | number;
+  todayPurchases: string | number | null;
   saleCount: number;
   purchaseCount: number;
   productCount: number;
@@ -55,8 +55,9 @@ export type ProductRecord = {
   name: string;
   sku: string;
   barcode?: string | null;
+  category?: string | null;
   unit: string;
-  purchasePrice: string;
+  purchasePrice?: string | null;
   sellingPrice: string;
   minimumStock: string;
   status: string;
@@ -68,6 +69,7 @@ export type ProductInput = {
   name: string;
   sku: string;
   barcode?: string;
+  category?: string;
   unit: string;
   purchasePrice: string;
   sellingPrice: string;
@@ -77,7 +79,10 @@ export type ProductInput = {
 export type CustomerRecord = {
   id: string;
   name: string;
+  contactName?: string | null;
   phone?: string | null;
+  email?: string | null;
+  address?: string | null;
   status: string;
 };
 
@@ -105,7 +110,7 @@ export type SaleRecord = {
   total: string | number;
   paymentMethod: string;
   customer: { id: string; name: string };
-  items: Array<{ id: string; quantity: string | number; sellingPrice: string | number }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; sellingPrice: string | number }>;
 };
 
 export type CreateSaleInput = {
@@ -118,7 +123,10 @@ export type CreateSaleInput = {
 export type SupplierRecord = {
   id: string;
   name: string;
+  contactName?: string | null;
   phone?: string | null;
+  email?: string | null;
+  address?: string | null;
   status: string;
 };
 
@@ -126,9 +134,32 @@ export type PurchaseRecord = {
   id: string;
   invoiceNumber?: string | null;
   purchaseDate: string;
-  total: string | number;
+  total?: string | number;
   supplier: { id: string; name: string };
-  items: Array<{ id: string; quantity: string | number; purchasePrice: string | number }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; purchasePrice?: string | number }>;
+};
+
+export type BusinessUserRecord = {
+  id: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  createdAt: string;
+  user: ApiUser;
+};
+
+export type AddedBusinessUserRecord = {
+  id: string;
+  role: BusinessUserRecord['role'];
+  isActive: boolean;
+  user: Pick<ApiUser, 'id' | 'name' | 'email'>;
+};
+
+export type PricingAccess = {
+  membersCanViewPurchasePrice: boolean;
+  role: BusinessUserRecord['role'];
+};
+
+export type InventoryActivityRecord = InventoryTransactionRecord & {
+  product: Pick<ProductRecord, 'id' | 'name' | 'sku' | 'unit'>;
 };
 
 export type CreatePurchaseInput = {
@@ -369,13 +400,18 @@ export async function fetchDashboardSummary(session: AppSession): Promise<Dashbo
 
 export async function fetchProducts(
   session: AppSession,
-  query: { search?: string; status?: 'ACTIVE' | 'INACTIVE' } = {},
+  query: { search?: string; status?: 'ACTIVE' | 'INACTIVE'; category?: string } = {},
 ): Promise<ProductRecord[]> {
   const params = new URLSearchParams();
   if (query.search?.trim()) params.set('search', query.search.trim());
   if (query.status) params.set('status', query.status);
+  if (query.category) params.set('category', query.category);
   const suffix = params.size ? `?${params.toString()}` : '';
   return request<ProductRecord[]>(`/products${suffix}`, { method: 'GET' }, session);
+}
+
+export async function fetchProductCategories(session: AppSession): Promise<string[]> {
+  return request<string[]>('/products/categories', { method: 'GET' }, session);
 }
 
 export async function fetchProduct(session: AppSession, productId: string): Promise<ProductRecord> {
@@ -434,20 +470,50 @@ export async function fetchCustomers(session: AppSession): Promise<CustomerRecor
   return request<CustomerRecord[]>('/customers', { method: 'GET' }, session);
 }
 
-export async function createCustomer(session: AppSession, name: string): Promise<CustomerRecord> {
+export async function createCustomer(
+  session: AppSession,
+  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
+): Promise<CustomerRecord> {
+  const body = typeof input === 'string' ? { name: input } : input;
   return request<CustomerRecord>(
     '/customers',
-    { method: 'POST', body: JSON.stringify({ name }) },
+    { method: 'POST', body: JSON.stringify(body) },
     session,
   );
+}
+
+export async function fetchCustomer(session: AppSession, customerId: string): Promise<CustomerRecord> {
+  return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, { method: 'GET' }, session);
+}
+
+export async function updateCustomer(
+  session: AppSession,
+  customerId: string,
+  input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
+): Promise<CustomerRecord> {
+  return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  }, session);
 }
 
 export async function fetchInventory(session: AppSession): Promise<InventoryRecord[]> {
   return request<InventoryRecord[]>('/inventory', { method: 'GET' }, session);
 }
 
-export async function fetchSales(session: AppSession): Promise<SaleRecord[]> {
-  return request<SaleRecord[]>('/sales', { method: 'GET' }, session);
+export async function fetchSales(session: AppSession, query: { customerId?: string } = {}): Promise<SaleRecord[]> {
+  const params = new URLSearchParams();
+  if (query.customerId) params.set('customerId', query.customerId);
+  const suffix = params.size ? `?${params.toString()}` : '';
+  return request<SaleRecord[]>(`/sales${suffix}`, { method: 'GET' }, session);
+}
+
+export async function fetchSale(session: AppSession, saleId: string): Promise<SaleRecord> {
+  return request<SaleRecord>(`/sales/${encodeURIComponent(saleId)}`, { method: 'GET' }, session);
+}
+
+export async function fetchInventoryActivity(session: AppSession): Promise<InventoryActivityRecord[]> {
+  return request<InventoryActivityRecord[]>('/inventory/activity', { method: 'GET' }, session);
 }
 
 export async function createSale(session: AppSession, input: CreateSaleInput): Promise<SaleRecord> {
@@ -461,16 +527,81 @@ export async function fetchSuppliers(session: AppSession): Promise<SupplierRecor
   return request<SupplierRecord[]>('/suppliers', { method: 'GET' }, session);
 }
 
-export async function createSupplier(session: AppSession, name: string): Promise<SupplierRecord> {
+export async function createSupplier(
+  session: AppSession,
+  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
+): Promise<SupplierRecord> {
+  const body = typeof input === 'string' ? { name: input } : input;
   return request<SupplierRecord>(
     '/suppliers',
-    { method: 'POST', body: JSON.stringify({ name }) },
+    { method: 'POST', body: JSON.stringify(body) },
     session,
   );
 }
 
-export async function fetchPurchases(session: AppSession): Promise<PurchaseRecord[]> {
-  return request<PurchaseRecord[]>('/purchases', { method: 'GET' }, session);
+export async function fetchSupplier(session: AppSession, supplierId: string): Promise<SupplierRecord> {
+  return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, { method: 'GET' }, session);
+}
+
+export async function updateSupplier(
+  session: AppSession,
+  supplierId: string,
+  input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
+): Promise<SupplierRecord> {
+  return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  }, session);
+}
+
+export async function fetchPurchases(session: AppSession, query: { supplierId?: string } = {}): Promise<PurchaseRecord[]> {
+  const params = new URLSearchParams();
+  if (query.supplierId) params.set('supplierId', query.supplierId);
+  const suffix = params.size ? `?${params.toString()}` : '';
+  return request<PurchaseRecord[]>(`/purchases${suffix}`, { method: 'GET' }, session);
+}
+
+export async function fetchBusinessUsers(session: AppSession): Promise<BusinessUserRecord[]> {
+  return request<BusinessUserRecord[]>(`/businesses/${encodeURIComponent(session.businessId)}/users`, { method: 'GET' }, session);
+}
+
+export async function addBusinessUser(
+  session: AppSession,
+  input: { email: string; role: 'ADMIN' | 'MEMBER' },
+): Promise<AddedBusinessUserRecord> {
+  return request<AddedBusinessUserRecord>(`/businesses/${encodeURIComponent(session.businessId)}/users`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }, session);
+}
+
+export async function updateBusinessUser(
+  session: AppSession,
+  userId: string,
+  role: BusinessUserRecord['role'],
+): Promise<{ id: string; role: BusinessUserRecord['role']; isActive: boolean }> {
+  return request<{ id: string; role: BusinessUserRecord['role']; isActive: boolean }>(`/businesses/${encodeURIComponent(session.businessId)}/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  }, session);
+}
+
+export async function removeBusinessUser(session: AppSession, userId: string): Promise<void> {
+  await request(`/businesses/${encodeURIComponent(session.businessId)}/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  }, session);
+}
+
+export async function fetchPricingAccess(session: AppSession): Promise<PricingAccess> {
+  return request<PricingAccess>(`/businesses/${encodeURIComponent(session.businessId)}/pricing-access`, { method: 'GET' }, session);
+}
+
+export async function updatePricingAccess(session: AppSession, membersCanViewPurchasePrice: boolean): Promise<Pick<PricingAccess, 'membersCanViewPurchasePrice'>> {
+  return request<Pick<PricingAccess, 'membersCanViewPurchasePrice'>>(
+    `/businesses/${encodeURIComponent(session.businessId)}/pricing-access`,
+    { method: 'PATCH', body: JSON.stringify({ membersCanViewPurchasePrice }) },
+    session,
+  );
 }
 
 export async function createPurchase(session: AppSession, input: CreatePurchaseInput): Promise<PurchaseRecord> {

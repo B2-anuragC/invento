@@ -10,7 +10,7 @@ function createFakeEnvironment(
     role?: string;
     isActive?: boolean;
     supplier?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -18,7 +18,7 @@ function createFakeEnvironment(
   const role = options.role ?? 'OWNER';
   const isActive = options.isActive ?? true;
   const supplier = options.supplier === undefined ? { id: 'supplier-a', businessId: 'business-a', status: 'ACTIVE' } : options.supplier;
-  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice' }];
+  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice', unit: 'KG' }];
 
   const store: {
     purchases: Record<string, unknown>;
@@ -103,10 +103,10 @@ function createFakeEnvironment(
         throw error;
       }
     }),
-  } as never;
+  };
 
-  const inventory = new InventoryService(prisma);
-  const service = new PurchasesService(prisma, inventory);
+  const inventory = new InventoryService(prisma as never);
+  const service = new PurchasesService(prisma as never, inventory);
 
   return { prisma, store, service };
 }
@@ -119,6 +119,24 @@ const purchaseInput = {
 };
 
 describe('PurchasesService', () => {
+  it('hides purchase totals and unit costs from members when access is disabled', async () => {
+    const purchase = {
+      id: 'purchase-a',
+      total: new Prisma.Decimal('120'),
+      items: [{ id: 'item-a', purchasePrice: new Prisma.Decimal('12'), lineTotal: new Prisma.Decimal('120'), quantity: new Prisma.Decimal('10') }],
+    };
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
+      purchase: { findMany: vi.fn().mockResolvedValue([purchase]) },
+    };
+    const result = await new PurchasesService(prisma as never, {} as never).list('user-a', 'business-a', {});
+    expect(result).toEqual([{
+      id: 'purchase-a',
+      items: [{ id: 'item-a', quantity: new Prisma.Decimal('10') }],
+    }]);
+  });
+
   it('creates a purchase, purchase items, and increases inventory via a PURCHASE transaction', async () => {
     const { store, service } = createFakeEnvironment();
 
@@ -177,6 +195,17 @@ describe('PurchasesService', () => {
     const { service } = createFakeEnvironment({ products: [{ id: 'product-a', businessId: 'business-a', status: 'INACTIVE', name: 'Rice' }] });
 
     await expect(service.create('user-a', 'business-a', purchaseInput)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects fractional quantity for piece-based products', async () => {
+    const { service, prisma } = createFakeEnvironment({
+      products: [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Handle', unit: 'PIECE' }],
+    });
+    await expect(service.create('user-a', 'business-a', {
+      ...purchaseInput,
+      items: [{ ...purchaseInput.items[0], quantity: '1.5' }],
+    })).rejects.toThrow('whole pieces');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid (non-positive) quantity', async () => {

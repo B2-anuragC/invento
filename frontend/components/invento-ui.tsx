@@ -4,8 +4,30 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 
+const unitLabels: Record<string, string> = {
+  PIECE: 'piece',
+  KG: 'kg',
+  GRAM: 'g',
+  LITRE: 'litre',
+  MILLILITRE: 'ml',
+  METRE: 'm',
+  SQUARE_FOOT: 'sq ft',
+  FOOT: 'feet',
+  PACK: 'pack',
+  BOX: 'box',
+  DOZEN: 'dozen',
+};
+
+export function formatUnitLabel(unit: string) {
+  return unitLabels[unit] ?? unit.replaceAll('_', ' ').toLowerCase();
+}
+
 export function AppScreen({ children, style }: { children: ReactNode; style?: any }) {
-  return <SafeAreaView edges={['top', 'left', 'right']} style={[styles.screen, style]}>{children}</SafeAreaView>;
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <View style={[styles.screen, style]}>{children}</View>
+    </SafeAreaView>
+  );
 }
 
 export function SectionHeader({
@@ -35,10 +57,10 @@ export function SummaryCard({
   accent?: 'green' | 'amber' | 'blue' | 'red';
 }) {
   const tones = {
-    green: { background: '#E9F9F1', text: '#0F766E' },
-    amber: { background: '#FFF4D7', text: '#B45309' },
-    blue: { background: '#E8F1FF', text: '#1D4ED8' },
-    red: { background: '#FEECEC', text: '#B91C1C' },
+    green: { background: '#E7F2ED', text: '#176B50' },
+    amber: { background: '#FFF5D8', text: '#96621B' },
+    blue: { background: '#EDF2EF', text: '#345B60' },
+    red: { background: '#FBECEA', text: '#A74737' },
   };
 
   const tone = tones[accent];
@@ -146,7 +168,7 @@ export function ProductRow({
         <Text style={styles.metaText}>{sku}</Text>
       </View>
       <View style={styles.productMeta}>
-        <Text style={styles.metaValue}>{stock} {unit.toLowerCase()}</Text>
+        <Text style={styles.metaValue}>{stock} {formatUnitLabel(unit)}</Text>
         <Text style={styles.metaText}>{price}</Text>
       </View>
     </Pressable>
@@ -208,7 +230,11 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F5F5F5',
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
     padding: 20,
@@ -222,7 +248,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#111827',
   },
@@ -260,7 +286,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   primaryAction: {
-    backgroundColor: '#1F9D68',
+    backgroundColor: '#0C7253',
   },
   secondaryAction: {
     backgroundColor: '#E5E7EB',
@@ -342,13 +368,13 @@ const styles = StyleSheet.create({
 });
 
 export const appColors = {
-  primary: '#1F9D68',
-  primaryDeep: '#0F766E',
-  background: '#F3F4F6',
+  primary: '#176B50',
+  primaryDeep: '#104D3A',
+  background: '#F5F5F5',
   input: '#FFFFFF',
   text: '#111827',
   muted: '#6B7280',
-  border: '#E5E7EB',
+  border: '#E2E2E2',
   success: '#22C55E',
   warning: '#F59E0B',
   danger: '#EF4444',

@@ -151,6 +151,9 @@ export default function ProfileScreen() {
         </ListCard>
 
         <View style={styles.actions}>
+          <ActionButton title="People & contacts" variant="secondary" onPress={() => router.push('/people')} />
+          <ActionButton title="Pricing access" variant="secondary" onPress={() => router.push('/settings/pricing')} />
+          <ActionButton title="Business activity" variant="secondary" onPress={() => router.push('/activity')} />
           <ActionButton title="Purchases" variant="secondary" onPress={() => router.push('/(tabs)/purchases')} />
           {editing ? (
             <>
@@ -171,6 +174,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 32,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 28,

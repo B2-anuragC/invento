@@ -45,56 +45,49 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: Platform.OS === 'web' ? undefined : HapticTab,
         tabBarActiveTintColor: appColors.primary,
-        tabBarInactiveTintColor: '#6B7280',
+        tabBarInactiveTintColor: '#777E7B',
         tabBarLabelStyle: {
-          fontSize: 9,
-          fontWeight: '600',
+          fontSize: 11,
+          fontWeight: '700',
         },
         tabBarItemStyle: {
           minWidth: 0,
         },
         tabBarStyle: {
-          height: 56 + insets.bottom,
-          paddingTop: 4,
+          height: 76 + insets.bottom,
+          paddingTop: 8,
           paddingBottom: insets.bottom,
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+          borderTopColor: '#E2E2E2',
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={19} name="house.fill" color={color} />,
+          title: 'Overview',
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="square.grid.2x2.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="products"
         options={{
-          title: 'Items',
-          tabBarIcon: ({ color }) => <IconSymbol size={19} name="cube.fill" color={color} />,
+          title: 'Catalog',
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="cube.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="sales"
+        name="activity"
         options={{
-          title: 'Sales',
-          tabBarIcon: ({ color }) => <IconSymbol size={19} name="dollarsign.circle.fill" color={color} />,
+          title: 'Activity',
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="arrow.left.arrow.right" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="inventory"
+        name="people"
         options={{
-          title: 'Stock',
-          tabBarIcon: ({ color }) => <IconSymbol size={19} name="shippingbox.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'More',
-          tabBarIcon: ({ color }) => <IconSymbol size={19} name="person.fill" color={color} />,
+          title: 'People',
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="person.2.fill" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -104,6 +97,9 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen name="sales" options={{ href: null }} />
+      <Tabs.Screen name="inventory" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   );
 }

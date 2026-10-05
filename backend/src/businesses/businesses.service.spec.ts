@@ -33,4 +33,26 @@ describe('BusinessesService authorization', () => {
     const service = new BusinessesService(prisma);
     await expect(service.update('user-a', 'business-a', { name: 'new' })).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('only allows managers to update pricing access', async () => {
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      business: { update: vi.fn() },
+    } as never;
+    const service = new BusinessesService(prisma);
+    await expect(service.updatePricingAccess('user-a', 'business-a', false)).rejects.toBeInstanceOf(ForbiddenException);
+    expect((prisma as { business: { update: ReturnType<typeof vi.fn> } }).business.update).not.toHaveBeenCalled();
+  });
+
+  it('returns pricing access only for active business members', async () => {
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
+    } as never;
+    const service = new BusinessesService(prisma);
+    await expect(service.getPricingAccess('user-a', 'business-a')).resolves.toEqual({
+      membersCanViewPurchasePrice: false,
+      role: 'OWNER',
+    });
+  });
 });

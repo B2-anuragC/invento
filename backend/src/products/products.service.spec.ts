@@ -43,6 +43,7 @@ describe('ProductsService', () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
       product: { findFirst: vi.fn().mockResolvedValue(product) },
+      business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: true }) },
     };
 
     await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-a')).resolves.toEqual(product);
@@ -56,5 +57,17 @@ describe('ProductsService', () => {
 
     await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-b'))
       .rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('omits purchase price for members when the business setting hides it', async () => {
+    const product = { id: 'product-a', businessId: 'business-a', purchasePrice: '45.00' };
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      product: { findFirst: vi.fn().mockResolvedValue(product) },
+      business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
+    };
+
+    await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-a'))
+      .resolves.toEqual({ id: 'product-a', businessId: 'business-a' });
   });
 });

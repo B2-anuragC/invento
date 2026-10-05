@@ -45,4 +45,20 @@ describe('Dashboard business dates', () => {
     await expect(new DashboardService(prisma as never).sales('u', 'other', {})).rejects.toThrow(ForbiddenException);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
+
+  it('hides purchase totals from members when purchase-price access is disabled', async () => {
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
+      $queryRaw: vi.fn().mockResolvedValue([
+        { date: '2026-09-20', total: new Prisma.Decimal('520.00'), count: 2 },
+      ]),
+    };
+    const result = await new DashboardService(prisma as never).purchases('user-a', 'business-a', {
+      from: '2026-09-20',
+      to: '2026-09-20',
+    });
+    expect(result.total).toBeNull();
+    expect(result.days[0]).toEqual({ date: '2026-09-20', count: 2, total: null });
+  });
 });

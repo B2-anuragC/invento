@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
@@ -84,6 +84,9 @@ export default function SalesScreen() {
                     {new Date(sale.saleDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     {' · '}{sale.items.length} item{sale.items.length === 1 ? '' : 's'}
                   </Text>
+                  <Pressable onPress={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} style={styles.repeatButton}>
+                    <Text style={styles.repeatText}>Repeat sale</Text>
+                  </Pressable>
                 </View>
                 <Text style={styles.amount}>{formatMoney(Number(sale.total))}</Text>
               </View>
@@ -101,6 +104,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 32,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 28,
@@ -153,6 +159,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#0F766E',
+  },
+  repeatButton: {
+    alignSelf: 'flex-start',
+    marginTop: 7,
+    backgroundColor: '#E8F2EC',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  repeatText: {
+    color: '#176B50',
+    fontSize: 10,
+    fontWeight: '800',
   },
   message: {
     color: '#6B7280',

@@ -23,6 +23,23 @@ type UpdatePurchaseInput = {
   note?: string;
 };
 
+type PriceSensitivePurchase = {
+  total: unknown;
+  items: Array<{ purchasePrice: unknown; lineTotal: unknown }>;
+};
+
+type RedactedPurchase<T extends PriceSensitivePurchase> =
+  Omit<T, 'total' | 'items'> & {
+    items: Array<Omit<T['items'][number], 'purchasePrice' | 'lineTotal'>>;
+  };
+
+function withoutPurchaseCost<T extends { purchasePrice: unknown; lineTotal: unknown }>(
+  item: T,
+): Omit<T, 'purchasePrice' | 'lineTotal'> {
+  const { purchasePrice: _purchasePrice, lineTotal: _lineTotal, ...visibleItem } = item;
+  return visibleItem;
+}
+
 @Injectable()
 export class PurchasesService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
@@ -58,6 +75,7 @@ export class PurchasesService {
       const product = productsById.get(line.productId);
       if (!product) throw new NotFoundException(`Product ${line.productId} not found in this business.`);
       if (product.status !== ProductStatus.ACTIVE) throw new ConflictException(`Product ${product.name} is not active.`);
+      if (product.unit === 'PIECE' && !line.quantity.isInteger()) throw new BadRequestException(`${product.name} must be purchased in whole pieces.`);
     }
 
     const total = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
@@ -107,8 +125,8 @@ export class PurchasesService {
   }
 
   async list(userId: string, businessId: string, query: { supplierId?: string; search?: string }) {
-    await this.requireMembership(userId, businessId);
-    return this.prisma.purchase.findMany({
+    const membership = await this.requireMembership(userId, businessId);
+    const purchases = await this.prisma.purchase.findMany({
       where: {
         businessId,
         ...(query.supplierId ? { supplierId: query.supplierId } : {}),
@@ -117,11 +135,13 @@ export class PurchasesService {
       include: { supplier: { select: { id: true, name: true } }, items: true },
       orderBy: { purchaseDate: 'desc' },
     });
+    return this.applyPriceVisibility(businessId, membership, purchases);
   }
 
   async get(userId: string, businessId: string, purchaseId: string) {
-    await this.requireMembership(userId, businessId);
-    return this.requirePurchase(businessId, purchaseId);
+    const membership = await this.requireMembership(userId, businessId);
+    const purchase = await this.requirePurchase(businessId, purchaseId);
+    return (await this.applyPriceVisibility(businessId, membership, [purchase]))[0];
   }
 
   /**
@@ -162,6 +182,23 @@ export class PurchasesService {
     const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId } } });
     if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
     return membership;
+  }
+
+  private async applyPriceVisibility<T extends PriceSensitivePurchase>(
+    businessId: string,
+    membership: { role: string },
+    purchases: T[],
+  ): Promise<Array<T | RedactedPurchase<T>>> {
+    if (membership.role === 'OWNER' || membership.role === 'ADMIN') return purchases;
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { membersCanViewPurchasePrice: true },
+    });
+    if (business?.membersCanViewPurchasePrice !== false) return purchases;
+    return purchases.map(({ total: _total, items, ...purchase }) => ({
+      ...purchase,
+      items: items.map(withoutPurchaseCost),
+    }));
   }
 
   private async requireManagerMembership(userId: string, businessId: string) {

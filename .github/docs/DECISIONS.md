@@ -157,6 +157,19 @@ avoids opposite lock ordering between concurrent sales.
 Line totals are rounded half-up to two decimal places before summation so the
 stored sale total exactly matches the sum of stored monetary line totals.
 
+## ADR-014 — Business Catalog Categories and Purchase-Price Access
+
+**Decision:** Products may have an optional business-entered category, and
+businesses may configure whether `MEMBER` users can view purchase prices.
+`OWNER` and `ADMIN` always retain purchase-price access. The setting defaults to
+enabled to preserve existing behavior, and the backend omits cost fields from
+member responses when access is disabled.
+
+**Reason:** The catalog needs lightweight grouping without imposing a shared
+taxonomy, and price visibility is an authorization rule rather than a visual
+preference. Business scoping and backend response filtering prevent client-side
+view toggles from exposing protected costs.
+
 ## ADR-012 - Dashboard Business Dates and Bounded Aggregates
 
 **Decision:** Dashboard dates use Asia/Kolkata for the India-focused MVP.

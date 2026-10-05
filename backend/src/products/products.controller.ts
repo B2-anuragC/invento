@@ -23,8 +23,14 @@ export class ProductsController {
     return this.products.list(req.user.id, this.businessId(req), query);
   }
 
+  @Get('categories')
+  @ApiOperation({ summary: 'List distinct product categories in the active business.' })
+  categories(@Req() req: Request) {
+    return this.products.categories(req.user.id, this.businessId(req));
+  }
+
   @Get('search')
-  @ApiOperation({ summary: 'Search products by name, SKU, or barcode.' })
+  @ApiOperation({ summary: 'Search products by name, SKU, barcode, or category.' })
   search(@Req() req: Request, @Query() query: ProductListQueryDto) {
     return this.products.search(req.user.id, this.businessId(req), query);
   }

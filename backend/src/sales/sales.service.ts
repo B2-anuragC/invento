@@ -61,6 +61,7 @@ export class SalesService {
       const product = productsById.get(line.productId);
       if (!product) throw new NotFoundException(`Product ${line.productId} not found in this business.`);
       if (product.status !== ProductStatus.ACTIVE) throw new ConflictException(`Product ${product.name} is not active.`);
+      if (product.unit === 'PIECE' && !line.quantity.isInteger()) throw new BadRequestException(`${product.name} must be sold in whole pieces.`);
     }
 
     const total = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));

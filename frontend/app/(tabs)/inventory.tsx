@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
+import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
 
 type StockItem = {
@@ -76,7 +76,7 @@ export default function InventoryScreen() {
       if (!query) return true;
       return (
         item.name.toLowerCase().includes(query) ||
-        item.unit.toLowerCase().includes(query)
+        formatUnitLabel(item.unit).includes(query)
       );
     })
     .sort((left, right) => {
@@ -137,7 +137,7 @@ export default function InventoryScreen() {
               <View>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.meta}>
-                  {item.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {item.unit.toLowerCase()} available / min {item.minimumStock}
+                  {item.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.unit)} available / min {item.minimumStock}
                 </Text>
               </View>
               <View style={[styles.badge, item.quantity <= 0 ? styles.danger : item.quantity < item.minimumStock ? styles.warning : styles.safe]}>

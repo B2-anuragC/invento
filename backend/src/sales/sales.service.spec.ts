@@ -10,7 +10,7 @@ function createFakeEnvironment(
     role?: string;
     isActive?: boolean;
     customer?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -18,7 +18,7 @@ function createFakeEnvironment(
   const role = options.role ?? 'OWNER';
   const isActive = options.isActive ?? true;
   const customer = options.customer === undefined ? { id: 'customer-a', businessId: 'business-a', status: 'ACTIVE' } : options.customer;
-  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice' }];
+  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice', unit: 'KG' }];
 
   const store: {
     sales: Record<string, unknown>;
@@ -149,6 +149,17 @@ describe('SalesService', () => {
     const { service, store } = createFakeEnvironment({ openingStock: {} });
     await expect(service.create('user-a', 'business-a', saleInput)).rejects.toThrow('Opening stock');
     expect(store.sales).toEqual({});
+  });
+
+  it('rejects fractional quantity for piece-based products', async () => {
+    const { service, prisma } = createFakeEnvironment({
+      products: [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Handle', unit: 'PIECE' }],
+    });
+    await expect(service.create('user-a', 'business-a', {
+      ...saleInput,
+      items: [{ ...saleInput.items[0], quantity: '1.5' }],
+    })).rejects.toThrow('whole pieces');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('rounds line totals to cents before computing the total', async () => {

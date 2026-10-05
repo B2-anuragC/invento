@@ -14,7 +14,7 @@ export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}
 
   @Get('summary')
-  @ApiOperation({ summary: 'Today in Asia/Kolkata: completed sales/purchases, active products, low stock, and latest 10 stock movements.' })
+  @ApiOperation({ summary: 'Today in Asia/Kolkata: completed sales/purchases, active products, low stock, and latest 10 stock movements. Purchase value is null for members without price access.' })
   summary(@Req() req: Request) { return this.dashboard.summary(req.user.id, this.businessId(req)); }
 
   @Get('sales')
@@ -22,7 +22,7 @@ export class DashboardController {
   sales(@Req() req: Request, @Query() query: DashboardRangeDto) { return this.dashboard.sales(req.user.id, this.businessId(req), query); }
 
   @Get('purchases')
-  @ApiOperation({ summary: 'Daily completed purchases; includes zero-activity days and decimal-string totals.' })
+  @ApiOperation({ summary: 'Daily completed purchases; includes zero-activity days. Totals are null for members without purchase-price access.' })
   purchases(@Req() req: Request, @Query() query: DashboardRangeDto) { return this.dashboard.purchases(req.user.id, this.businessId(req), query); }
 
   @Get('low-stock')

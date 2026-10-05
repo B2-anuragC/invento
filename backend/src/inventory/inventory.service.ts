@@ -69,6 +69,16 @@ export class InventoryService {
     });
   }
 
+  async activity(userId: string, businessId: string) {
+    await this.requireMembership(userId, businessId);
+    return this.prisma.inventoryTransaction.findMany({
+      where: { businessId },
+      include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+  }
+
   /**
    * Records the opening stock for a product. This is the Inventory Engine's
    * single entry point for opening-stock creation and is safe to call from

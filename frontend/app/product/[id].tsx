@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 
-import { AppScreen } from '@/components/invento-ui';
+import { AppScreen, formatUnitLabel } from '@/components/invento-ui';
 import {
   appSession,
   createProduct,
@@ -27,7 +27,7 @@ import {
   type ProductRecord,
 } from '@/services/api';
 
-const productUnits = ['PIECE', 'KG', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'PACK', 'BOX', 'DOZEN', 'OTHER'];
+const productUnits = ['PIECE', 'KG', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'SQUARE_FOOT', 'FOOT', 'PACK', 'BOX', 'DOZEN', 'OTHER'];
 const moneyPattern = /^\d{0,10}(?:\.\d{0,2})?$/;
 const quantityPattern = /^\d{0,9}(?:\.\d{0,3})?$/;
 
@@ -40,7 +40,7 @@ function formatMoney(value: number) {
 }
 
 function formatQuantity(value: number, unit: string) {
-  return `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 }).format(value)} ${unit.toLowerCase()}`;
+  return `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 }).format(value)} ${formatUnitLabel(unit)}`;
 }
 
 function decimalValue(value: string, precision: number) {
@@ -59,6 +59,7 @@ export default function ProductDetailsScreen() {
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [category, setCategory] = useState('');
   const [unit, setUnit] = useState('PIECE');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
@@ -100,6 +101,7 @@ export default function ProductDetailsScreen() {
         setName(productData.name);
         setSku(productData.sku);
         setBarcode(productData.barcode ?? '');
+        setCategory(productData.category ?? '');
         setUnit(productData.unit);
         setPurchasePrice(String(productData.purchasePrice));
         setSellingPrice(String(productData.sellingPrice));
@@ -129,6 +131,7 @@ export default function ProductDetailsScreen() {
       name: cleanName,
       sku: cleanSku,
       barcode: barcode.trim(),
+      category: category.trim(),
       unit,
       purchasePrice: decimalValue(purchasePrice, 2),
       sellingPrice: decimalValue(sellingPrice, 2),
@@ -228,13 +231,13 @@ export default function ProductDetailsScreen() {
   return (
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backText}>‹  Products</Text>
-        </Pressable>
         <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Text style={styles.backText}>‹</Text>
+          </Pressable>
           <View style={styles.headerText}>
             <Text style={styles.title}>{isNew ? 'Add product' : product?.name}</Text>
-            {!isNew ? <Text style={styles.subtitle}>{product?.sku} · {product?.status.toLowerCase()}</Text> : null}
+            <Text style={styles.subtitle}>{isNew ? 'CATALOG · OWNER VIEW' : `${product?.category ? `${product.category} · ` : ''}${product?.sku} · ${product?.status.toLowerCase()}`}</Text>
           </View>
           {!isNew && !editing ? (
             <Pressable onPress={() => setEditing(true)} style={styles.smallAction}>
@@ -247,8 +250,15 @@ export default function ProductDetailsScreen() {
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
         {editing ? (
-          <View style={styles.form}>
-            <Text style={styles.sectionTitle}>Product details</Text>
+          <>
+            {isNew ? (
+              <View style={styles.unsavedRow}>
+                <Text style={styles.unsavedBadge}>New · Unsaved</Text>
+                <Text style={styles.helperText}>Added to catalog only after saving</Text>
+              </View>
+            ) : null}
+            <View style={styles.form}>
+            <Text style={styles.sectionTitle}>Item identity</Text>
             <Text style={styles.label}>Product name</Text>
             <TextInput
               value={name}
@@ -260,6 +270,18 @@ export default function ProductDetailsScreen() {
               placeholder="e.g. Basmati Rice"
               placeholderTextColor="#9CA3AF"
               maxLength={160}
+            />
+            <Text style={styles.label}>Category (optional)</Text>
+            <TextInput
+              value={category}
+              onChangeText={(value) => {
+                setCategory(value);
+                clearErrorOnEdit();
+              }}
+              style={styles.input}
+              placeholder="e.g. Hardware"
+              placeholderTextColor="#9CA3AF"
+              maxLength={100}
             />
             <Text style={styles.label}>SKU</Text>
             <TextInput
@@ -287,19 +309,26 @@ export default function ProductDetailsScreen() {
               keyboardType="number-pad"
               maxLength={100}
             />
+            <Text style={styles.helperText}>Use a unique SKU or barcode to avoid duplicate items.</Text>
 
+            </View>
+            <View style={[styles.form, styles.formGap]}>
+            <Text style={styles.sectionTitle}>Stock & transaction unit</Text>
             <Text style={styles.label}>Unit</Text>
             <View style={styles.units}>
               {productUnits.map((value) => {
                 const selected = unit === value;
                 return (
                   <Pressable key={value} onPress={() => setUnit(value)} style={[styles.unitOption, selected && styles.unitSelected]}>
-                    <Text style={[styles.unitText, selected && styles.unitTextSelected]}>{value === 'PIECE' ? 'Piece' : value.charAt(0) + value.slice(1).toLowerCase()}</Text>
+                    <Text style={[styles.unitText, selected && styles.unitTextSelected]}>{formatUnitLabel(value)}</Text>
                   </Pressable>
                 );
               })}
             </View>
 
+            </View>
+            <View style={[styles.form, styles.formGap]}>
+            <Text style={styles.sectionTitle}>Pricing & reorder level</Text>
             <View style={styles.fieldsRow}>
               <View style={styles.field}>
                 <Text style={styles.label}>Purchase price</Text>
@@ -349,18 +378,22 @@ export default function ProductDetailsScreen() {
               keyboardType="decimal-pad"
             />
 
+            </View>
             <Pressable disabled={saving} onPress={() => void saveProduct()} style={[styles.primaryButton, saving && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}</Text>
             </Pressable>
             {!isNew ? <Pressable onPress={() => setEditing(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel editing</Text></Pressable> : null}
-          </View>
+          </>
         ) : (
           <>
             <View style={styles.stockCard}>
               <Text style={styles.stockLabel}>Current stock</Text>
               <Text style={styles.stockValue}>{formatQuantity(currentStock, product?.unit ?? 'PIECE')}</Text>
               <Text style={styles.stockMeta}>Minimum level: {formatQuantity(Number(product?.minimumStock ?? 0), product?.unit ?? 'PIECE')}</Text>
-              <Text style={styles.stockMeta}>Buy {formatMoney(Number(product?.purchasePrice ?? 0))} · Sell {formatMoney(Number(product?.sellingPrice ?? 0))}</Text>
+              <Text style={styles.stockMeta}>
+                {product?.purchasePrice ? `Buy ${formatMoney(Number(product.purchasePrice))} · ` : ''}
+                Sell {formatMoney(Number(product?.sellingPrice ?? 0))}
+              </Text>
             </View>
 
             {needsOpeningStock ? (
@@ -377,7 +410,7 @@ export default function ProductDetailsScreen() {
                       clearErrorOnEdit();
                     }}
                     style={[styles.input, styles.openingInput]}
-                    placeholder={`Quantity in ${product?.unit.toLowerCase()}`}
+                    placeholder={`Quantity in ${formatUnitLabel(product?.unit ?? 'PIECE')}`}
                     placeholderTextColor="#9CA3AF"
                     keyboardType="decimal-pad"
                   />
@@ -417,25 +450,28 @@ export default function ProductDetailsScreen() {
 
 const styles = StyleSheet.create({
   centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  content: { padding: 20, paddingBottom: 40 },
-  backButton: { alignSelf: 'flex-start', paddingVertical: 6, marginBottom: 12 },
-  backText: { fontSize: 15, fontWeight: '700', color: '#0F766E' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  content: { paddingHorizontal: 20, paddingBottom: 40, backgroundColor: '#F5F5F5' },
+  backButton: { alignSelf: 'center', paddingVertical: 10, paddingRight: 12 },
+  backText: { fontSize: 27, fontWeight: '500', color: '#24332A' },
+  header: { minHeight: 94, flexDirection: 'row', alignItems: 'center', marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', marginBottom: 18 },
   headerText: { flex: 1, minWidth: 0 },
-  title: { color: '#111827', fontSize: 27, fontWeight: '800' },
-  subtitle: { color: '#6B7280', fontSize: 12, marginTop: 4 },
-  form: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, padding: 16 },
-  sectionTitle: { color: '#111827', fontSize: 16, fontWeight: '700' },
-  label: { color: '#374151', fontSize: 12, fontWeight: '700', marginTop: 15, marginBottom: 7 },
-  input: { minHeight: 46, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 11, paddingHorizontal: 12, color: '#111827', fontSize: 14 },
+  title: { color: '#1D2B25', fontSize: 27, fontWeight: '800' },
+  subtitle: { color: '#737B77', fontSize: 11, marginTop: 4 },
+  unsavedRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 13 },
+  unsavedBadge: { color: '#176B50', backgroundColor: '#E7F2ED', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 7, fontSize: 11, fontWeight: '800' },
+  form: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 17, padding: 16 },
+  formGap: { marginTop: 14 },
+  sectionTitle: { color: '#24332A', fontSize: 17, fontWeight: '800' },
+  label: { color: '#737B77', fontSize: 13, fontWeight: '600', marginTop: 15, marginBottom: 7 },
+  input: { minHeight: 49, backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 11, paddingHorizontal: 13, color: '#24332A', fontSize: 14 },
   units: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 2 },
-  unitOption: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#FFFFFF' },
-  unitSelected: { borderColor: '#1F9D68', backgroundColor: '#E9F9F1' },
-  unitText: { color: '#374151', fontSize: 11, fontWeight: '600' },
-  unitTextSelected: { color: '#0F766E' },
+  unitOption: { borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 10, paddingHorizontal: 13, paddingVertical: 10, backgroundColor: '#FFFFFF' },
+  unitSelected: { borderColor: '#176B50', backgroundColor: '#176B50' },
+  unitText: { color: '#737B77', fontSize: 12, fontWeight: '600' },
+  unitTextSelected: { color: '#FFFFFF' },
   fieldsRow: { flexDirection: 'row', gap: 10 },
   field: { flex: 1, minWidth: 0 },
-  primaryButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F9D68', borderRadius: 12, marginTop: 22 },
+  primaryButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: '#176B50', borderRadius: 12, marginTop: 14 },
   primaryButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   cancelButton: { alignItems: 'center', paddingVertical: 14 },
   cancelText: { color: '#6B7280', fontSize: 13, fontWeight: '600' },

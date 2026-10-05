@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, ValidateIf, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, ValidateIf, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class CreateBusinessDto {
   @ApiProperty() @IsString() @MinLength(2) @Matches(/\S/) @MaxLength(120) name!: string;
@@ -23,4 +23,10 @@ export class AddBusinessUserDto {
 
 export class UpdateBusinessUserDto {
   @ApiProperty({ enum: ['OWNER', 'ADMIN', 'MEMBER'] }) @IsIn(['OWNER', 'ADMIN', 'MEMBER']) role!: 'OWNER' | 'ADMIN' | 'MEMBER';
+}
+
+export class UpdatePricingAccessDto {
+  @ApiProperty({ description: 'Allow MEMBER users to see product and purchase costs.' })
+  @IsBoolean()
+  membersCanViewPurchasePrice!: boolean;
 }

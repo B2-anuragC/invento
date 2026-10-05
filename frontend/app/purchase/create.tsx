@@ -1,16 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppScreen, ConfirmationDialog } from '@/components/invento-ui';
+import { AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
 import {
   appSession,
   createPurchase,
@@ -22,16 +14,17 @@ import {
   type SupplierRecord,
 } from '@/services/api';
 
+type RouteParams = { supplierId?: string | string[] };
+const paramValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+
 function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(value);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
 }
 
 export default function CreatePurchaseScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<RouteParams>();
+  const initialSupplierId = paramValue(params.supplierId);
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
@@ -40,20 +33,20 @@ export default function CreatePurchaseScreen() {
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [showSupplierPicker, setShowSupplierPicker] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [error, setError] = useState('');
-  const [dialogMode, setDialogMode] = useState<'confirm' | 'success' | null>(null);
+  const [receiptVisible, setReceiptVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [supplierSearch, setSupplierSearch] = useState('');
-  const [productSearch, setProductSearch] = useState('');
-
-  const clearErrorOnEdit = () => {
-    if (error) setError('');
-  };
 
   useEffect(() => {
+    let active = true;
     const loadFormData = async () => {
       const session = appSession.current;
       if (!session) {
@@ -61,125 +54,143 @@ export default function CreatePurchaseScreen() {
         setLoading(false);
         return;
       }
-
       try {
         const [productData, inventoryData, supplierData] = await Promise.all([
           fetchProducts(session),
           fetchInventory(session),
           fetchSuppliers(session),
         ]);
+        if (!active) return;
         setProducts(productData);
         setSuppliers(supplierData);
-        setStock(
-          inventoryData.reduce<Record<string, number>>((balances, item) => {
-            balances[item.productId] = Number(item.quantity);
-            return balances;
-          }, {}),
-        );
-        setPrices(
-          productData.reduce<Record<string, string>>((values, product) => {
-            values[product.id] = String(product.purchasePrice ?? '');
-            return values;
-          }, {}),
-        );
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Could not load purchase details.');
+        if (initialSupplierId && supplierData.some((supplier) => supplier.id === initialSupplierId)) {
+          setSupplierId(initialSupplierId);
+          setShowSupplierPicker(false);
+        }
+        setStock(inventoryData.reduce<Record<string, number>>((balances, item) => {
+          balances[item.productId] = Number(item.quantity);
+          return balances;
+        }, {}));
+        setPrices(productData.reduce<Record<string, string>>((values, product) => {
+          values[product.id] = String(product.purchasePrice ?? '');
+          return values;
+        }, {}));
+      } catch (loadError: unknown) {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load purchase details.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
-
     void loadFormData();
-  }, []);
+    return () => { active = false; };
+  }, [initialSupplierId]);
 
-  const filteredSuppliers = useMemo(
-    () =>
-      suppliers.filter((supplier) => {
-        const query = supplierSearch.trim().toLowerCase();
-        if (!query) return true;
-        return (
-          supplier.name.toLowerCase().includes(query) ||
-          supplier.phone?.toLowerCase().includes(query)
-        );
-      }),
-    [supplierSearch, suppliers],
-  );
+  const filteredSuppliers = useMemo(() => {
+    const query = supplierSearch.trim().toLowerCase();
+    return suppliers.filter((supplier) =>
+      !query || supplier.name.toLowerCase().includes(query) || supplier.phone?.toLowerCase().includes(query),
+    );
+  }, [supplierSearch, suppliers]);
 
-  const filteredProducts = useMemo(
-    () =>
-      products.filter((product) => {
-        const query = productSearch.trim().toLowerCase();
-        if (!query) return true;
-        return (
-          product.name.toLowerCase().includes(query) ||
-          product.sku.toLowerCase().includes(query) ||
-          (product.barcode ?? '').toLowerCase().includes(query)
-        );
-      }),
-    [productSearch, products],
+  const categories = useMemo(
+    () => ['All', ...new Set(products.map((product) => product.category?.trim()).filter((value): value is string => Boolean(value)))],
+    [products],
   );
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    return products.filter((product) =>
+      (category === 'All' || product.category === category) &&
+      (!query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query) ||
+        (product.barcode ?? '').toLowerCase().includes(query) || product.category?.toLowerCase().includes(query)),
+    );
+  }, [category, productSearch, products]);
 
   const purchaseItems = useMemo(
-    () =>
-      products.flatMap((product) => {
-        const quantity = Number(quantities[product.id] ?? 0);
-        const price = Number(prices[product.id] ?? 0);
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-          return [];
-        }
-        return [{ product, quantity, price }];
-      }),
+    () => products.flatMap((product) => {
+      const quantity = Number(quantities[product.id] ?? 0);
+      const price = Number(prices[product.id] ?? 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) return [];
+      return [{ product, quantity, price }];
+    }),
     [products, quantities, prices],
   );
   const total = purchaseItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const linesValid = purchaseItems.every((item) => item.price > 0);
-  const canSubmit = Boolean(supplierId) && purchaseItems.length > 0 && linesValid && !saving;
+  const linesValid = purchaseItems.every((item) => item.price > 0 &&
+    !(item.product.unit === 'PIECE' && !Number.isInteger(item.quantity)));
+  const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
 
   const changeQuantity = (productId: string, value: string) => {
-    if (/^\d*(?:\.\d{0,3})?$/.test(value)) {
-      setQuantities((current) => ({ ...current, [productId]: value }));
-    }
-    clearErrorOnEdit();
+    if (!/^\d*(?:\.\d{0,3})?$/.test(value)) return;
+    setQuantities((current) => ({ ...current, [productId]: value }));
+    if (error) setError('');
   };
 
   const changePrice = (productId: string, value: string) => {
-    if (/^\d*(?:\.\d{0,2})?$/.test(value)) {
-      setPrices((current) => ({ ...current, [productId]: value }));
-    }
-    clearErrorOnEdit();
+    if (!/^\d{0,10}(?:\.\d{0,2})?$/.test(value)) return;
+    setPrices((current) => ({ ...current, [productId]: value }));
+    if (error) setError('');
   };
 
   const addSupplier = async () => {
     const name = supplierName.trim();
     const session = appSession.current;
-    if (!name || !session) {
-      return;
-    }
-
+    if (!name || !session || addingSupplier) return;
     setAddingSupplier(true);
     setError('');
     try {
       const supplier = await createSupplier(session, name);
       setSuppliers((current) => [...current, supplier].sort((left, right) => left.name.localeCompare(right.name)));
       setSupplierId(supplier.id);
+      setShowSupplierPicker(false);
       setSupplierName('');
-    } catch (createError) {
+    } catch (createError: unknown) {
       setError(createError instanceof Error ? createError.message : 'Could not add supplier.');
     } finally {
       setAddingSupplier(false);
     }
   };
 
-  const savePurchase = async () => {
-    const session = appSession.current;
-    if (!session || !canSubmit) {
+  const toggleProduct = (product: ProductRecord) => {
+    setQuantities((current) => {
+      if (current[product.id]) {
+        const next = { ...current };
+        delete next[product.id];
+        return next;
+      }
+      return { ...current, [product.id]: '1' };
+    });
+    if (error) setError('');
+  };
+
+  const continueToQuantity = () => {
+    if (!supplierId) {
+      setError('Choose a supplier to continue.');
       return;
     }
+    if (!purchaseItems.length) {
+      setError('Add at least one product to continue.');
+      return;
+    }
+    setError('');
+    setStep(2);
+  };
 
+  const continueToReview = () => {
+    if (!purchaseItems.length || !linesValid) {
+      setError('Check quantities and purchase prices before reviewing this purchase.');
+      return;
+    }
+    setError('');
+    setStep(3);
+  };
+
+  const savePurchase = async () => {
+    const session = appSession.current;
+    if (!session || !supplierId || !purchaseItems.length || !linesValid || saving) return;
     setSaving(true);
     setError('');
     try {
-      await createPurchase(session, {
+      const savedPurchase = await createPurchase(session, {
         supplierId,
         purchaseDate: new Date().toISOString(),
         ...(invoiceNumber.trim() ? { invoiceNumber: invoiceNumber.trim() } : {}),
@@ -189,418 +200,355 @@ export default function CreatePurchaseScreen() {
           purchasePrice: price.toFixed(2),
         })),
       });
-      setSuccessMessage(`${formatMoney(total)} was recorded and stock was updated.`);
-      setDialogMode('success');
-    } catch (saveError) {
-      setDialogMode(null);
+      setSuccessMessage([
+        `${formatMoney(total)} recorded · stock updated`,
+        `Supplier: ${selectedSupplier?.name ?? 'Supplier'}`,
+        `Receipt: ${savedPurchase.invoiceNumber || savedPurchase.id.slice(-8).toUpperCase()}`,
+        ...purchaseItems.map((item) => `${item.product.name} · ${item.quantity} ${formatUnitLabel(item.product.unit)} × ${formatMoney(item.price)}`),
+      ].join('\n'));
+      setReceiptVisible(true);
+    } catch (saveError: unknown) {
       setError(saveError instanceof Error ? saveError.message : 'Could not record purchase.');
     } finally {
       setSaving(false);
     }
   };
 
-  const confirmPurchase = () => {
-    if (!canSubmit) {
-      return;
-    }
-    setDialogMode('confirm');
+  const goBack = () => {
+    if (step > 1) setStep(step === 3 ? 2 : 1);
+    else router.back();
   };
 
   if (loading) {
     return (
       <AppScreen style={styles.centered}>
-        <ActivityIndicator size="large" color="#1F9D68" />
-        <Text style={styles.loadingText}>Loading products and suppliers</Text>
+        <ActivityIndicator size="large" color={appColors.primary} />
+        <Text style={styles.helperText}>Loading products and suppliers</Text>
       </AppScreen>
     );
   }
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backText}>‹  Purchases</Text>
-        </Pressable>
-        <Text style={styles.title}>Add purchase</Text>
-        <Text style={styles.subtitle}>Enter the supplier invoice and items received.</Text>
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Text style={styles.sectionTitle}>Supplier</Text>
-        <TextInput
-          value={supplierSearch}
-          onChangeText={(value) => {
-            setSupplierSearch(value);
-            clearErrorOnEdit();
-          }}
-          placeholder="Search supplier or recent names"
-          placeholderTextColor="#9CA3AF"
-          style={styles.textInput}
-          autoCapitalize="words"
-        />
-        {filteredSuppliers.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceList}>
-            {filteredSuppliers.map((supplier) => {
-              const selected = supplier.id === supplierId;
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <Pressable onPress={goBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title}>{step === 3 ? 'Review purchase' : 'New purchase'}</Text>
+              <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · BUY PRICES'}</Text>
+            </View>
+            <Text style={styles.moreText}>•••</Text>
+          </View>
+          <View style={styles.steps}>
+            {(['Products', 'Quantity', 'Review'] as const).map((label, index) => {
+              const value = (index + 1) as 1 | 2 | 3;
+              const completed = step > value;
+              const active = step === value;
               return (
-                <Pressable
-                  key={supplier.id}
-                  onPress={() => setSupplierId(supplier.id)}
-                  style={[styles.choiceChip, selected && styles.choiceChipSelected]}>
-                  <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{supplier.name}</Text>
+                <Pressable key={label} onPress={() => { if (value < step) setStep(value); }} style={styles.step}>
+                  <View style={[styles.stepNumber, active && styles.stepActive, completed && styles.stepComplete]}>
+                    <Text style={[styles.stepNumberText, (active || completed) && styles.stepNumberTextActive]}>{completed ? '✓' : value}</Text>
+                  </View>
+                  <Text style={[styles.stepLabel, active && styles.stepLabelActive]}>{label}</Text>
                 </Pressable>
               );
             })}
-          </ScrollView>
-        ) : (
-          <Text style={styles.helperText}>No supplier matches. Add a new supplier below.</Text>
-        )}
-        <View style={styles.addRow}>
-          <TextInput
-            value={supplierName}
-            onChangeText={(value) => {
-              setSupplierName(value);
-              clearErrorOnEdit();
-            }}
-            placeholder="New supplier name"
-            placeholderTextColor="#9CA3AF"
-            style={styles.textInput}
-            returnKeyType="done"
-          />
-          <Pressable
-            accessibilityRole="button"
-            disabled={!supplierName.trim() || addingSupplier}
-            onPress={() => void addSupplier()}
-            style={[styles.smallButton, (!supplierName.trim() || addingSupplier) && styles.buttonDisabled]}>
-            <Text style={styles.smallButtonText}>{addingSupplier ? 'Adding' : 'Add'}</Text>
-          </Pressable>
+          </View>
         </View>
-
-        <Text style={styles.sectionTitle}>Invoice</Text>
-        <TextInput
-          value={invoiceNumber}
-          onChangeText={(value) => {
-            setInvoiceNumber(value);
-            clearErrorOnEdit();
-          }}
-          placeholder="Invoice number (optional)"
-          placeholderTextColor="#9CA3AF"
-          style={styles.textInput}
-          maxLength={80}
-        />
-
-        <Text style={styles.sectionTitle}>Products received</Text>
-        <TextInput
-          value={productSearch}
-          onChangeText={(value) => {
-            setProductSearch(value);
-            clearErrorOnEdit();
-          }}
-          placeholder="Search products by name, SKU, or barcode"
-          placeholderTextColor="#9CA3AF"
-          style={styles.textInput}
-          autoCapitalize="none"
-        />
-        {filteredProducts.length ? (
-          filteredProducts.map((product) => {
-            const quantity = quantities[product.id] ?? '';
-            const price = prices[product.id] ?? '';
-            const invalidPrice = Number(quantity) > 0 && Number(price) <= 0;
-            return (
-              <View key={product.id} style={styles.productCard}>
-                <View style={styles.productHeader}>
-                  <View style={styles.productDetails}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.productMeta}>{product.sku} · Current stock: {stock[product.id] ?? 0} {product.unit}</Text>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {selectedSupplier && !showSupplierPicker ? (
+            <View style={styles.selectedSupplier}>
+              <Text style={styles.supplierGlyph}>▰</Text>
+              <Text numberOfLines={1} style={styles.selectedSupplierName}>Supplier · {selectedSupplier.name}</Text>
+              <Pressable onPress={() => setShowSupplierPicker(true)}><Text style={styles.changeText}>Change</Text></Pressable>
+            </View>
+          ) : (
+            <View style={styles.supplierSection}>
+              <Text style={styles.sectionTitle}>Choose supplier</Text>
+              <TextInput value={supplierSearch} onChangeText={setSupplierSearch} placeholder="Search supplier or recent names" placeholderTextColor="#7A817E" style={styles.input} />
+              {filteredSuppliers.map((supplier) => (
+                <Pressable key={supplier.id} onPress={() => { setSupplierId(supplier.id); setShowSupplierPicker(false); }} style={[styles.supplierOption, supplier.id === supplierId && styles.supplierOptionSelected]}>
+                  <View style={styles.personGlyph}><Text style={styles.personGlyphText}>▰</Text></View>
+                  <View style={styles.supplierOptionCopy}>
+                    <Text style={styles.supplierOptionName}>{supplier.name}</Text>
+                    <Text style={styles.supplierOptionMeta}>{supplier.phone || supplier.contactName || 'Supplier'}</Text>
                   </View>
-                </View>
-                <View style={styles.inputRow}>
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Quantity ({product.unit})</Text>
-                    <TextInput
-                      accessibilityLabel={`${product.name} received quantity`}
-                      value={quantity}
-                      onChangeText={(value) => changeQuantity(product.id, value)}
-                      placeholder="0"
-                      keyboardType="decimal-pad"
-                      style={styles.numberInput}
-                    />
-                  </View>
-                  <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>Unit cost</Text>
-                    <TextInput
-                      accessibilityLabel={`${product.name} purchase price`}
-                      value={price}
-                      onChangeText={(value) => changePrice(product.id, value)}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      style={[styles.numberInput, invalidPrice && styles.inputInvalid]}
-                    />
-                  </View>
-                  <Text style={styles.lineTotal}>
-                    {formatMoney(Math.max(0, Number(quantity) * Number(price)))}
-                  </Text>
-                </View>
+                  {supplier.id === supplierId ? <Text style={styles.selectedMark}>✓</Text> : null}
+                </Pressable>
+              ))}
+              <View style={styles.addSupplierRow}>
+                <TextInput value={supplierName} onChangeText={setSupplierName} placeholder="New supplier name" placeholderTextColor="#7A817E" style={[styles.input, styles.newSupplierInput]} returnKeyType="done" />
+                <Pressable disabled={!supplierName.trim() || addingSupplier} onPress={() => void addSupplier()} style={[styles.smallButton, (!supplierName.trim() || addingSupplier) && styles.disabled]}>
+                  <Text style={styles.smallButtonText}>{addingSupplier ? 'Adding…' : 'Add'}</Text>
+                </Pressable>
               </View>
-            );
-          })
-        ) : (
-          <Text style={styles.helperText}>No products match the current search.</Text>
-        )}
+            </View>
+          )}
 
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Purchase total</Text>
-          <Text style={styles.totalValue}>{formatMoney(total)}</Text>
+          {step === 1 ? (
+            <>
+              <View style={styles.searchWrap}>
+                <Text style={styles.searchIcon}>⌕</Text>
+                <TextInput value={productSearch} onChangeText={setProductSearch} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
+                {categories.map((value) => (
+                  <Pressable key={value} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categorySelected]}>
+                    <Text style={[styles.categoryText, category === value && styles.categoryTextSelected]}>{value}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionTitle}>Products received</Text>
+                <Text style={styles.count}>{purchaseItems.length} selected</Text>
+              </View>
+              {filteredProducts.map((product) => {
+                const quantity = quantities[product.id];
+                return (
+                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, Boolean(quantity) && styles.productCardSelected]}>
+                    <View style={styles.productTop}>
+                      <View style={styles.productGlyph}><Text style={styles.productGlyphText}>⌁</Text></View>
+                      <View style={styles.productCopy}>
+                        <Text style={styles.productName}>{product.name}</Text>
+                        <Text style={styles.productMeta}>{product.category ? `${product.category} · ` : ''}{product.sku}</Text>
+                      </View>
+                      <View style={[styles.addProductButton, Boolean(quantity) && styles.addProductSelected]}>
+                        <Text style={[styles.addProductText, Boolean(quantity) && styles.addProductTextSelected]}>{quantity ? '✓' : '+'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.productFacts}>
+                      <View style={styles.stockFact}>
+                        <Text style={styles.stockValue}>{(stock[product.id] ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.factLabel}>Current stock</Text>
+                      </View>
+                      <View style={styles.priceFact}>
+                        <Text style={styles.factLabel}>BUY / {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.priceValue}>{product.purchasePrice == null ? 'Hidden' : formatMoney(Number(product.purchasePrice))}</Text>
+                      </View>
+                    </View>
+                    {quantity ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(product.unit)}</Text> : null}
+                  </Pressable>
+                );
+              })}
+              {!filteredProducts.length ? <Text style={styles.empty}>No matching products. Try another search or category.</Text> : null}
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <View style={styles.sectionHeading}>
+                <View><Text style={styles.sectionTitle}>Quantity & purchase price</Text><Text style={styles.helperText}>Enter what arrived on this invoice.</Text></View>
+                <Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>Add item</Text></Pressable>
+              </View>
+              {purchaseItems.map(({ product, quantity, price }) => {
+                const invalidPrice = price <= 0;
+                const invalidQuantity = product.unit === 'PIECE' && !Number.isInteger(quantity);
+                return (
+                  <View key={product.id} style={[styles.quantityCard, (invalidPrice || invalidQuantity) && styles.quantityCardInvalid]}>
+                    <View style={styles.productTop}>
+                      <View style={styles.productCopy}>
+                        <Text style={styles.productName}>{product.name}</Text>
+                        <Text style={styles.productMeta}>{product.sku} · Stock {stock[product.id] ?? 0} {formatUnitLabel(product.unit)}</Text>
+                      </View>
+                      <Pressable onPress={() => toggleProduct(product)}><Text style={styles.removeText}>×</Text></Pressable>
+                    </View>
+                    <View style={styles.inputRow}>
+                      <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Quantity · {formatUnitLabel(product.unit)}</Text>
+                        <TextInput accessibilityLabel={`${product.name} received quantity`} value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.numberInput} />
+                      </View>
+                      <View style={styles.field}>
+                        <Text style={styles.fieldLabel}>Buy rate / {formatUnitLabel(product.unit)}</Text>
+                        <TextInput accessibilityLabel={`${product.name} purchase price`} value={prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.numberInput} />
+                      </View>
+                    </View>
+                    {invalidQuantity ? <Text style={styles.invalidText}>Enter a whole number of pieces.</Text> : null}
+                    {invalidPrice ? <Text style={styles.invalidText}>Enter a valid purchase price.</Text> : null}
+                    {product.unit === 'SQUARE_FOOT' ? (
+                      <Pressable onPress={() => router.push(`/calculator/glass?productId=${encodeURIComponent(product.id)}`)} style={styles.measureLink}>
+                        <Text style={styles.measureText}>Calculate from glass dimensions ›</Text>
+                      </Pressable>
+                    ) : null}
+                    <View style={styles.lineTotal}>
+                      <Text style={styles.lineTotalLabel}>Line total</Text><Text style={styles.lineTotalValue}>{formatMoney(Math.max(0, quantity * price))}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {!purchaseItems.length ? <Text style={styles.empty}>Add a product before entering quantities.</Text> : null}
+            </>
+          ) : null}
+
+          {step === 3 ? (
+            <>
+              <Pressable onPress={() => setShowSupplierPicker(true)} style={styles.reviewSupplier}>
+                <View style={styles.personGlyph}><Text style={styles.personGlyphText}>▰</Text></View>
+                <View style={styles.supplierOptionCopy}>
+                  <Text style={styles.supplierOptionMeta}>Supplier</Text>
+                  <Text style={styles.supplierOptionName}>{selectedSupplier?.name ?? 'Select supplier'}</Text>
+                  <Text style={styles.supplierOptionMeta}>{selectedSupplier?.phone ?? ''}</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+              <View style={styles.reviewHeading}><Text style={styles.sectionTitle}>Items · {purchaseItems.length}</Text><Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>+ Add item</Text></Pressable></View>
+              {purchaseItems.map(({ product, quantity, price }) => (
+                <View key={product.id} style={styles.reviewCard}>
+                  <Text style={styles.productName}>{product.name}</Text>
+                  <Text style={styles.productMeta}>{product.sku}</Text>
+                  <View style={styles.reviewLine}>
+                    <Text style={styles.reviewQuantity}>{quantity} {formatUnitLabel(product.unit)} × {formatMoney(price)} / {formatUnitLabel(product.unit)}</Text>
+                    <Text style={styles.reviewTotal}>{formatMoney(quantity * price)}</Text>
+                  </View>
+                  <Text style={styles.projectedStock}>Stock after saving: {(stock[product.id] ?? 0) + quantity} {formatUnitLabel(product.unit)}</Text>
+                </View>
+              ))}
+              <View style={styles.invoiceCard}>
+                <Text style={styles.sectionTitle}>Invoice details</Text>
+                <Text style={styles.fieldLabel}>Invoice number · optional</Text>
+                <TextInput value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
+              </View>
+              <View style={styles.totalCard}>
+                <Text style={styles.totalLabel}>Total amount</Text><Text style={styles.totalValue}>{formatMoney(total)}</Text>
+              </View>
+            </>
+          ) : null}
+        </ScrollView>
+        <View style={styles.footer}>
+          {step === 1 ? (
+            <Pressable onPress={continueToQuantity} style={styles.submitButton}><Text style={styles.submitText}>Continue · {purchaseItems.length} item{purchaseItems.length === 1 ? '' : 's'}</Text></Pressable>
+          ) : step === 2 ? (
+            <Pressable onPress={continueToReview} style={styles.submitButton}><Text style={styles.submitText}>Review purchase · {formatMoney(total)}</Text></Pressable>
+          ) : (
+            <Pressable disabled={!linesValid || saving || !supplierId} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || !supplierId) && styles.disabled]}>
+              <Text style={styles.submitText}>{saving ? 'Saving purchase…' : `Save purchase · ${formatMoney(total)}`}</Text>
+            </Pressable>
+          )}
         </View>
-        {purchaseItems.length ? (
-          <Text style={styles.itemCount}>{purchaseItems.length} item{purchaseItems.length === 1 ? '' : 's'} selected</Text>
-        ) : null}
-
-        <Pressable
-          accessibilityRole="button"
-          disabled={!canSubmit}
-          onPress={confirmPurchase}
-          style={[styles.submitButton, !canSubmit && styles.submitDisabled]}>
-          <Text style={styles.submitText}>{saving ? 'Recording purchase…' : 'Review and record purchase'}</Text>
-        </Pressable>
-      </ScrollView>
-      <ConfirmationDialog
-        visible={dialogMode !== null}
-        title={dialogMode === 'success' ? 'Purchase recorded' : 'Confirm purchase'}
-        message={dialogMode === 'success'
-          ? successMessage
-          : `${purchaseItems.length} product${purchaseItems.length === 1 ? '' : 's'} · ${formatMoney(total)}`}
-        confirmLabel={dialogMode === 'success' ? 'Done' : saving ? 'Recording…' : 'Record purchase'}
-        cancelLabel={dialogMode === 'confirm' ? 'Review' : undefined}
-        onCancel={() => setDialogMode(null)}
-        onConfirm={() => {
-          if (dialogMode === 'success') {
-            router.back();
-          } else {
-            void savePurchase();
-          }
-        }}
-      />
+        <Modal visible={receiptVisible} transparent animationType="slide" onRequestClose={() => setReceiptVisible(false)}>
+          <View style={styles.receiptBackdrop}>
+            <View style={styles.receiptCard}>
+              <View style={styles.receiptIcon}><Text style={styles.receiptCheck}>✓</Text></View>
+              <Text style={styles.receiptTitle}>Purchase saved</Text>
+              <Text style={styles.receiptSubtitle}>Inventory updated successfully</Text>
+              <ScrollView style={styles.receiptBody}><Text style={styles.receiptText}>{successMessage}</Text></ScrollView>
+              <Pressable onPress={() => { setReceiptVisible(false); router.back(); }} style={styles.submitButton}><Text style={styles.submitText}>Done</Text></Pressable>
+            </View>
+          </View>
+        </Modal>
+      </View>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    marginBottom: 12,
-  },
-  backText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F766E',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 18,
-    color: '#6B7280',
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  error: {
-    backgroundColor: '#FEECEC',
-    borderRadius: 10,
-    padding: 12,
-    color: '#B91C1C',
-    fontSize: 13,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 18,
-    marginBottom: 10,
-  },
-  choiceList: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  choiceChip: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  choiceChipSelected: {
-    borderColor: '#1F9D68',
-    backgroundColor: '#E9F9F1',
-  },
-  choiceText: {
-    color: '#374151',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  choiceTextSelected: {
-    color: '#0F766E',
-  },
-  helperText: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  addRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 8,
-  },
-  textInput: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#111827',
-    fontSize: 14,
-  },
-  smallButton: {
-    minWidth: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: '#1F9D68',
-    paddingHorizontal: 14,
-  },
-  smallButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.45,
-  },
-  productCard: {
-    marginBottom: 10,
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-  },
-  productHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  productDetails: {
-    flex: 1,
-    minWidth: 0,
-  },
-  productName: {
-    color: '#111827',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  productMeta: {
-    marginTop: 4,
-    color: '#6B7280',
-    fontSize: 11,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginTop: 12,
-  },
-  field: {
-    flex: 1,
-    minWidth: 0,
-  },
-  fieldLabel: {
-    color: '#6B7280',
-    fontSize: 10,
-    fontWeight: '600',
-    marginBottom: 5,
-  },
-  numberInput: {
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 9,
-    backgroundColor: '#FFFFFF',
-    color: '#111827',
-    paddingHorizontal: 10,
-    fontSize: 14,
-  },
-  inputInvalid: {
-    borderColor: '#DC2626',
-    backgroundColor: '#FEF2F2',
-  },
-  lineTotal: {
-    width: 74,
-    textAlign: 'right',
-    paddingBottom: 10,
-    color: '#374151',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#D1D5DB',
-    marginTop: 24,
-    paddingTop: 16,
-  },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-  },
-  totalValue: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#B45309',
-  },
-  itemCount: {
-    marginTop: 4,
-    color: '#6B7280',
-    fontSize: 12,
-    textAlign: 'right',
-  },
-  submitButton: {
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1F9D68',
-    borderRadius: 14,
-    marginTop: 18,
-  },
-  submitDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  submitText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  centered: { justifyContent: 'center', alignItems: 'center', gap: 12 },
+  screen: { flex: 1, backgroundColor: '#F5F5F5' },
+  header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },
+  headerTop: { minHeight: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  backButton: { width: 43, alignItems: 'flex-start', justifyContent: 'center' },
+  backText: { color: '#24332A', fontSize: 32, lineHeight: 36 },
+  headerCopy: { flex: 1 },
+  title: { color: '#1D2B25', fontSize: 25, fontWeight: '800' },
+  subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },
+  moreText: { color: '#24332A', fontSize: 17, fontWeight: '800' },
+  steps: { minHeight: 59, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
+  step: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },
+  stepActive: { backgroundColor: '#176B50' },
+  stepComplete: { backgroundColor: '#176B50' },
+  stepNumberText: { color: '#737B77', fontSize: 12, fontWeight: '700' },
+  stepNumberTextActive: { color: '#FFFFFF' },
+  stepLabel: { color: '#737B77', fontSize: 12 },
+  stepLabelActive: { color: '#176B50', fontWeight: '800' },
+  content: { padding: 17, paddingBottom: 24, backgroundColor: '#F5F5F5' },
+  helperText: { color: '#737B77', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  error: { color: '#A74737', backgroundColor: '#FBECEA', borderRadius: 11, padding: 12, fontSize: 12, marginBottom: 12 },
+  selectedSupplier: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#FFFFFF', borderRadius: 13, paddingHorizontal: 13, marginBottom: 14 },
+  supplierGlyph: { color: '#176B50', fontSize: 20 },
+  selectedSupplierName: { color: '#24332A', fontSize: 12, fontWeight: '600', flex: 1 },
+  changeText: { color: '#176B50', fontSize: 12, fontWeight: '800' },
+  supplierSection: { padding: 14, backgroundColor: '#FFFFFF', borderRadius: 14, marginBottom: 14, borderWidth: 1, borderColor: '#E1E1E1' },
+  sectionTitle: { color: '#24332A', fontSize: 16, fontWeight: '800' },
+  input: { minHeight: 47, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 11, paddingHorizontal: 12, color: '#24332A', fontSize: 13, marginTop: 10 },
+  supplierOption: { minHeight: 57, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1, borderBottomColor: '#EEEEEE', paddingVertical: 8 },
+  supplierOptionSelected: { backgroundColor: '#F2F8F5' },
+  personGlyph: { width: 36, height: 36, borderRadius: 11, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
+  personGlyphText: { color: '#176B50', fontSize: 18 },
+  supplierOptionCopy: { flex: 1 },
+  supplierOptionName: { color: '#24332A', fontSize: 13, fontWeight: '700' },
+  supplierOptionMeta: { color: '#737B77', fontSize: 10, marginTop: 3 },
+  selectedMark: { color: '#176B50', fontSize: 17, fontWeight: '800', paddingHorizontal: 8 },
+  addSupplierRow: { flexDirection: 'row', gap: 8, marginTop: 7 },
+  newSupplierInput: { flex: 1, marginTop: 0 },
+  smallButton: { minWidth: 59, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#176B50', paddingHorizontal: 12 },
+  smallButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  searchWrap: { minHeight: 52, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#E1E1E1', borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, marginBottom: 13 },
+  searchIcon: { color: '#737B77', fontSize: 25, marginRight: 8 },
+  search: { flex: 1, color: '#24332A', fontSize: 14, paddingVertical: 11 },
+  categoryList: { gap: 8, paddingBottom: 12 },
+  categoryChip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 13, backgroundColor: '#FFFFFF', borderRadius: 11, borderWidth: 1, borderColor: '#E1E1E1' },
+  categorySelected: { backgroundColor: '#176B50', borderColor: '#176B50' },
+  categoryText: { color: '#737B77', fontSize: 12, fontWeight: '600' },
+  categoryTextSelected: { color: '#FFFFFF', fontWeight: '700' },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3, marginBottom: 10 },
+  count: { color: '#737B77', fontSize: 11 },
+  productCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 16, padding: 13, marginBottom: 10 },
+  productCardSelected: { borderColor: '#176B50', borderWidth: 1.5 },
+  productTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  productGlyph: { width: 42, height: 42, borderRadius: 11, backgroundColor: '#F3F3F3', alignItems: 'center', justifyContent: 'center' },
+  productGlyphText: { color: '#65716B', fontSize: 23 },
+  productCopy: { flex: 1, minWidth: 0 },
+  productName: { color: '#24332A', fontSize: 14, fontWeight: '800' },
+  productMeta: { color: '#737B77', fontSize: 10, marginTop: 4 },
+  addProductButton: { width: 39, height: 39, borderRadius: 12, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
+  addProductSelected: { backgroundColor: '#176B50' },
+  addProductText: { color: '#176B50', fontSize: 24, lineHeight: 28 },
+  addProductTextSelected: { color: '#FFFFFF', fontSize: 18 },
+  productFacts: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  stockFact: { flex: 1 },
+  priceFact: { flex: 1 },
+  stockValue: { color: '#176B50', fontSize: 12, fontWeight: '800' },
+  factLabel: { color: '#737B77', fontSize: 10, marginTop: 4 },
+  priceValue: { color: '#24332A', fontSize: 12, fontWeight: '700', marginTop: 4 },
+  addedText: { color: '#176B50', fontSize: 11, fontWeight: '700', marginTop: 11 },
+  quantityCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 15, padding: 14, marginBottom: 11 },
+  quantityCardInvalid: { borderColor: '#D9877B', backgroundColor: '#FFFCFB' },
+  removeText: { color: '#A74737', fontSize: 25, paddingHorizontal: 5 },
+  inputRow: { flexDirection: 'row', gap: 11, marginTop: 14 },
+  field: { flex: 1, minWidth: 0 },
+  fieldLabel: { color: '#737B77', fontSize: 10, fontWeight: '700', marginBottom: 6 },
+  numberInput: { minHeight: 44, borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 10, backgroundColor: '#FFFFFF', color: '#24332A', paddingHorizontal: 10, fontSize: 14 },
+  invalidText: { color: '#A74737', fontSize: 11, marginTop: 8 },
+  measureLink: { alignSelf: 'flex-start', marginTop: 9 },
+  measureText: { color: '#176B50', fontSize: 11, fontWeight: '700' },
+  lineTotal: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#E9E9E9', marginTop: 12, paddingTop: 10 },
+  lineTotalLabel: { color: '#737B77', fontSize: 11 },
+  lineTotalValue: { color: '#24332A', fontSize: 13, fontWeight: '800' },
+  empty: { color: '#737B77', backgroundColor: '#FFFFFF', borderRadius: 13, textAlign: 'center', padding: 17, fontSize: 12 },
+  reviewSupplier: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#FFFFFF', borderRadius: 15, borderWidth: 1, borderColor: '#E1E1E1', padding: 13 },
+  chevron: { color: '#737B77', fontSize: 24 },
+  reviewHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, marginBottom: 10 },
+  reviewCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 15, padding: 14, marginBottom: 10 },
+  reviewLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 11 },
+  reviewQuantity: { color: '#737B77', fontSize: 11, flex: 1 },
+  reviewTotal: { color: '#24332A', fontSize: 15, fontWeight: '800' },
+  projectedStock: { color: '#176B50', fontSize: 10, marginTop: 10 },
+  invoiceCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 15, padding: 14, marginTop: 4 },
+  totalCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 15, borderWidth: 1, borderColor: '#E1E1E1', padding: 15, marginTop: 10 },
+  totalLabel: { color: '#24332A', fontSize: 15, fontWeight: '700' },
+  totalValue: { color: '#176B50', fontSize: 22, fontWeight: '800' },
+  footer: { paddingHorizontal: 17, paddingTop: 10, paddingBottom: 13, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E1E1E1' },
+  submitButton: { minHeight: 52, alignItems: 'center', justifyContent: 'center', backgroundColor: '#176B50', borderRadius: 12 },
+  submitText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  disabled: { opacity: 0.5 },
+  receiptBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(20, 31, 25, 0.4)' },
+  receiptCard: { maxHeight: '85%', padding: 20, backgroundColor: '#FFFFFF', borderRadius: 19 },
+  receiptIcon: { alignSelf: 'center', width: 54, height: 54, borderRadius: 27, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
+  receiptCheck: { color: '#176B50', fontSize: 27, fontWeight: '800' },
+  receiptTitle: { color: '#24332A', fontSize: 22, fontWeight: '800', textAlign: 'center', marginTop: 11 },
+  receiptSubtitle: { color: '#737B77', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 14 },
+  receiptBody: { maxHeight: 250, borderTopWidth: 1, borderTopColor: '#E1E1E1', borderBottomWidth: 1, borderBottomColor: '#E1E1E1', paddingVertical: 12, marginBottom: 14 },
+  receiptText: { color: '#24332A', fontSize: 12, lineHeight: 22 },
 });

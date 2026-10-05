@@ -39,6 +39,10 @@ AIProductMatch
 AuditLog
 ```
 
+Products may have an optional business-entered category. Purchase-price visibility
+is controlled by a business setting and must be enforced in API responses, not
+only by hiding values in the app.
+
 ## Multi-Tenant Rule
 
 Business-owned records should contain `business_id`.
@@ -104,6 +108,18 @@ NUMERIC(12,2)
 ```
 
 for monetary values.
+
+## Catalog Categories and Price Visibility
+
+`Product.category` is optional free text so businesses can organize their catalog
+without a global category taxonomy. Category filtering and search remain scoped
+to the authenticated business.
+
+`Business.membersCanViewPurchasePrice` defaults to `true` to preserve existing
+behavior. When disabled, `MEMBER` API responses omit product purchase prices and
+purchase totals and unit-cost details. `OWNER` and `ADMIN` continue to see those
+values, including dashboard purchase aggregates and purchase-history rows.
+Updating this setting requires an active manager membership.
 
 ## Quantity
 

@@ -14,7 +14,7 @@
 
 - Create business/shop
 - Update business profile
-- Manage business users
+- Configure member access to purchase prices
 
 ### Products
 
@@ -22,6 +22,7 @@
 - Update product
 - Deactivate product
 - Search product
+- Optional product category and category filtering
 - SKU
 - Barcode
 - Unit

@@ -8,6 +8,7 @@ type ProductInput = {
   name?: string;
   sku?: string;
   barcode?: string;
+  category?: string;
   unit?: string;
   purchasePrice?: string;
   sellingPrice?: string;
@@ -19,7 +20,7 @@ type ProductInput = {
 export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode'>) {
+  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category'>) {
     await this.requireManagerMembership(userId, businessId);
     try {
       return await this.prisma.product.create({
@@ -28,6 +29,7 @@ export class ProductsService {
           name: input.name.trim(),
           sku: input.sku.trim().toUpperCase(),
           barcode: input.barcode?.trim() || null,
+          category: input.category?.trim() || null,
           unit: input.unit,
           purchasePrice: input.purchasePrice,
           sellingPrice: input.sellingPrice,
@@ -40,30 +42,43 @@ export class ProductsService {
     }
   }
 
-  async list(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number] }) {
-    await this.requireMembership(userId, businessId);
+  async list(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number]; category?: string }) {
+    const membership = await this.requireMembership(userId, businessId);
     const search = query.search?.trim();
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       where: {
         businessId,
         status: query.status ? this.toStatus(query.status) : ProductStatus.ACTIVE,
+        ...(query.category ? { category: query.category } : {}),
         ...(search
-          ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { sku: { contains: search.toUpperCase(), mode: 'insensitive' } }, { barcode: { contains: search, mode: 'insensitive' } }] }
+          ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { sku: { contains: search.toUpperCase(), mode: 'insensitive' } }, { barcode: { contains: search, mode: 'insensitive' } }, { category: { contains: search, mode: 'insensitive' } }] }
           : {}),
       },
       orderBy: { name: 'asc' },
     });
+    return this.applyPurchasePriceVisibility(businessId, membership, products);
   }
 
   async search(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number] }) {
     return this.list(userId, businessId, query);
   }
 
-  async get(userId: string, businessId: string, productId: string) {
+  async categories(userId: string, businessId: string) {
     await this.requireMembership(userId, businessId);
+    const products = await this.prisma.product.findMany({
+      where: { businessId, status: ProductStatus.ACTIVE, category: { not: null } },
+      select: { category: true },
+      distinct: ['category'],
+      orderBy: { category: 'asc' },
+    });
+    return products.flatMap(({ category }) => category ? [category] : []);
+  }
+
+  async get(userId: string, businessId: string, productId: string) {
+    const membership = await this.requireMembership(userId, businessId);
     const product = await this.prisma.product.findFirst({ where: { id: productId, businessId } });
     if (!product) throw new NotFoundException('Product not found.');
-    return product;
+    return (await this.applyPurchasePriceVisibility(businessId, membership, [product]))[0];
   }
 
   async update(userId: string, businessId: string, productId: string, input: ProductInput) {
@@ -77,6 +92,7 @@ export class ProductsService {
           name: input.name?.trim(),
           sku: input.sku?.trim().toUpperCase(),
           barcode: input.barcode === undefined ? undefined : input.barcode.trim() || null,
+          category: input.category === undefined ? undefined : input.category.trim() || null,
           purchasePrice: input.purchasePrice,
           sellingPrice: input.sellingPrice,
           minimumStock: input.minimumStock,
@@ -119,6 +135,20 @@ export class ProductsService {
     const membership = await this.requireMembership(userId, businessId);
     if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') throw new ForbiddenException('You do not have permission for this action.');
     return membership;
+  }
+
+  private async applyPurchasePriceVisibility<T extends { purchasePrice: unknown }>(
+    businessId: string,
+    membership: { role: string },
+    products: T[],
+  ): Promise<(Omit<T, 'purchasePrice'> & { purchasePrice?: T['purchasePrice'] })[]> {
+    if (membership.role === 'OWNER' || membership.role === 'ADMIN') return products;
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { membersCanViewPurchasePrice: true },
+    });
+    if (business?.membersCanViewPurchasePrice !== false) return products;
+    return products.map(({ purchasePrice: _purchasePrice, ...product }) => product);
   }
 
   private toStatus(status: (typeof productStatuses)[number]) {

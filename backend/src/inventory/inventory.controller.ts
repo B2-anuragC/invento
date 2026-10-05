@@ -31,6 +31,12 @@ export class InventoryController {
     return this.inventory.list(req.user.id, this.businessId(req));
   }
 
+  @Get('activity')
+  @ApiOperation({ summary: 'List the latest inventory transactions in the active business.' })
+  activity(@Req() req: Request) {
+    return this.inventory.activity(req.user.id, this.businessId(req));
+  }
+
   @Get(':productId')
   @ApiOperation({ summary: 'Get current stock for a product.' })
   get(@Req() req: Request, @Param('productId') productId: string) {

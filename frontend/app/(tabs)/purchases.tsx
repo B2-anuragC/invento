@@ -51,7 +51,8 @@ export default function PurchasesScreen() {
     }, []),
   );
 
-  const totalPurchases = purchases.reduce((total, purchase) => total + Number(purchase.total), 0);
+  const restrictedPrice = purchases.some((purchase) => purchase.total == null);
+  const totalPurchases = purchases.reduce((total, purchase) => total + Number(purchase.total ?? 0), 0);
   const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id)).size;
 
   return (
@@ -62,7 +63,7 @@ export default function PurchasesScreen() {
 
         <SectionHeader title="Overview" />
         <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={formatMoney(totalPurchases)} delta="All recorded purchases" accent="amber" />
+          <SummaryCard label="Total value" value={restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : 'All recorded purchases'} accent="amber" />
           <SummaryCard label="Suppliers" value={String(supplierCount)} delta="In purchase history" accent="blue" />
         </View>
 
@@ -88,7 +89,7 @@ export default function PurchasesScreen() {
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
                   </Text>
                 </View>
-                <Text style={styles.amount}>{formatMoney(Number(purchase.total))}</Text>
+                <Text style={styles.amount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))}</Text>
               </View>
             ))
           ) : (
@@ -104,6 +105,9 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 32,
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 28,

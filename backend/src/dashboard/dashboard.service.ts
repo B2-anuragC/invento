@@ -31,7 +31,8 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async summary(userId: string, businessId: string) {
-    await this.requireMembership(userId, businessId);
+    const membership = await this.requireMembership(userId, businessId);
+    const canViewPurchasePrice = await this.canViewPurchasePrice(businessId, membership);
     const today = new Date(Date.now() + indiaOffsetMs).toISOString().slice(0, 10);
     const range = dashboardRange({ from: today, to: today });
     // A single snapshot keeps related metrics consistent during concurrent writes.
@@ -48,7 +49,17 @@ export class DashboardService {
         where: { businessId }, take: 10, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: { id: true, productId: true, type: true, quantity: true, balanceAfter: true, createdAt: true, note: true, product: { select: { name: true, sku: true, unit: true } } },
       });
-      return { date: today, timezone: dashboardTimezone, todaySales: sales._sum.total ?? new Prisma.Decimal(0), todayPurchases: purchases._sum.total ?? new Prisma.Decimal(0), saleCount: sales._count, purchaseCount: purchases._count, productCount, lowStockCount: lowStock.count, recentTransactions };
+      return {
+        date: today,
+        timezone: dashboardTimezone,
+        todaySales: sales._sum.total ?? new Prisma.Decimal(0),
+        todayPurchases: canViewPurchasePrice ? purchases._sum.total ?? new Prisma.Decimal(0) : null,
+        saleCount: sales._count,
+        purchaseCount: purchases._count,
+        productCount,
+        lowStockCount: lowStock.count,
+        recentTransactions,
+      };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 
@@ -65,7 +76,7 @@ export class DashboardService {
   }
 
   async purchases(userId: string, businessId: string, query: DashboardRangeDto) {
-    await this.requireMembership(userId, businessId);
+    const membership = await this.requireMembership(userId, businessId);
     const range = dashboardRange(query);
     const rows = await this.prisma.$queryRaw<DayTotal[]>(Prisma.sql`
       SELECT to_char("purchaseDate" + interval '5 hours 30 minutes', 'YYYY-MM-DD') AS date,
@@ -73,7 +84,13 @@ export class DashboardService {
       FROM purchases WHERE "businessId" = ${businessId} AND status = 'COMPLETED'
         AND "purchaseDate" >= ${range.start} AND "purchaseDate" < ${range.end}
       GROUP BY 1 ORDER BY 1`);
-    return this.series(range, rows);
+    const result = this.series(range, rows);
+    if (await this.canViewPurchasePrice(businessId, membership)) return result;
+    return {
+      ...result,
+      total: null,
+      days: result.days.map(({ date, count }) => ({ date, count, total: null })),
+    };
   }
 
   async lowStock(userId: string, businessId: string, query: DashboardPageDto) {
@@ -113,5 +130,15 @@ export class DashboardService {
   private async requireMembership(userId: string, businessId: string) {
     const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId } } });
     if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
+    return membership;
+  }
+
+  private async canViewPurchasePrice(businessId: string, membership: { role: string }) {
+    if (membership.role === 'OWNER' || membership.role === 'ADMIN') return true;
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { membersCanViewPurchasePrice: true },
+    });
+    return business?.membersCanViewPurchasePrice !== false;
   }
 }

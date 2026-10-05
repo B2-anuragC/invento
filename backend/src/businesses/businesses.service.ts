@@ -48,6 +48,25 @@ export class BusinessesService {
     });
   }
 
+  async getPricingAccess(userId: string, businessId: string) {
+    const membership = await this.requireMembership(userId, businessId);
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { membersCanViewPurchasePrice: true },
+    });
+    if (!business) throw new NotFoundException('Business not found.');
+    return { membersCanViewPurchasePrice: business.membersCanViewPurchasePrice, role: membership.role };
+  }
+
+  async updatePricingAccess(userId: string, businessId: string, membersCanViewPurchasePrice: boolean) {
+    await this.requireRole(userId, businessId, managerRoles);
+    return this.prisma.business.update({
+      where: { id: businessId },
+      data: { membersCanViewPurchasePrice },
+      select: { membersCanViewPurchasePrice: true },
+    });
+  }
+
   async addUser(actorId: string, businessId: string, email: string, role: 'ADMIN' | 'MEMBER') {
     await this.requireRole(actorId, businessId, managerRoles);
     const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
