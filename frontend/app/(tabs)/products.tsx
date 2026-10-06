@@ -26,8 +26,7 @@ export default function ProductsScreen() {
   const [category, setCategory] = useState('All');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [unitFilter, setUnitFilter] = useState('All');
-  const [customerView, setCustomerView] = useState(false);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [sortByPrice, setSortByPrice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -124,7 +123,6 @@ export default function ProductsScreen() {
     const quantity = Number(inventory[product.id]?.quantity ?? 0);
     return quantity > 0 && quantity < Number(product.minimumStock);
   }).length;
-  const purchasePricesRestricted = products.some((product) => product.purchasePrice == null);
 
   return (
     <AppScreen>
@@ -165,7 +163,6 @@ export default function ProductsScreen() {
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} onPress={() => setShowFilters((value) => !value)} style={styles.filterButton}>
             <Text style={styles.filterButtonText}>☷  {showFilters ? 'Hide filters' : 'Search filters'}</Text>
           </Pressable>
-          <ActionButton title="＋ New sale" onPress={() => router.push('/sale/create')} />
           <Pressable onPress={() => setSortByPrice((value) => !value)} style={styles.sortButton}>
             <Text style={styles.sortText}>{sortByPrice ? 'Price ↑' : 'Default sort'}</Text>
           </Pressable>
@@ -212,35 +209,10 @@ export default function ProductsScreen() {
 
         <View style={styles.viewBar}>
           <View style={styles.viewCopy}>
-            <Text style={styles.viewTitle}>{customerView ? 'Customer view' : 'Owner view'}</Text>
-            <Text style={styles.viewHint}>
-              {customerView
-                ? 'Selling rates and stock visible'
-                : purchasePricesRestricted
-                  ? 'Buy prices restricted by business'
-                  : 'Buy and sell rates visible'}
-            </Text>
-          </View>
-          <View style={styles.viewSwitch}>
-            {[false, true].map((value) => (
-              <Pressable
-                key={String(value)}
-                onPress={() => setCustomerView(value)}
-                style={[styles.viewOption, customerView === value && styles.viewOptionSelected]}>
-                <Text style={[styles.viewOptionText, customerView === value && styles.viewOptionTextSelected]}>
-                  {value ? 'Customer' : 'Owner'}
-                </Text>
-              </Pressable>
-            ))}
+            <Text style={styles.viewTitle}>Customer view</Text>
+            <Text style={styles.viewHint}>Selling rates and stock visible</Text>
           </View>
         </View>
-        <Text style={styles.viewDescription}>
-          {customerView
-            ? 'Customer view hides buy prices and margins, while keeping sell rates, stock and unit details visible.'
-            : purchasePricesRestricted
-              ? 'Buy prices and margins are hidden for this account.'
-              : 'Customer view hides buy prices and margins, while keeping sell rates, stock and unit details visible.'}
-        </Text>
 
         <View style={styles.sectionTabs}>
           {(Object.keys(sectionLabels) as ProductSection[]).map((value) => (
@@ -295,10 +267,6 @@ export default function ProductsScreen() {
                   <View style={styles.stockFact}>
                     <Text style={[styles.stockValue, low && styles.stockLow]}>{quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
                     <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text>
-                  </View>
-                  <View style={styles.priceFact}>
-                    <Text style={styles.factLabel}>BUY / {formatUnitLabel(product.unit)}</Text>
-                    <Text style={styles.priceValue}>{customerView ? 'Hidden' : product.purchasePrice ? formatMoney(Number(product.purchasePrice)) : 'Hidden'}</Text>
                   </View>
                   <View style={styles.priceFact}>
                     <Text style={styles.factLabel}>SELL / {formatUnitLabel(product.unit)}</Text>
