@@ -109,8 +109,9 @@ export type SaleRecord = {
   saleDate: string;
   total: string | number;
   paymentMethod: string;
+  note?: string | null;
   customer: { id: string; name: string };
-  items: Array<{ id: string; productId: string; quantity: string | number; sellingPrice: string | number }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
@@ -134,9 +135,10 @@ export type PurchaseRecord = {
   id: string;
   invoiceNumber?: string | null;
   purchaseDate: string;
+  note?: string | null;
   total?: string | number;
   supplier: { id: string; name: string };
-  items: Array<{ id: string; productId: string; quantity: string | number; purchasePrice?: string | number }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; purchasePrice?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type BusinessUserRecord = {
@@ -233,6 +235,19 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${apiHost}:3000/
 
 let refreshRequest: Promise<AppSession> | null = null;
 
+class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+function latestSession(session: AppSession): AppSession {
+  const current = appSession.current;
+  return current?.user.id === session.user.id
+    ? { ...session, accessToken: current.accessToken, refreshToken: current.refreshToken, user: current.user }
+    : session;
+}
+
 function getValidationDetailMessage(value: unknown): string | null {
   if (typeof value !== 'object' || value === null) return null;
   const detail = value as Record<string, unknown>;
@@ -278,9 +293,11 @@ async function renewSession(session: AppSession): Promise<AppSession> {
       null,
       false,
     ).then(async (tokens) => {
-      const refreshed = { ...session, ...tokens };
+      const current = appSession.current;
+      const refreshed = { ...(current?.user.id === session.user.id ? current : session), ...tokens };
       appSession.current = refreshed;
-      await persistSession(refreshed);
+      // A device storage failure must not invalidate successfully rotated tokens.
+      await persistSession(refreshed).catch(() => undefined);
       return refreshed;
     }).finally(() => {
       refreshRequest = null;
@@ -295,6 +312,7 @@ async function request<T>(
   session?: AppSession | null,
   canRefresh = true,
 ): Promise<T> {
+  if (session) session = latestSession(session);
   const headers = new Headers(options.headers ?? {});
   headers.set('Accept', 'application/json');
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
@@ -323,17 +341,21 @@ async function request<T>(
   if (response.status === 401 && session?.refreshToken && canRefresh && path !== '/auth/refresh') {
     let refreshed: AppSession;
     try {
-      refreshed = await renewSession(session);
-    } catch {
-      appSession.current = null;
-      await clearPersistedSession().catch(() => undefined);
-      throw new Error('Your session expired. Please sign in again.');
+      const current = latestSession(session);
+      refreshed = current.accessToken !== session.accessToken ? current : await renewSession(current);
+    } catch (refreshError) {
+      if (refreshError instanceof ApiError && refreshError.status === 401) {
+        appSession.current = null;
+        await clearPersistedSession().catch(() => undefined);
+        throw new Error('Your session expired. Please sign in again.');
+      }
+      throw new Error('Could not renew your session. Check your connection and try again.');
     }
     return request<T>(path, options, refreshed, false);
   }
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(payload?.error) ?? getErrorMessage(payload?.message) ?? 'Request failed.');
+    throw new ApiError(getErrorMessage(payload?.error) ?? getErrorMessage(payload?.message) ?? 'Request failed.', response.status);
   }
 
   return payload?.data ?? payload;
@@ -609,4 +631,8 @@ export async function createPurchase(session: AppSession, input: CreatePurchaseI
     method: 'POST',
     body: JSON.stringify(input),
   }, session);
+}
+
+export async function fetchPurchase(session: AppSession, purchaseId: string): Promise<PurchaseRecord> {
+  return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
 }

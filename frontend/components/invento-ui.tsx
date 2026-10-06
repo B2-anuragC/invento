@@ -84,18 +84,24 @@ export function ActionButton({
   title,
   onPress,
   variant = 'primary',
+  disabled = false,
 }: {
   title: string;
   onPress?: () => void;
   variant?: 'primary' | 'secondary';
+  disabled?: boolean;
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
         variant === 'primary' ? styles.primaryAction : styles.secondaryAction,
         pressed && { opacity: 0.9 },
+        disabled && { opacity: 0.5 },
       ]}>
       <Text style={[styles.actionText, variant === 'primary' ? styles.primaryText : styles.secondaryText]}>
         {title}

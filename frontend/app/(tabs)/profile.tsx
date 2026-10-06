@@ -1,6 +1,7 @@
+import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard } from '@/components/invento-ui';
 import { appSession, logoutSession, persistSession, updateProfile } from '@/services/api';
@@ -95,8 +96,8 @@ export default function ProfileScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>More</Text>
+      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        <ScreenHeading title="Your account" subtitle="Profile, business and preferences" />
 
         <View style={styles.card}>
           <Text style={styles.avatar}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'I'}</Text>
@@ -151,19 +152,29 @@ export default function ProfileScreen() {
         </ListCard>
 
         <View style={styles.actions}>
-          <ActionButton title="People & contacts" variant="secondary" onPress={() => router.push('/people')} />
-          <ActionButton title="Pricing access" variant="secondary" onPress={() => router.push('/settings/pricing')} />
-          <ActionButton title="Business activity" variant="secondary" onPress={() => router.push('/activity')} />
-          <ActionButton title="Purchases" variant="secondary" onPress={() => router.push('/(tabs)/purchases')} />
+          <ListCard title="Your workspace">
+            {[
+              { title: 'Inventory', detail: 'Stock health and availability', route: '/(tabs)/inventory' },
+              { title: 'Sales history', detail: 'Invoices and repeat sales', route: '/(tabs)/sales' },
+              { title: 'Purchase history', detail: 'Supplier invoices and replenishment', route: '/(tabs)/purchases' },
+              { title: 'People & contacts', detail: 'Customers and suppliers', route: '/people' },
+              { title: 'Pricing access', detail: 'Control price visibility', route: '/settings/pricing' },
+            ].map((item) => (
+              <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(item.route as Parameters<typeof router.push>[0])} style={styles.row}>
+                <View style={{ flex: 1 }}><Text style={styles.value}>{item.title}</Text><Text style={styles.role}>{item.detail}</Text></View>
+                <Text style={{ color: '#737B77', fontSize: 24 }}>›</Text>
+              </Pressable>
+            ))}
+          </ListCard>
           {editing ? (
             <>
-              <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void handleSaveProfile()} />
-              <ActionButton title="Cancel" variant="secondary" onPress={cancelEditing} />
+              <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void handleSaveProfile()} disabled={saving} />
+              <ActionButton title="Cancel" variant="secondary" onPress={cancelEditing} disabled={saving} />
             </>
           ) : (
             <ActionButton title="Edit profile" variant="secondary" onPress={beginEditing} />
           )}
-          <ActionButton title={loggingOut ? 'Signing out…' : 'Log out'} onPress={() => void handleLogout()} />
+          <ActionButton title={loggingOut ? 'Signing out…' : 'Log out'} onPress={() => void handleLogout()} disabled={loggingOut || saving} />
         </View>
       </ScrollView>
     </AppScreen>
@@ -181,7 +192,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111827',
+    color: '#24332A',
     marginBottom: 18,
   },
   card: {
@@ -190,15 +201,16 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E2E2',
     marginBottom: 18,
   },
   avatar: {
     width: 70,
     height: 70,
+    lineHeight: 70,
     borderRadius: 35,
-    backgroundColor: '#E9F9F1',
-    color: '#0F766E',
+    backgroundColor: '#E7F2ED',
+    color: '#176B50',
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
@@ -208,11 +220,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#111827',
+    color: '#24332A',
   },
   role: {
     marginTop: 6,
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
   },
   editFields: {
@@ -220,7 +232,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   fieldLabel: {
-    color: '#374151',
+    color: '#43554B',
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 6,
@@ -229,18 +241,18 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E2E2',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 11,
     marginBottom: 14,
-    color: '#111827',
+    color: '#24332A',
     fontSize: 14,
     width: '100%',
   },
   error: {
     marginTop: 12,
-    color: '#B91C1C',
+    color: '#A74737',
     fontSize: 13,
     textAlign: 'center',
   },
@@ -249,14 +261,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F5F5F5',
   },
   label: {
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
   },
   value: {
-    color: '#111827',
+    color: '#24332A',
     fontSize: 13,
     fontWeight: '600',
   },

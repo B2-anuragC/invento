@@ -172,7 +172,7 @@ export class PurchasesService {
   private async requirePurchase(businessId: string, purchaseId: string) {
     const purchase = await this.prisma.purchase.findFirst({
       where: { id: purchaseId, businessId },
-      include: { items: true, supplier: true },
+      include: { items: { include: { product: { select: { name: true, sku: true, unit: true } } } }, supplier: true },
     });
     if (!purchase) throw new NotFoundException('Purchase not found.');
     return purchase;

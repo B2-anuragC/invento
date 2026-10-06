@@ -27,7 +27,7 @@ export default function ProductsScreen() {
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [unitFilter, setUnitFilter] = useState('All');
   const [customerView, setCustomerView] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [sortByPrice, setSortByPrice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,7 +55,8 @@ export default function ProductsScreen() {
             balances[item.productId] = item;
             return balances;
           }, {}));
-          if (category !== 'All' && !productData.some((item) => item.category === category)) setCategory('All');
+          setCategory((current) => current !== 'All' && !productData.some((item) => item.category?.trim() === current) ? 'All' : current);
+          setUnitFilter((current) => current !== 'All' && !productData.some((item) => item.unit === current) ? 'All' : current);
         })
         .catch((loadError: unknown) => {
           if (!active) return;
@@ -74,7 +75,7 @@ export default function ProductsScreen() {
         });
 
       return () => { active = false; };
-    }, [category, status]),
+    }, [status]),
   );
 
   const categories = useMemo(
@@ -106,7 +107,7 @@ export default function ProductsScreen() {
       const matchesStock = stockFilter === 'all' ||
         (stockFilter === 'low' && lowStock && quantity > 0) ||
         (stockFilter === 'out' && quantity <= 0);
-      return matchesSearch && (category === 'All' || item.category === category) &&
+      return matchesSearch && (category === 'All' || item.category?.trim() === category) &&
         (unitFilter === 'All' || item.unit === unitFilter) && matchesStock &&
         (section !== 'favorites' || favorites[item.id]);
     });
@@ -137,6 +138,77 @@ export default function ProductsScreen() {
             <Text style={styles.addIconText}>+</Text>
           </Pressable>
         </View>
+
+        <View style={styles.searchWrap}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            accessibilityLabel="Search products"
+            value={search}
+            onChangeText={setSearch}
+            style={styles.searchInput}
+            placeholder="Search products, SKU or barcode"
+            placeholderTextColor="#89918C"
+            autoCapitalize="none"
+          />
+          {search ? <Pressable accessibilityRole="button" accessibilityLabel="Clear product search" onPress={() => setSearch('')}><Text style={styles.clearSearch}>×</Text></Pressable> : null}
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
+          {categories.map((value) => (
+            <Pressable key={value} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categoryChipSelected]}>
+              <Text style={[styles.categoryText, category === value && styles.categoryTextSelected]}>{value}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <View style={styles.actionsRow}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showFilters }} onPress={() => setShowFilters((value) => !value)} style={styles.filterButton}>
+            <Text style={styles.filterButtonText}>☷  {showFilters ? 'Hide filters' : 'Search filters'}</Text>
+          </Pressable>
+          <ActionButton title="＋ New sale" onPress={() => router.push('/sale/create')} />
+          <Pressable onPress={() => setSortByPrice((value) => !value)} style={styles.sortButton}>
+            <Text style={styles.sortText}>{sortByPrice ? 'Price ↑' : 'Default sort'}</Text>
+          </Pressable>
+        </View>
+
+        {showFilters ? (
+          <View style={styles.filtersPanel}>
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Search filters</Text>
+              <Pressable accessibilityRole="button" onPress={() => { setSearch(''); setCategory('All'); setStockFilter('all'); setUnitFilter('All'); setStatus('ACTIVE'); setSortByPrice(false); setSection('frequent'); }}><Text style={styles.linkText}>Reset all</Text></Pressable>
+            </View>
+            <Text style={styles.filterLabel}>Stock status</Text>
+            <View style={styles.filterChoices}>
+              {([
+                ['all', 'All stock'],
+                ['low', `Low (${lowStockCount})`],
+                ['out', 'Out of stock'],
+              ] as [StockFilter, string][]).map(([value, label]) => (
+                <Pressable key={value} onPress={() => setStockFilter(value)} style={[styles.filterChoice, stockFilter === value && styles.filterChoiceSelected]}>
+                  <Text style={[styles.filterChoiceText, stockFilter === value && styles.filterChoiceTextSelected]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.filterLabel}>Unit</Text>
+            <View style={styles.filterChoices}>
+              {units.map((value) => (
+                <Pressable key={value} onPress={() => setUnitFilter(value)} style={[styles.filterChoice, unitFilter === value && styles.filterChoiceSelected]}>
+                  <Text style={[styles.filterChoiceText, unitFilter === value && styles.filterChoiceTextSelected]}>{value === 'All' ? value : formatUnitLabel(value)}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.filterRow}>
+              <Text style={styles.filterLabel}>Catalog status</Text>
+              <View style={styles.statusToggle}>
+                {(['ACTIVE', 'INACTIVE'] as const).map((value) => (
+                  <Pressable key={value} onPress={() => setStatus(value)} style={[styles.statusOption, status === value && styles.statusOptionSelected]}>
+                    <Text style={[styles.statusText, status === value && styles.statusTextSelected]}>{value === 'ACTIVE' ? 'Active' : 'Inactive'}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.viewBar}>
           <View style={styles.viewCopy}>
@@ -169,72 +241,6 @@ export default function ProductsScreen() {
               ? 'Buy prices and margins are hidden for this account.'
               : 'Customer view hides buy prices and margins, while keeping sell rates, stock and unit details visible.'}
         </Text>
-
-        <View style={styles.searchWrap}>
-          <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            style={styles.searchInput}
-            placeholder="Name, SKU, barcode or material"
-            placeholderTextColor="#89918C"
-            autoCapitalize="none"
-          />
-          {search ? <Pressable onPress={() => setSearch('')}><Text style={styles.clearSearch}>×</Text></Pressable> : null}
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
-          {categories.map((value) => (
-            <Pressable key={value} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categoryChipSelected]}>
-              <Text style={[styles.categoryText, category === value && styles.categoryTextSelected]}>{value}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        <View style={styles.actionsRow}>
-          <Pressable onPress={() => setShowFilters((value) => !value)} style={styles.filterButton}>
-            <Text style={styles.filterButtonText}>☷  Stock & unit</Text>
-          </Pressable>
-          <ActionButton title="＋ New sale" onPress={() => router.push('/sale/create')} />
-          <Pressable onPress={() => setSortByPrice((value) => !value)} style={styles.sortButton}>
-            <Text style={styles.sortText}>{sortByPrice ? '₹ ↑' : 'Name ↓'}</Text>
-          </Pressable>
-        </View>
-
-        {showFilters ? (
-          <View style={styles.filtersPanel}>
-            <Text style={styles.filterLabel}>Stock status</Text>
-            <View style={styles.filterChoices}>
-              {([
-                ['all', 'All stock'],
-                ['low', `Low (${lowStockCount})`],
-                ['out', 'Out of stock'],
-              ] as [StockFilter, string][]).map(([value, label]) => (
-                <Pressable key={value} onPress={() => setStockFilter(value)} style={[styles.filterChoice, stockFilter === value && styles.filterChoiceSelected]}>
-                  <Text style={[styles.filterChoiceText, stockFilter === value && styles.filterChoiceTextSelected]}>{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.filterLabel}>Unit</Text>
-            <View style={styles.filterChoices}>
-              {units.map((value) => (
-                <Pressable key={value} onPress={() => setUnitFilter(value)} style={[styles.filterChoice, unitFilter === value && styles.filterChoiceSelected]}>
-                  <Text style={[styles.filterChoiceText, unitFilter === value && styles.filterChoiceTextSelected]}>{value === 'All' ? value : value.toLowerCase()}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.filterRow}>
-              <Text style={styles.filterLabel}>Catalog status</Text>
-              <View style={styles.statusToggle}>
-                {(['ACTIVE', 'INACTIVE'] as const).map((value) => (
-                  <Pressable key={value} onPress={() => setStatus(value)} style={[styles.statusOption, status === value && styles.statusOptionSelected]}>
-                    <Text style={[styles.statusText, status === value && styles.statusTextSelected]}>{value === 'ACTIVE' ? 'Active' : 'Inactive'}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </View>
-        ) : null}
 
         <View style={styles.sectionTabs}>
           {(Object.keys(sectionLabels) as ProductSection[]).map((value) => (

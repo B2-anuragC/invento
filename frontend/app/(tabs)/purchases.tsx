@@ -1,6 +1,7 @@
+import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
@@ -16,6 +17,8 @@ function formatMoney(value: number) {
 export default function PurchasesScreen() {
   const router = useRouter();
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [search, setSearch] = useState('');
+  const [retry, setRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -48,37 +51,43 @@ export default function PurchasesScreen() {
       return () => {
         active = false;
       };
-    }, []),
+    // Retry intentionally recreates the focus effect to reload the current screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [retry]),
   );
 
   const restrictedPrice = purchases.some((purchase) => purchase.total == null);
   const totalPurchases = purchases.reduce((total, purchase) => total + Number(purchase.total ?? 0), 0);
-  const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id)).size;
+  const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id).filter(Boolean)).size;
+
+  const filteredRecords = purchases.filter((record) =>
+    [record.invoiceNumber, record.id, record.supplier?.name].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase())),
+  ).sort((left, right) => right.purchaseDate.localeCompare(left.purchaseDate));
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Purchases</Text>
-        <Text style={styles.subtitle}>Stock replenishment and supplier invoices</Text>
+      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        <ScreenHeading title="Purchases" subtitle="Stock replenishment and supplier invoices" />
 
         <SectionHeader title="Overview" />
         <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : 'All recorded purchases'} accent="amber" />
-          <SummaryCard label="Suppliers" value={String(supplierCount)} delta="In purchase history" accent="blue" />
+          <SummaryCard label="Total value" value={loading || error ? '—' : restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : 'All recorded purchases'} accent="amber" />
+          <SummaryCard label="Suppliers" value={loading || error ? '—' : String(supplierCount)} delta="In purchase history" accent="blue" />
         </View>
 
         <View style={styles.buttonRow}>
           <ActionButton title="Add purchase" onPress={() => router.push('/purchase/create')} />
         </View>
 
-        <ListCard title="Recent purchases">
+        <TextInput accessibilityLabel="Search purchases" value={search} onChangeText={setSearch} placeholder="Search invoice or supplier" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
+        <ListCard title={search ? `Search results · ${filteredRecords.length}` : 'Purchases history'}>
           {loading ? (
-            <ActivityIndicator color="#1F9D68" />
+            <ActivityIndicator color="#176B50" />
           ) : error ? (
-            <Text style={styles.message}>{error}</Text>
-          ) : purchases.length ? (
-            purchases.map((purchase) => (
-              <View key={purchase.id} style={styles.row}>
+            <View style={{ gap: 12 }}><Text accessibilityRole="alert" style={styles.message}>{error}</Text><ActionButton title="Try again" variant="secondary" onPress={() => setRetry((value) => value + 1)} /></View>
+          ) : filteredRecords.length ? (
+            filteredRecords.map((purchase) => (
+              <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel="View purchase details" onPress={() => router.push(`/purchase/${purchase.id}`)} style={styles.row}>
                 <View style={styles.purchaseDetails}>
                   <Text style={styles.poId}>
                     {purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}
@@ -89,11 +98,11 @@ export default function PurchasesScreen() {
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
                   </Text>
                 </View>
-                <Text style={styles.amount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))}</Text>
-              </View>
+                <Text style={styles.amount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))} ›</Text>
+              </Pressable>
             ))
           ) : (
-            <Text style={styles.message}>No purchases yet. Record an invoice to replenish stock.</Text>
+            <View style={{ paddingVertical: 24, gap: 8 }}><Text style={{ color: '#24332A', fontSize: 17, fontWeight: '700' }}>{search ? 'No matching invoices' : 'Your first purchase starts here'}</Text><Text style={styles.message}>{search ? 'Try a different invoice number or supplier name.' : 'No purchases yet. Record an invoice to replenish stock.'}</Text></View>
           )}
         </ListCard>
       </ScrollView>
@@ -112,12 +121,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111827',
+    color: '#24332A',
   },
   subtitle: {
     marginTop: 4,
     marginBottom: 18,
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
   },
   cardsRow: {
@@ -132,9 +141,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F5F5F5',
   },
   purchaseDetails: {
     flex: 1,
@@ -144,16 +153,16 @@ const styles = StyleSheet.create({
   poId: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#111827',
+    color: '#24332A',
   },
   supplier: {
     marginTop: 4,
-    color: '#374151',
+    color: '#43554B',
     fontSize: 12,
   },
   date: {
     marginTop: 4,
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 11,
   },
   amount: {
@@ -162,7 +171,7 @@ const styles = StyleSheet.create({
     color: '#B45309',
   },
   message: {
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
     lineHeight: 19,
   },

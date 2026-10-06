@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen, appColors } from '@/components/invento-ui';
 import {
@@ -21,6 +23,7 @@ const emptyContact: ContactFields = { name: '', contactName: '', phone: '', emai
 
 export default function PeopleDirectoryScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<PersonFilter>('All');
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
@@ -82,22 +85,22 @@ export default function PeopleDirectoryScreen() {
     }
   };
 
-  const openCreate = () => {
+  const openCreate = (kind?: ContactKind) => {
     setContact(emptyContact);
     setError('');
-    setContactKind(filter === 'Suppliers' ? 'supplier' : 'customer');
+    setContactKind(kind ?? (filter === 'Suppliers' ? 'supplier' : 'customer'));
     setModalVisible(true);
   };
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>People</Text>
             <Text style={styles.subtitle}>CUSTOMERS & SUPPLIERS</Text>
           </View>
-          <Pressable accessibilityLabel="Add person" onPress={openCreate} style={styles.addButton}>
+          <Pressable accessibilityLabel="Add person" onPress={() => openCreate()} style={styles.addButton}>
             <Text style={styles.addButtonText}>＋</Text>
           </Pressable>
         </View>
@@ -117,7 +120,7 @@ export default function PeopleDirectoryScreen() {
           <View style={styles.group}>
             <View style={styles.groupHeading}>
               <Text style={styles.groupTitle}>Customers</Text>
-              <Pressable onPress={() => { setFilter('Customers'); openCreate(); }}><Text style={styles.addLink}>+ Add customer</Text></Pressable>
+              <Pressable onPress={() => openCreate('customer')}><Text style={styles.addLink}>+ Add customer</Text></Pressable>
             </View>
             {!loading && filter === 'Customers' && people.filter((item) => item.kind === 'customer').length === 0 ? (
               <Text style={styles.emptyGroup}>No customers match your search.</Text>
@@ -138,7 +141,7 @@ export default function PeopleDirectoryScreen() {
           <View style={styles.group}>
             <View style={styles.groupHeading}>
               <Text style={styles.groupTitle}>Suppliers</Text>
-              <Pressable onPress={() => { setFilter('Suppliers'); openCreate(); }}><Text style={styles.addLink}>+ Add supplier</Text></Pressable>
+              <Pressable onPress={() => openCreate('supplier')}><Text style={styles.addLink}>+ Add supplier</Text></Pressable>
             </View>
             {!loading && filter === 'Suppliers' && people.filter((item) => item.kind === 'supplier').length === 0 ? (
               <Text style={styles.emptyGroup}>No suppliers match your search.</Text>
@@ -162,8 +165,8 @@ export default function PeopleDirectoryScreen() {
         ) : null}
       </ScrollView>
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
+          <ScrollView style={styles.modalScroll} contentContainerStyle={[styles.modalCard, { paddingBottom: 20 + insets.bottom }]} keyboardShouldPersistTaps="handled">
             <View style={styles.modalHeading}>
               <Text style={styles.modalTitle}>Add {contactKind}</Text>
               <Pressable accessibilityLabel="Close" onPress={() => setModalVisible(false)}><Text style={styles.close}>×</Text></Pressable>
@@ -197,15 +200,15 @@ export default function PeopleDirectoryScreen() {
             <Pressable disabled={!contact.name.trim() || saving} onPress={() => void saveContact()} style={[styles.saveButton, (!contact.name.trim() || saving) && styles.disabled]}>
               <Text style={styles.saveButtonText}>{saving ? 'Saving…' : `Add ${contactKind}`}</Text>
             </Pressable>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingBottom: 34, backgroundColor: '#F5F5F5' },
+  content: { paddingHorizontal: 20, paddingBottom: 34, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   header: { minHeight: 92, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: '#1D2B25', fontSize: 29, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 12, marginTop: 4 },
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
   searchWrap: { minHeight: 52, marginTop: 16, borderRadius: 13, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 },
   searchIcon: { color: '#747C78', fontSize: 24, marginRight: 9 },
   search: { flex: 1, color: '#24332A', fontSize: 14, paddingVertical: 12 },
-  filters: { flexDirection: 'row', gap: 9, marginTop: 14 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 14 },
   filter: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 17, borderRadius: 12, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF' },
   filterSelected: { backgroundColor: '#176B50', borderColor: '#176B50' },
   filterText: { color: '#747C78', fontSize: 13, fontWeight: '600' },
@@ -238,6 +241,7 @@ const styles = StyleSheet.create({
   empty: { color: '#737B77', textAlign: 'center', marginTop: 12, padding: 18, backgroundColor: '#FFFFFF', borderRadius: 12, fontSize: 12 },
   error: { color: '#A74737', backgroundColor: '#FBECEA', padding: 12, borderRadius: 11, fontSize: 12 },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20, 31, 25, 0.38)' },
+  modalScroll: { maxHeight: '90%', width: '100%', maxWidth: 680, alignSelf: 'center', flexGrow: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, backgroundColor: '#F5F5F5' },
   modalCard: { backgroundColor: '#F5F5F5', padding: 20, paddingBottom: 30, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 10 },
   modalHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalTitle: { color: '#24332A', fontSize: 20, fontWeight: '800', textTransform: 'capitalize' },

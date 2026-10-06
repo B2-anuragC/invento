@@ -108,7 +108,7 @@ export default function BusinessSetupScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.brand}>Invento</Text>
         <Text style={styles.title}>Choose your shop</Text>
         <Text style={styles.subtitle}>Business data stays separate for each shop you belong to.</Text>
@@ -117,7 +117,7 @@ export default function BusinessSetupScreen() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Your businesses</Text>
-          {loading ? <ActivityIndicator size="small" color="#1F9D68" /> : null}
+          {loading ? <ActivityIndicator size="small" color="#176B50" /> : null}
         </View>
         {businesses.map((membership) => (
           <Pressable
@@ -145,7 +145,7 @@ export default function BusinessSetupScreen() {
               clearErrorOnEdit();
               if (!slugEdited) setSlug(toSlug(value));
             }}
-            placeholder="e.g. Mohan General Store"
+            placeholder="e.g. Shree Aluminium & Hardware"
             placeholderTextColor="#9CA3AF"
             style={styles.input}
             maxLength={120}
@@ -158,7 +158,7 @@ export default function BusinessSetupScreen() {
               setSlug(toSlug(value));
               clearErrorOnEdit();
             }}
-            placeholder="mohan-general-store"
+            placeholder="shree-aluminium"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
             style={styles.input}
@@ -178,27 +178,28 @@ export default function BusinessSetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
-  content: { flexGrow: 1, padding: 24, paddingBottom: 36 },
-  brand: { color: '#0F766E', fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
-  title: { marginTop: 12, color: '#111827', fontSize: 30, fontWeight: '800' },
-  subtitle: { marginTop: 8, marginBottom: 24, color: '#6B7280', fontSize: 14, lineHeight: 20 },
-  error: { color: '#B91C1C', backgroundColor: '#FEECEC', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 },
+  safeArea: { flex: 1, backgroundColor: '#F5F5F5' },
+  content: { flexGrow: 1, padding: 24,
+    width: '100%', maxWidth: 480, alignSelf: 'center', paddingBottom: 36 },
+  brand: { color: '#176B50', fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
+  title: { marginTop: 12, color: '#24332A', fontSize: 30, fontWeight: '800' },
+  subtitle: { marginTop: 8, marginBottom: 24, color: '#737B77', fontSize: 14, lineHeight: 20 },
+  error: { color: '#A74737', backgroundColor: '#FBECEA', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { color: '#111827', fontSize: 17, fontWeight: '700' },
-  businessRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 13, marginBottom: 9 },
-  businessIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E9F9F1', alignItems: 'center', justifyContent: 'center' },
-  businessInitial: { color: '#0F766E', fontSize: 16, fontWeight: '800' },
+  sectionTitle: { color: '#24332A', fontSize: 17, fontWeight: '700' },
+  businessRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 14, padding: 13, marginBottom: 9 },
+  businessIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
+  businessInitial: { color: '#176B50', fontSize: 16, fontWeight: '800' },
   businessText: { flex: 1, minWidth: 0, marginLeft: 12 },
-  businessName: { color: '#111827', fontSize: 14, fontWeight: '700' },
-  businessMeta: { marginTop: 4, color: '#6B7280', fontSize: 11 },
-  chevron: { color: '#6B7280', fontSize: 24, paddingHorizontal: 6 },
-  empty: { color: '#6B7280', fontSize: 13, marginBottom: 12 },
-  createSection: { marginTop: 24, padding: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16 },
-  formHint: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginTop: 6, marginBottom: 18 },
-  label: { color: '#374151', fontSize: 12, fontWeight: '700', marginBottom: 7 },
-  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 15, color: '#111827', fontSize: 14 },
-  createButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1F9D68', borderRadius: 12, marginTop: 4 },
+  businessName: { color: '#24332A', fontSize: 14, fontWeight: '700' },
+  businessMeta: { marginTop: 4, color: '#737B77', fontSize: 11 },
+  chevron: { color: '#737B77', fontSize: 24, paddingHorizontal: 6 },
+  empty: { color: '#737B77', fontSize: 13, marginBottom: 12 },
+  createSection: { marginTop: 24, padding: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 16 },
+  formHint: { color: '#737B77', fontSize: 12, lineHeight: 18, marginTop: 6, marginBottom: 18 },
+  label: { color: '#43554B', fontSize: 12, fontWeight: '700', marginBottom: 7 },
+  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 15, color: '#24332A', fontSize: 14 },
+  createButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', backgroundColor: '#176B50', borderRadius: 12, marginTop: 4 },
   createButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   disabled: { backgroundColor: '#9CA3AF' },
 });

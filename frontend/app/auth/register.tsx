@@ -37,7 +37,7 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.brand}>Invento</Text>
         <Text style={styles.title}>Create your account</Text>
         <Text style={styles.subtitle}>Set up your account first. You can add your shop next.</Text>
@@ -57,7 +57,7 @@ export default function RegisterScreen() {
             style={styles.input}
             maxLength={100}
           />
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email address</Text>
           <TextInput
             value={email}
             onChangeText={(value) => {
@@ -67,7 +67,7 @@ export default function RegisterScreen() {
             placeholder="name@example.com"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
-            keyboardType="email-address"
+            keyboardType="email-address" autoComplete="email"
             style={styles.input}
           />
           <Text style={styles.label}>Password</Text>
@@ -85,7 +85,7 @@ export default function RegisterScreen() {
           <Text style={styles.passwordHint}>
             At least 8 characters, with uppercase and lowercase letters, a number, and a symbol.
           </Text>
-          <ActionButton title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} />
+          <ActionButton title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading || name.trim().length < 2 || !email.trim() || !password} />
         </View>
 
         <Text style={styles.footer} onPress={() => router.replace('/auth/login')}>
@@ -97,16 +97,16 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
+  safeArea: { flex: 1, backgroundColor: '#F5F5F5' },
   content: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  brand: { color: '#0F766E', fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
-  title: { marginTop: 12, color: '#111827', fontSize: 30, fontWeight: '800' },
-  subtitle: { marginTop: 8, marginBottom: 22, color: '#6B7280', fontSize: 14, lineHeight: 20 },
-  form: { padding: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 18 },
-  error: { color: '#B91C1C', backgroundColor: '#FEECEC', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 },
-  label: { color: '#374151', fontSize: 12, fontWeight: '700', marginBottom: 7 },
-  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 16, color: '#111827', fontSize: 15 },
-  passwordHint: { marginTop: -8, marginBottom: 16, color: '#6B7280', fontSize: 12, lineHeight: 18 },
-  footer: { marginTop: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 },
-  footerAction: { color: '#0F766E', fontWeight: '700' },
+  brand: { color: '#176B50', fontSize: 13, fontWeight: '800', textTransform: 'uppercase' },
+  title: { marginTop: 12, color: '#24332A', fontSize: 30, fontWeight: '800' },
+  subtitle: { marginTop: 8, marginBottom: 22, color: '#737B77', fontSize: 14, lineHeight: 20 },
+  form: { padding: 20, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 18 },
+  error: { color: '#A74737', backgroundColor: '#FBECEA', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13 },
+  label: { color: '#43554B', fontSize: 12, fontWeight: '700', marginBottom: 7 },
+  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, marginBottom: 16, color: '#24332A', fontSize: 15 },
+  passwordHint: { marginTop: -8, marginBottom: 16, color: '#737B77', fontSize: 12, lineHeight: 18 },
+  footer: { marginTop: 20, textAlign: 'center', color: '#737B77', fontSize: 13 },
+  footerAction: { color: '#176B50', fontWeight: '700' },
 });

@@ -1,6 +1,7 @@
+import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
@@ -14,6 +15,8 @@ type StockItem = {
 };
 
 export default function InventoryScreen() {
+  const router = useRouter();
+  const [filter, setFilter] = useState<'All' | 'Low stock' | 'Out of stock'>('All');
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [inventory, setInventory] = useState<Record<string, InventoryRecord>>({});
   const [search, setSearch] = useState('');
@@ -72,6 +75,8 @@ export default function InventoryScreen() {
 
   const filteredStockItems = stockItems
     .filter((item) => {
+      if (filter === 'Low stock' && !(item.quantity > 0 && item.quantity < item.minimumStock)) return false;
+      if (filter === 'Out of stock' && item.quantity > 0) return false;
       const query = search.trim().toLowerCase();
       if (!query) return true;
       return (
@@ -91,15 +96,14 @@ export default function InventoryScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Inventory</Text>
-        <Text style={styles.subtitle}>Current stock health and reorder risk</Text>
+      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        <ScreenHeading title="Inventory" subtitle="Current stock health and reorder risk" />
 
         <TextInput
           value={search}
           onChangeText={setSearch}
-          style={styles.searchInput}
-          placeholder="Search product or stock risk"
+          style={screenStyles.search}
+          accessibilityLabel="Search inventory" placeholder="Search product or unit"
           placeholderTextColor="#9CA3AF"
           autoCapitalize="none"
         />
@@ -127,14 +131,21 @@ export default function InventoryScreen() {
           </View>
         ) : null}
 
+        <View style={screenStyles.chips}>
+          {(['All', 'Low stock', 'Out of stock'] as const).map((value) => (
+            <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: filter === value }} onPress={() => setFilter(value)} style={[screenStyles.chip, filter === value && screenStyles.chipActive]}>
+              <Text style={[screenStyles.chipText, filter === value && screenStyles.chipTextActive]}>{value}</Text>
+            </Pressable>
+          ))}
+        </View>
         <ListCard title="Stock levels">
-          {loading ? <ActivityIndicator color="#1F9D68" style={styles.stateMessage} /> : null}
+          {loading ? <ActivityIndicator color="#176B50" style={styles.stateMessage} /> : null}
           {!loading && !error && filteredStockItems.length === 0 ? (
-            <Text style={styles.stateMessage}>{search ? 'No matching inventory items.' : 'No active products yet.'}</Text>
+            <Text style={styles.stateMessage}>{search || filter !== 'All' ? 'No items match these filters.' : 'No active products yet. Add a product from your catalog to get started.'}</Text>
           ) : null}
           {filteredStockItems.map((item) => (
-            <View key={item.id} style={styles.row}>
-              <View>
+            <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`View ${item.name}`} onPress={() => router.push(`/product/${item.id}`)} style={styles.row}>
+              <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.meta}>
                   {item.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.unit)} available / min {item.minimumStock}
@@ -145,7 +156,7 @@ export default function InventoryScreen() {
                   {item.quantity <= 0 ? 'Out' : item.quantity < item.minimumStock ? 'Low' : 'Healthy'}
                 </Text>
               </View>
-            </View>
+            </Pressable>
           ))}
         </ListCard>
       </ScrollView>
@@ -161,24 +172,24 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111827',
+    color: '#24332A',
   },
   subtitle: {
     marginTop: 4,
     marginBottom: 18,
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
   },
   searchInput: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E2E2',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 18,
     fontSize: 15,
-    color: '#111827',
+    color: '#24332A',
   },
   cardsRow: {
     flexDirection: 'row',
@@ -190,11 +201,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   errorText: {
-    color: '#B91C1C',
+    color: '#A74737',
     fontSize: 13,
   },
   stateMessage: {
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 13,
     paddingVertical: 10,
   },
@@ -204,16 +215,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F5F5F5',
   },
   name: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#111827',
+    color: '#24332A',
   },
   meta: {
     marginTop: 4,
-    color: '#6B7280',
+    color: '#737B77',
     fontSize: 12,
   },
   badge: {
@@ -222,17 +233,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   safe: {
-    backgroundColor: '#E9F9F1',
+    backgroundColor: '#E7F2ED',
   },
   warning: {
     backgroundColor: '#FFF4D7',
   },
   danger: {
-    backgroundColor: '#FEECEC',
+    backgroundColor: '#FBECEA',
   },
   badgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#111827',
+    color: '#24332A',
   },
 });

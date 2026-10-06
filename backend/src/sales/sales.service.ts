@@ -151,7 +151,7 @@ export class SalesService {
   private async requireSale(businessId: string, saleId: string) {
     const sale = await this.prisma.sale.findFirst({
       where: { id: saleId, businessId },
-      include: { items: true, customer: true },
+      include: { items: { include: { product: { select: { name: true, sku: true, unit: true } } } }, customer: true },
     });
     if (!sale) throw new NotFoundException('Sale not found.');
     return sale;

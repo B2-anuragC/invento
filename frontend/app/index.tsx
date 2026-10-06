@@ -69,32 +69,33 @@ export default function LoginScreen() {
   if (checkingSession) {
     return (
       <SafeAreaView style={[styles.safeArea, styles.loading]}>
-        <ActivityIndicator size="large" color="#1F9D68" />
+        <ActivityIndicator size="large" color="#176B50" />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.hero}>
           <Text style={styles.badge}>Invento</Text>
-          <Text style={styles.title}>Your retail ops, in one place.</Text>
+          <Text style={styles.title}>Your shop.
+Your day, simplified.</Text>
           <Text style={styles.subtitle}>
-            Track stock, purchases, sales, and daily performance without slowing down your shop.
+            Stock, sales and purchases — together in one simple workspace.
           </Text>
         </View>
 
         <View style={styles.card}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email address</Text>
           <TextInput
             value={email}
             onChangeText={setEmail}
             style={styles.input}
             placeholder="name@business.com"
             placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
+            autoCapitalize="none" keyboardType="email-address" autoComplete="email"
           />
 
           <Text style={styles.label}>Password</Text>
@@ -107,7 +108,7 @@ export default function LoginScreen() {
             secureTextEntry
           />
 
-          <ActionButton title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} />
+          <ActionButton title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} disabled={loading || !email.trim() || !password} />
 
           <View style={styles.secondaryRow}>
             <ActionButton title="Create account" variant="secondary" onPress={() => router.push('/auth/register')} />
@@ -121,7 +122,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F5F5F5',
   },
   loading: {
     alignItems: 'center',
@@ -131,14 +132,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    width: '100%', maxWidth: 480, alignSelf: 'center',
   },
   hero: {
     marginBottom: 24,
   },
   badge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#E9F9F1',
-    color: '#0F766E',
+    backgroundColor: '#E7F2ED',
+    color: '#176B50',
     borderRadius: 999,
     fontSize: 12,
     fontWeight: '700',
@@ -151,44 +153,44 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 40,
     fontWeight: '800',
-    color: '#111827',
+    color: '#24332A',
   },
   subtitle: {
     marginTop: 12,
     fontSize: 15,
     lineHeight: 22,
-    color: '#6B7280',
+    color: '#737B77',
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E2E2',
   },
   label: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#374151',
+    color: '#43554B',
     marginBottom: 8,
   },
   error: {
-    backgroundColor: '#FEECEC',
+    backgroundColor: '#FBECEA',
     borderRadius: 10,
     padding: 12,
-    color: '#B91C1C',
+    color: '#A74737',
     fontSize: 13,
     marginBottom: 16,
   },
   input: {
     backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E2E2',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 18,
-    color: '#111827',
+    color: '#24332A',
     fontSize: 15,
   },
   secondaryRow: {

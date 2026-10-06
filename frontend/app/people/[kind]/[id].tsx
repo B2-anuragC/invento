@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { ActionButton, AppScreen, appColors } from '@/components/invento-ui';
 import {
   appSession,
@@ -22,6 +24,7 @@ type Contact = CustomerRecord | SupplierRecord;
 
 export default function ContactDetailsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
   const contactKind = kind === 'suppliers' ? 'suppliers' : 'customers';
   const [contact, setContact] = useState<Contact | null>(null);
@@ -104,8 +107,8 @@ export default function ContactDetailsScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={styles.back}><Text style={styles.backText}>‹  People</Text></Pressable>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: 36 + insets.bottom }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')} style={styles.back}><Text style={styles.backText}>‹  People</Text></Pressable>
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.state} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {!loading && contact ? (
@@ -148,8 +151,8 @@ export default function ContactDetailsScreen() {
               {canEdit ? (
                 editing ? (
                   <View style={styles.editActions}>
-                    <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void saveContact()} />
-                    <ActionButton title="Cancel" variant="secondary" onPress={() => setEditing(false)} />
+                    <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void saveContact()} disabled={saving || !form.name.trim()} />
+                    <ActionButton title="Cancel" variant="secondary" onPress={() => setEditing(false)} disabled={saving} />
                   </View>
                 ) : (
                   <Pressable onPress={() => setEditing(true)} style={styles.editButton}><Text style={styles.editText}>Edit contact</Text></Pressable>
@@ -175,21 +178,21 @@ export default function ContactDetailsScreen() {
             </View>
             {!history.length ? <Text style={styles.empty}>No transactions linked to this contact yet.</Text> : null}
             {contactKind === 'customers' ? sales.map((sale) => (
-              <View key={sale.id} style={styles.historyCard}>
+              <Pressable key={sale.id} accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
                   <Text style={styles.historyTitle}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text>
                   <Text style={styles.historyMeta}>{new Date(sale.saleDate).toLocaleDateString([], { dateStyle: 'medium' })} · {sale.items.length} items</Text>
                 </View>
-                <Text style={styles.historyAmount}>{formatMoney(Number(sale.total))}</Text>
-              </View>
+                <Text style={styles.historyAmount}>{formatMoney(Number(sale.total))} ›</Text>
+              </Pressable>
             )) : purchases.map((purchase) => (
-              <View key={purchase.id} style={styles.historyCard}>
+              <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel="View purchase details" onPress={() => router.push(`/purchase/${purchase.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
                   <Text style={styles.historyTitle}>{purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}</Text>
                   <Text style={styles.historyMeta}>{new Date(purchase.purchaseDate).toLocaleDateString([], { dateStyle: 'medium' })} · {purchase.items.length} items</Text>
                 </View>
-                <Text style={styles.purchaseAmount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))}</Text>
-              </View>
+                <Text style={styles.purchaseAmount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))} ›</Text>
+              </Pressable>
             ))}
             {canEdit ? (
               <Pressable
@@ -213,9 +216,10 @@ function formatMoney(value: number) {
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   back: { alignSelf: 'stretch', marginHorizontal: -20, paddingHorizontal: 20, paddingVertical: 17, marginBottom: 12, backgroundColor: '#FFFFFF' },
-  backText: { color: '#24332A', fontSize: 27, fontWeight: '500' },
+  backText: { color: '#24332A', fontSize: 18, fontWeight: '700' },
   eyebrow: { color: '#557267', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginBottom: 12 },
   state: { marginVertical: 28 },
   error: { color: '#A74737', backgroundColor: '#F6E9E6', padding: 12, borderRadius: 12, fontSize: 12 },
