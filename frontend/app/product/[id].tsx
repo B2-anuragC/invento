@@ -17,6 +17,7 @@ import {
   createProduct,
   deactivateProduct,
   fetchProduct,
+  fetchProductCategories,
   fetchProductStock,
   fetchProductTransactions,
   recordOpeningStock,
@@ -24,6 +25,7 @@ import {
   type InventoryRecord,
   type InventoryTransactionRecord,
   type ProductInput,
+  type SellingOption,
   type ProductRecord,
 } from '@/services/api';
 
@@ -60,9 +62,17 @@ export default function ProductDetailsScreen() {
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
   const [category, setCategory] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState(false);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryLoadError, setCategoryLoadError] = useState(false);
   const [unit, setUnit] = useState('PIECE');
+  const [piecesPerUnit, setPiecesPerUnit] = useState('');
+  const [sellingOptions, setSellingOptions] = useState<SellingOption[]>([]);
   const [purchasePrice, setPurchasePrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
+  const [gstRate, setGstRate] = useState('0');
   const [minimumStock, setMinimumStock] = useState('0');
   const [openingStock, setOpeningStock] = useState('');
   const [editing, setEditing] = useState(isNew);
@@ -71,9 +81,27 @@ export default function ProductDetailsScreen() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
 
+  const addSellingOption = () => {
+    setSellingOptions((current) => current.length >= 20 ? current : [...current, {
+      id: `option_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: '', unit, quantity: '', sellingPrice: '',
+    }]);
+    if (error) setError('');
+  };
+
   const clearErrorOnEdit = () => {
     if (error) setError('');
   };
+
+  useEffect(() => {
+    let active = true;
+    const session = appSession.current;
+    if (!session) { setCategoryLoading(false); return; }
+    fetchProductCategories(session).then((values) => {
+      if (active) setCategories([...new Set(values)].sort((left, right) => left.localeCompare(right)));
+    }).catch(() => { if (active) setCategoryLoadError(true); }).finally(() => { if (active) setCategoryLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (isNew) return;
@@ -103,8 +131,11 @@ export default function ProductDetailsScreen() {
         setBarcode(productData.barcode ?? '');
         setCategory(productData.category ?? '');
         setUnit(productData.unit);
+        setSellingOptions(productData.sellingOptions ?? []);
+        setPiecesPerUnit(productData.piecesPerUnit ? String(productData.piecesPerUnit) : '');
         setPurchasePrice(String(productData.purchasePrice));
         setSellingPrice(String(productData.sellingPrice));
+        setGstRate(String(productData.gstRate ?? 0));
         setMinimumStock(String(productData.minimumStock));
       })
       .catch((loadError: unknown) => {
@@ -127,12 +158,25 @@ export default function ProductDetailsScreen() {
       return;
     }
 
+    if (['BOX', 'PACK'].includes(unit) && piecesPerUnit && (!Number.isInteger(Number(piecesPerUnit)) || Number(piecesPerUnit) < 1 || Number(piecesPerUnit) > 100000)) {
+      setError('Enter a whole number of pieces per group, from 1 to 100000.');
+      return;
+    }
+    const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || 0;
+    if (sellingOptions.some((option) => !option.name.trim() || !/^\d{1,9}(?:\.\d{1,3})?$/.test(option.quantity) || Number(option.quantity) <= 0 || !/^\d{1,10}(?:\.\d{1,2})?$/.test(option.sellingPrice) || Number(option.sellingPrice) <= 0 || (option.unit !== unit && !(option.unit === 'PIECE' && groupSize)) || ((groupSize || unit === 'PIECE') && !Number.isInteger(Number(option.quantity) * (option.unit === 'PIECE' ? 1 : groupSize || 1))))) {
+      setError('Each selling option needs a name, positive quantity and price, and a valid unit. Grouped options must contain whole pieces.');
+      return;
+    }
+    if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
     const input: ProductInput = {
+      gstRate,
       name: cleanName,
       sku: cleanSku,
       barcode: barcode.trim(),
       category: category.trim(),
       unit,
+      sellingOptions,
+      ...(['BOX', 'PACK'].includes(unit) && piecesPerUnit ? { piecesPerUnit: Number(piecesPerUnit) } : {}),
       purchasePrice: decimalValue(purchasePrice, 2),
       sellingPrice: decimalValue(sellingPrice, 2),
       minimumStock: decimalValue(minimumStock, 3),
@@ -272,17 +316,18 @@ export default function ProductDetailsScreen() {
               maxLength={160}
             />
             <Text style={styles.label}>Category (optional)</Text>
-            <TextInput
-              value={category}
-              onChangeText={(value) => {
-                setCategory(value);
-                clearErrorOnEdit();
-              }}
-              style={styles.input}
-              placeholder="e.g. Hardware"
-              placeholderTextColor="#9CA3AF"
-              maxLength={100}
-            />
+            <Pressable accessibilityRole="button" accessibilityLabel="Choose product category" accessibilityState={{ expanded: categoryOpen }} onPress={() => setCategoryOpen((current) => !current)} style={[styles.input, styles.categoryTrigger]}>
+              <Text style={{ color: category ? '#24332A' : '#9CA3AF', flex: 1 }}>{category || 'Choose a category'}</Text><Text style={{ color: '#737B77' }}>{categoryOpen ? '▴' : '▾'}</Text>
+            </Pressable>
+            {categoryOpen ? <View style={styles.categoryDropdown}>
+              <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                {[...new Set([...(category && !newCategory ? [category] : []), ...categories])].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: category === value }} onPress={() => { setCategory(value); setNewCategory(false); setCategoryOpen(false); clearErrorOnEdit(); }} style={[styles.categoryRow, category === value && { backgroundColor: '#EDF6F0' }]}><Text style={{ color: '#24332A', flex: 1 }}>{value}</Text>{category === value ? <Text style={{ color: '#176B50' }}>✓</Text> : null}</Pressable>)}
+                {categoryLoading ? <Text style={styles.categoryNotice}>Loading categories…</Text> : categoryLoadError ? <Text style={styles.categoryNotice}>Could not load categories. You can still enter a new one.</Text> : !categories.length ? <Text style={styles.categoryNotice}>No saved categories yet.</Text> : null}
+              </ScrollView>
+              <Pressable accessibilityRole="button" onPress={() => { setNewCategory(true); setCategory(''); setCategoryOpen(false); clearErrorOnEdit(); }} style={styles.categoryRow}><Text style={{ color: '#176B50', fontWeight: '600' }}>＋ Add new category</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { setCategory(''); setNewCategory(false); setCategoryOpen(false); clearErrorOnEdit(); }} style={styles.categoryRow}><Text style={{ color: '#737B77' }}>No category</Text></Pressable>
+            </View> : null}
+            {newCategory ? <TextInput accessibilityLabel="New category name" autoFocus value={category} onChangeText={(value) => { setCategory(value); clearErrorOnEdit(); }} style={[styles.input, { marginTop: 8 }]} placeholder="New category name" placeholderTextColor="#9CA3AF" maxLength={100} /> : null}
             <Text style={styles.label}>SKU</Text>
             <TextInput
               value={sku}
@@ -325,10 +370,41 @@ export default function ProductDetailsScreen() {
                 );
               })}
             </View>
-
+            {unit === 'DOZEN' ? <Text style={styles.helperText}>1 dozen = 12 pieces. Retail sales can use pieces.</Text> : null}
+            {['BOX', 'PACK'].includes(unit) ? <>
+              <Text style={styles.label}>Pieces per {formatUnitLabel(unit)}</Text>
+              <TextInput accessibilityLabel="Pieces per group" value={piecesPerUnit} onChangeText={(value) => { if (/^\d{0,6}$/.test(value)) setPiecesPerUnit(value); }} keyboardType="number-pad" placeholder="e.g. 24" style={styles.input} />
+              <Text style={styles.helperText}>Set before recording opening stock to enable retail sales by piece. Prices and stock below use the selected stock unit.</Text>
+            </> : null}
+            </View>
+            <View style={[styles.form, styles.formGap]}>
+            <View style={styles.optionHeading}>
+              <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Selling options</Text><Text style={styles.helperText}>Different quantities. Your own price for each.</Text></View>
+              <Text style={styles.optionCount}>{sellingOptions.length}/20</Text>
+            </View>
+            {!sellingOptions.length ? <View style={styles.optionEmpty}><Text style={styles.optionEmptyTitle}>Make everyday sales quicker</Text><Text style={styles.optionHint}>Offer a single piece, a bundle, or a full box. Each option gets its own price.</Text></View> : null}
+            {sellingOptions.map((option, index) => {
+              const change = (field: keyof SellingOption, value: string) => setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, [field]: value } : entry));
+              const choices = [...new Set([unit, ...((unit === 'DOZEN' || (['BOX', 'PACK'].includes(unit) && Number(piecesPerUnit) > 0)) ? ['PIECE'] : [])])];
+              return <View key={option.id} style={styles.optionEditor}>
+                <View style={styles.optionHeading}><Text style={styles.optionNumber}>OPTION {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Remove selling option ${index + 1}`} onPress={() => setSellingOptions((current) => current.filter((entry) => entry.id !== option.id))} style={styles.optionRemove}><Text style={styles.optionRemoveText}>Remove</Text></Pressable></View>
+                <Text style={styles.label}>Name</Text>
+                <TextInput accessibilityLabel={`Selling option ${index + 1} name`} maxLength={60} value={option.name} onChangeText={(value) => change('name', value)} placeholder="e.g. Single piece or Family pack" style={[styles.input, styles.optionInput]} />
+                {choices.length > 1 ? <><Text style={styles.label}>Sell by</Text><View style={styles.units}>{choices.map((choice) => <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: option.unit === choice }} onPress={() => change('unit', choice)} style={[styles.unitOption, option.unit === choice && styles.unitSelected]}><Text style={[styles.unitText, option.unit === choice && styles.unitTextSelected]}>{formatUnitLabel(choice)}</Text></Pressable>)}</View></> : null}
+                <View style={[styles.fieldsRow, { marginTop: 12 }]}>
+                  <View style={styles.field}><Text style={styles.label}>Quantity ({formatUnitLabel(option.unit)})</Text><TextInput accessibilityLabel={`Selling option ${index + 1} quantity`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) change('quantity', value); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput]} /></View>
+                  <View style={styles.field}><Text style={styles.label}>Price for this quantity</Text><View style={styles.optionPriceField}><Text style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Selling option ${index + 1} price`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) change('sellingPrice', value); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View></View>
+                </View>
+                {Number(option.quantity) > 0 && Number(option.sellingPrice) > 0 ? <View style={styles.optionPreview}><Text style={styles.optionPreviewText}>{option.quantity} {formatUnitLabel(option.unit)} for {formatMoney(Number(option.sellingPrice))}</Text><Text style={styles.optionHint}>{formatMoney(Number(option.sellingPrice) / Number(option.quantity))} / {formatUnitLabel(option.unit)}</Text></View> : null}
+              </View>;
+            })}
+            <Pressable accessibilityRole="button" accessibilityLabel="Add another quantity and selling price" accessibilityState={{ disabled: sellingOptions.length >= 20 }} disabled={sellingOptions.length >= 20} onPress={addSellingOption} style={[styles.optionAdd, sellingOptions.length >= 20 && { opacity: 0.45 }]}><Text style={styles.optionAddText}>＋ {sellingOptions.length ? 'Add another selling option' : 'Add selling option'}</Text></Pressable>
+            {sellingOptions.length > 0 ? <Text style={styles.optionHint}>All options are saved with your product.</Text> : null}
             </View>
             <View style={[styles.form, styles.formGap]}>
             <Text style={styles.sectionTitle}>Pricing & reorder level</Text>
+            <Text style={styles.label}>GST rate (%)</Text><TextInput accessibilityLabel="Product GST rate" value={gstRate} onChangeText={(value) => { if (/^\d{0,3}(?:\.\d{0,2})?$/.test(value)) setGstRate(value); }} keyboardType="decimal-pad" style={styles.input} />
+            <Text style={styles.helperText}>Prices exclude GST. The configured rate is added when saving a sale or purchase; saved receipts keep their original rate.</Text>
             <View style={styles.fieldsRow}>
               <View style={styles.field}>
                 <Text style={styles.label}>Purchase price</Text>
@@ -347,7 +423,7 @@ export default function ProductDetailsScreen() {
                 />
               </View>
               <View style={styles.field}>
-                <Text style={styles.label}>Selling price</Text>
+                <Text style={styles.label}>Default price / {formatUnitLabel(unit)}</Text>
                 <TextInput
                   value={sellingPrice}
                   onChangeText={(value) => {
@@ -449,6 +525,29 @@ export default function ProductDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+  categoryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  categoryDropdown: { marginTop: 6, borderWidth: 1, borderColor: '#DFE7E2', borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF' },
+  categoryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 12 },
+  categoryNotice: { padding: 14, color: '#737B77', fontSize: 12 },
+
+  optionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  optionCount: { color: '#176B50', backgroundColor: '#E7F2ED', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, fontSize: 12, fontWeight: '700' },
+  optionEmpty: { padding: 18, backgroundColor: '#F3F7F5', borderRadius: 12, marginTop: 16 },
+  optionEmptyTitle: { color: '#24332A', fontSize: 14, fontWeight: '700', marginBottom: 6 },
+  optionHint: { color: '#737B77', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  optionEditor: { marginTop: 16, padding: 16, borderWidth: 1, borderColor: '#DFE7E2', backgroundColor: '#FAFCFB', borderRadius: 16 },
+  optionNumber: { color: '#737B77', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  optionRemove: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
+  optionRemoveText: { color: '#A34838', fontSize: 12, fontWeight: '600' },
+  optionInput: { backgroundColor: '#FFFFFF' },
+  optionPriceField: { flexDirection: 'row', alignItems: 'center', minHeight: 49, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF', borderRadius: 11, paddingHorizontal: 12 },
+  optionCurrency: { color: '#737B77', fontSize: 16, marginRight: 6 },
+  optionPriceInput: { flex: 1, minWidth: 0, minHeight: 47, color: '#24332A', fontSize: 14 },
+  optionPreview: { marginTop: 14, borderTopWidth: 1, borderTopColor: '#E1E9E4', paddingTop: 12 },
+  optionPreviewText: { color: '#176B50', fontSize: 14, fontWeight: '700' },
+  optionAdd: { marginTop: 16, minHeight: 48, borderWidth: 1, borderStyle: 'dashed', borderColor: '#7AAE98', borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F8F5', paddingHorizontal: 12 },
+  optionAddText: { color: '#176B50', fontSize: 13, fontWeight: '700' },
+
   centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   content: { paddingHorizontal: 20, paddingBottom: 40, backgroundColor: '#F5F5F5' },
   backButton: { alignSelf: 'center', paddingVertical: 10, paddingRight: 12 },

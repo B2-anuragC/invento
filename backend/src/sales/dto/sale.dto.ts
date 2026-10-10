@@ -1,18 +1,21 @@
+import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '@prisma/client';
-import { ArrayMinSize, IsArray, IsDateString, IsDecimal, IsEnum, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsIn, IsArray, IsDateString, IsDecimal, IsEnum, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
 
 export class SaleItemDto {
+  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(64) sellingOptionId?: string;
+  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsIn(['PIECE', 'KG', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'SQUARE_FOOT', 'FOOT', 'PACK', 'BOX', 'DOZEN', 'OTHER']) unit?: string;
   @ApiProperty() @IsString() productId!: string;
   @ApiProperty({ example: '50.000' }) @IsDecimal(quantityOptions) @Matches(/^\d{1,9}(?:\.\d{1,3})?$/) quantity!: string;
   @ApiProperty({ example: '40.00' }) @IsDecimal(decimalOptions) @Matches(/^\d{1,10}(?:\.\d{1,2})?$/) sellingPrice!: string;
 }
 
-export class CreateSaleDto {
+export class CreateSaleDto extends TransactionFinanceDto {
   @ApiProperty({ enum: PaymentMethod }) @IsEnum(PaymentMethod) paymentMethod!: PaymentMethod;
   @ApiProperty() @IsString() customerId!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;

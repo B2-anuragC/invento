@@ -1,3 +1,4 @@
+export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string };
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
@@ -45,6 +46,9 @@ export type DashboardSummary = {
       name: string;
       sku: string;
       unit: string;
+  piecesPerUnit?: number | null;
+  sellingOptions?: SellingOption[];
+  gstRate?: string;
     };
   }>;
 };
@@ -57,6 +61,9 @@ export type ProductRecord = {
   barcode?: string | null;
   category?: string | null;
   unit: string;
+  piecesPerUnit?: number | null;
+  sellingOptions?: SellingOption[];
+  gstRate?: string;
   purchasePrice?: string | null;
   sellingPrice: string;
   minimumStock: string;
@@ -71,6 +78,9 @@ export type ProductInput = {
   barcode?: string;
   category?: string;
   unit: string;
+  piecesPerUnit?: number | null;
+  sellingOptions?: SellingOption[];
+  gstRate?: string;
   purchasePrice: string;
   sellingPrice: string;
   minimumStock: string;
@@ -103,7 +113,14 @@ export type InventoryTransactionRecord = {
   createdAt: string;
 };
 
+export type PaymentRecord = { id: string; amount: string | number; method: string; kind: string; paidAt: string };
 export type SaleRecord = {
+  subtotal?: string | number;
+  taxTotal?: string | number;
+  amountPaid?: string | number | null;
+  dueDate?: string | null;
+  requestId?: string | null;
+  payments?: PaymentRecord[];
   id: string;
   invoiceNumber?: string | null;
   saleDate: string;
@@ -111,14 +128,17 @@ export type SaleRecord = {
   paymentMethod: string;
   note?: string | null;
   customer: { id: string; name: string };
-  items: Array<{ id: string; productId: string; quantity: string | number; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
+  amountPaid?: string;
+  dueDate?: string;
+  requestId?: string;
   customerId: string;
   paymentMethod: 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
   saleDate: string;
-  items: Array<{ productId: string; quantity: string; sellingPrice: string }>;
+  items: Array<{ productId: string; unit?: string; sellingOptionId?: string; quantity: string; sellingPrice: string }>;
 };
 
 export type SupplierRecord = {
@@ -132,13 +152,19 @@ export type SupplierRecord = {
 };
 
 export type PurchaseRecord = {
+  subtotal?: string | number;
+  taxTotal?: string | number;
+  amountPaid?: string | number | null;
+  dueDate?: string | null;
+  requestId?: string | null;
+  payments?: PaymentRecord[];
   id: string;
   invoiceNumber?: string | null;
   purchaseDate: string;
   note?: string | null;
   total?: string | number;
   supplier: { id: string; name: string };
-  items: Array<{ id: string; productId: string; quantity: string | number; purchasePrice?: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; purchasePrice?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type BusinessUserRecord = {
@@ -165,6 +191,10 @@ export type InventoryActivityRecord = InventoryTransactionRecord & {
 };
 
 export type CreatePurchaseInput = {
+  amountPaid?: string;
+  dueDate?: string;
+  requestId?: string;
+  paymentMethod?: CreateSaleInput['paymentMethod'];
   supplierId: string;
   purchaseDate: string;
   invoiceNumber?: string;
@@ -235,7 +265,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${apiHost}:3000/
 
 let refreshRequest: Promise<AppSession> | null = null;
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
   }
@@ -325,10 +355,14 @@ async function request<T>(
     headers.set('X-Business-Id', session.businessId);
   }
 
+  console.log('[API request]', options.method ?? 'GET', `${API_BASE_URL}${path}`);
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
   });
+
+  console.log('[API response]', response.status, response.url);
 
   const text = await response.text();
   let payload: any = null;
@@ -635,4 +669,8 @@ export async function createPurchase(session: AppSession, input: CreatePurchaseI
 
 export async function fetchPurchase(session: AppSession, purchaseId: string): Promise<PurchaseRecord> {
   return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
+}
+
+export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string }): Promise<SaleRecord | PurchaseRecord> {
+  return request(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);
 }

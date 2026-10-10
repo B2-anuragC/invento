@@ -44,11 +44,12 @@ export class DashboardService {
         SELECT COUNT(*)::int AS count FROM products p
         LEFT JOIN inventories i ON i."productId" = p.id AND i."businessId" = p."businessId"
         WHERE p."businessId" = ${businessId} AND p.status = 'ACTIVE'
-          AND COALESCE(i.quantity, 0) < p."minimumStock"`);
-      const recentTransactions = await tx.inventoryTransaction.findMany({
+          AND COALESCE(i.quantity, 0) / COALESCE(p."piecesPerUnit", 1) < p."minimumStock"`);
+      const storedTransactions = await tx.inventoryTransaction.findMany({
         where: { businessId }, take: 10, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true, productId: true, type: true, quantity: true, balanceAfter: true, createdAt: true, note: true, product: { select: { name: true, sku: true, unit: true } } },
+        select: { id: true, productId: true, type: true, quantity: true, balanceAfter: true, createdAt: true, note: true, product: { select: { name: true, sku: true, unit: true, piecesPerUnit: true } } },
       });
+      const recentTransactions = storedTransactions.map((row) => ({ ...row, quantity: row.quantity.div(row.product.piecesPerUnit ?? 1), balanceAfter: row.balanceAfter.div(row.product.piecesPerUnit ?? 1) }));
       return {
         date: today,
         timezone: dashboardTimezone,
@@ -97,10 +98,10 @@ export class DashboardService {
     await this.requireMembership(userId, businessId);
     return this.prisma.$queryRaw<LowStock[]>(Prisma.sql`
       SELECT p.id AS "productId", p.name, p.sku, p.unit,
-        COALESCE(i.quantity, 0) AS quantity, p."minimumStock"
+        COALESCE(i.quantity, 0) / COALESCE(p."piecesPerUnit", 1) AS quantity, p."minimumStock"
       FROM products p LEFT JOIN inventories i ON i."productId" = p.id AND i."businessId" = p."businessId"
       WHERE p."businessId" = ${businessId} AND p.status = 'ACTIVE'
-        AND COALESCE(i.quantity, 0) < p."minimumStock"
+        AND COALESCE(i.quantity, 0) / COALESCE(p."piecesPerUnit", 1) < p."minimumStock"
       ORDER BY p.name, p.id LIMIT ${query.limit} OFFSET ${query.offset}`);
   }
 
@@ -108,7 +109,7 @@ export class DashboardService {
     await this.requireMembership(userId, businessId);
     const range = dashboardRange(query);
     const items = await this.prisma.$queryRaw<(Pick<LowStock, 'productId' | 'name' | 'sku' | 'unit'> & { quantity: Prisma.Decimal; revenue: Prisma.Decimal })[]>(Prisma.sql`
-      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(i.quantity) AS quantity, SUM(i."lineTotal") AS revenue
+      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN i.quantity * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE i.quantity * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal") AS revenue
       FROM sale_items i JOIN sales s ON s.id = i."saleId"
       JOIN products p ON p.id = i."productId" AND p."businessId" = s."businessId"
       WHERE s."businessId" = ${businessId} AND s.status = 'COMPLETED'

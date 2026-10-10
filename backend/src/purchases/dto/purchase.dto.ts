@@ -1,6 +1,8 @@
+import { PaymentMethod } from '@prisma/client';
+import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsEnum, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
@@ -11,7 +13,8 @@ export class PurchaseItemDto {
   @ApiProperty({ example: '40.00' }) @IsDecimal(decimalOptions) @Matches(/^\d{1,10}(?:\.\d{1,2})?$/) purchasePrice!: string;
 }
 
-export class CreatePurchaseDto {
+export class CreatePurchaseDto extends TransactionFinanceDto {
+  @ApiPropertyOptional() @ValidateIf((_o, v) => v !== undefined) @IsEnum(PaymentMethod) paymentMethod?: PaymentMethod;
   @ApiProperty() @IsString() supplierId!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;
   @ApiProperty({ example: '2026-01-15' }) @IsDateString({ strict: true }) purchaseDate!: string;

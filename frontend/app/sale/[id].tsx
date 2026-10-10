@@ -1,3 +1,5 @@
+import { RecordPaymentModal } from '@/components/record-payment-modal';
+import { TransactionReceipt } from '@/components/transaction-receipt';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -5,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton, AppScreen, ListCard, formatUnitLabel } from '@/components/invento-ui';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
-import { appSession, fetchProduct, fetchSale, type SaleRecord } from '@/services/api';
+import { appSession, fetchPricingAccess, fetchProduct, fetchSale, type SaleRecord } from '@/services/api';
 
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
 
@@ -17,6 +19,8 @@ export default function SaleDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [canRecordPayment, setCanRecordPayment] = useState(false);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -29,6 +33,7 @@ export default function SaleDetailsScreen() {
       setLoading(false);
       return;
     }
+    void fetchPricingAccess(session).then((access) => { if (active) setCanRecordPayment(access.role === 'OWNER' || access.role === 'ADMIN'); }).catch(() => { if (active) setCanRecordPayment(false); });
     fetchSale(session, id).then(async (record) => {
       const missingIds = [...new Set(record.items.filter((item) => !item.product?.name).map((item) => item.productId))];
       const products = await Promise.all(missingIds.map(async (productId) => {
@@ -39,10 +44,14 @@ export default function SaleDetailsScreen() {
     })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Could not load this sale.'); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      return () => { active = false; };
     // Retry recreates the focus effect to reload this sale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, retry]));
+
+    if (!loading && !error && sale) {
+    return <><TransactionReceipt data={{ id: sale.id, kind: 'sale', date: sale.saleDate, invoice: sale.invoiceNumber, contact: sale.customer.name, total: sale.total, subtotal: sale.subtotal, taxTotal: sale.taxTotal, amountPaid: sale.amountPaid, dueDate: sale.dueDate, payments: sale.payments, paymentMethod: sale.paymentMethod, note: sale.note, items: sale.items.map((item) => ({ id: item.id, name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: item.optionName ?? formatUnitLabel(item.unit ?? item.product?.unit ?? 'PIECE'), price: item.sellingPrice == null ? undefined : Number(item.sellingPrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/sale/create')} onRepeat={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} onPayment={canRecordPayment && sale.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && sale.total != null ? <RecordPaymentModal kind="sale" id={sale.id} total={sale.total} amountPaid={sale.amountPaid} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
+  }
 
   return (
     <AppScreen>
@@ -64,7 +73,7 @@ export default function SaleDetailsScreen() {
                   <View style={styles.copy}>
                     <Text style={styles.name}>{item.product?.name ?? 'Product unavailable'}</Text>
                     {item.product?.sku ? <Text style={styles.meta}>{item.product.sku}</Text> : null}
-                    <Text style={styles.meta}>{Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {item.product ? formatUnitLabel(item.product.unit) : 'units'} × {money(Number(item.sellingPrice))}</Text>
+                    <Text style={styles.meta}>{Number(item.quantity).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {item.product ? item.optionName ?? formatUnitLabel(item.unit ?? item.product.unit) : 'units'} × {money(Number(item.sellingPrice))}</Text>
                   </View>
                   <Text style={styles.amount}>{money(Number(item.quantity) * Number(item.sellingPrice))}</Text>
                 </View>

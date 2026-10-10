@@ -4,7 +4,7 @@ import { InventoryService } from './inventory.service.js';
 
 type InventoryRow = { id: string; businessId: string; productId: string; quantity: Prisma.Decimal };
 
-function createFakePrisma(options: { role?: string; isActive?: boolean; product?: { id: string; businessId: string } | null; failOpeningStockConflict?: boolean } = {}) {
+function createFakePrisma(options: { role?: string; isActive?: boolean; product?: { id: string; businessId: string; unit?: string; piecesPerUnit?: number } | null; failOpeningStockConflict?: boolean } = {}) {
   const role = options.role ?? 'OWNER';
   const isActive = options.isActive ?? true;
   const product = options.product === undefined ? { id: 'product-a', businessId: 'business-a' } : options.product;
@@ -223,5 +223,32 @@ describe('InventoryService', () => {
       expect(sale.balanceAfter.toString()).toBe('130');
       expect(store.inventory?.quantity.toString()).toBe('130');
     });
+  });
+});
+
+
+describe('Grouped inventory storage and presentation', () => {
+  it('stores dozen stock in pieces and exposes stock and ledger in dozens', async () => {
+    const { prisma, store } = createFakePrisma({ product: { id: 'product-a', businessId: 'business-a', unit: 'DOZEN', piecesPerUnit: 12 } });
+    const service = new InventoryService(prisma as never);
+    const input = { businessId: 'business-a', productId: 'product-a', userId: 'user-a' };
+    const opening = await service.recordOpeningStock({ ...input, quantity: '2' });
+    expect(opening.quantity.toString()).toBe('2');
+    expect(store.inventory?.quantity.toString()).toBe('24');
+    await service.applyMovement({ ...input, type: InventoryTransactionType.SALE, unit: 'PIECE', quantity: '3' });
+    expect(store.inventory?.quantity.toString()).toBe('21');
+    expect((await service.get('user-a', 'business-a', 'product-a')).quantity.toString()).toBe('1.75');
+    const history = await service.history('user-a', 'business-a', 'product-a');
+    expect(history[1].quantity.toString()).toBe('-0.25');
+    expect(history[1].balanceAfter.toString()).toBe('1.75');
+    await service.applyMovement({ ...input, type: InventoryTransactionType.PURCHASE, quantity: '1' });
+    expect(store.inventory?.quantity.toString()).toBe('33');
+  });
+
+  it('rejects a grouped quantity representing a fractional piece', async () => {
+    const { prisma, store } = createFakePrisma({ product: { id: 'product-a', businessId: 'business-a', unit: 'DOZEN', piecesPerUnit: 12 } });
+    const service = new InventoryService(prisma as never);
+    await expect(service.recordOpeningStock({ businessId: 'business-a', productId: 'product-a', userId: 'user-a', quantity: '0.1' })).rejects.toThrow('whole number of pieces');
+    expect(store.inventory).toBeNull();
   });
 });

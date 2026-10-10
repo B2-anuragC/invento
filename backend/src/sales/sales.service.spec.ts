@@ -10,7 +10,7 @@ function createFakeEnvironment(
     role?: string;
     isActive?: boolean;
     customer?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string; unit?: string }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -78,25 +78,25 @@ function createFakeEnvironment(
   const prisma = {
     businessUser: { findUnique: vi.fn(async () => (isActive ? { isActive, role } : { isActive: false, role })) },
     customer: { findFirst: vi.fn(async () => customer) },
-    product: { findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
+    product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     sale: { findFirst: vi.fn(async () => null) },
     // Simulates real Postgres transaction semantics: writes made during the
     // callback mutate the store. On failure, restore the pre-transaction
     // snapshot. This models rollback, not database locking or isolation.
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
-      const snapshotBefore = structuredClone({
+      const snapshotBefore = JSON.parse(JSON.stringify({
         sales: store.sales,
         saleItems: store.saleItems,
         inventory: Object.fromEntries(Object.entries(store.inventory).map(([id, row]) => [id, { ...row, quantity: row.quantity.toString() }])),
         inventoryTransactions: store.inventoryTransactions,
-      });
+      }));
       try {
         return await callback(txClient);
       } catch (error) {
         store.sales = snapshotBefore.sales;
         store.saleItems = snapshotBefore.saleItems;
         store.inventory = Object.fromEntries(
-          Object.entries(snapshotBefore.inventory).map(([id, row]) => [id, { ...row, quantity: new Prisma.Decimal(row.quantity) }]),
+          Object.entries(snapshotBefore.inventory as Record<string, InventoryRow>).map(([id, row]) => [id, { ...row, quantity: new Prisma.Decimal(row.quantity) }]),
         );
         store.inventoryTransactions = snapshotBefore.inventoryTransactions;
         throw error;
@@ -339,5 +339,31 @@ describe('SalesService', () => {
     expect(store.inventory['product-a'].quantity.toString()).toBe('100');
     expect(store.inventory['product-b'].quantity.toString()).toBe('20');
     expect(store.inventoryTransactions).toHaveLength(0);
+  });
+});
+
+
+describe('Retail sales of grouped products', () => {
+  it.each([['DOZEN', 12], ['BOX', 24], ['PACK', 6]])('sells every piece of a %s without stock drift', async (unit, size) => {
+    const { service, store } = createFakeEnvironment({ products: [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Grouped product', unit, piecesPerUnit: size }], openingStock: { 'product-a': String(size) } });
+    for (let count = 0; count < size; count++) {
+      await service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', unit: 'PIECE', quantity: '1', sellingPrice: '10.00' }] });
+    }
+    expect(store.inventory['product-a'].quantity.toString()).toBe('0');
+    expect(store.saleItems).toHaveLength(size);
+    expect(store.saleItems[0]).toMatchObject({ unit: 'PIECE' });
+    await expect(service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', unit: 'PIECE', quantity: '1', sellingPrice: '10.00' }] })).rejects.toThrow('Insufficient stock');
+  });
+
+  it('deducts a full dozen as 12 pieces and keeps the dozen price', async () => {
+    const { service, store } = createFakeEnvironment({ products: [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Eggs', unit: 'DOZEN', piecesPerUnit: 12 }], openingStock: { 'product-a': '24' } });
+    await service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', unit: 'DOZEN', quantity: '1', sellingPrice: '120.00' }] });
+    expect(store.inventory['product-a'].quantity.toString()).toBe('12');
+    expect(store.saleItems[0]).toMatchObject({ unit: 'DOZEN', lineTotal: new Prisma.Decimal(120) });
+  });
+
+  it.each([['PIECE', '0.5'], ['KG', '1']])('rejects an invalid retail unit or fractional piece', async (unit, quantity) => {
+    const { service } = createFakeEnvironment({ products: [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Eggs', unit: 'DOZEN', piecesPerUnit: 12 }] });
+    await expect(service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', unit, quantity, sellingPrice: '10.00' }] })).rejects.toBeInstanceOf(BadRequestException);
   });
 });

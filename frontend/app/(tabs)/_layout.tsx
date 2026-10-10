@@ -79,10 +79,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="sales"
         options={{
+          href: null,
           title: 'Sales',
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="dollarsign.circle.fill" color={color} />,
         }}
       />
+      <Tabs.Screen name="activity" options={{ title: 'Activity', tabBarIcon: ({ color }) => <IconSymbol size={23} name="arrow.left.arrow.right" color={color} /> }} />
       <Tabs.Screen
         name="people"
         options={{
@@ -93,11 +95,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="purchases"
         options={{
+          href: null,
           title: 'Purchases',
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="cart.fill" color={color} />,
         }}
       />
-      <Tabs.Screen name="activity" options={{ href: null }} />
       <Tabs.Screen name="inventory" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>

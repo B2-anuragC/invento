@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
+import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
+import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
+import { usePreventRemove } from '@react-navigation/native';
+import { ApiError } from '@/services/api';
+import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
+import { TransactionSaveNotice } from '@/components/transaction-save-notice';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -29,13 +36,7 @@ import {
 
 type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
 type RouteParams = { productId?: string | string[]; quantity?: string | string[]; saleId?: string | string[]; customerId?: string | string[] };
-const paymentMethods: { value: PaymentMethod; label: string }[] = [
-  { value: 'CASH', label: 'Cash' },
-  { value: 'UPI', label: 'UPI' },
-  { value: 'CARD', label: 'Card' },
-  { value: 'BANK_TRANSFER', label: 'Bank' },
-  { value: 'OTHER', label: 'Other' },
-];
+
 const paramValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
 
 export default function CreateSaleScreen() {
@@ -49,6 +50,9 @@ export default function CreateSaleScreen() {
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
   const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [unitPrices, setUnitPrices] = useState<Record<string, string>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+  const [sellingUnits, setSellingUnits] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -60,11 +64,23 @@ export default function CreateSaleScreen() {
   const [stockOnly, setStockOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'full' | 'partial' | 'credit'>('full');
+  const [paidInput, setPaidInput] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [saveRequestId, setSaveRequestId] = useState(requestKey);
+  const [draftCandidate, setDraftCandidate] = useState<TransactionDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStorageError, setDraftStorageError] = useState('');
+  usePreventRemove(saving, () => {});
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [error, setError] = useState('');
   const [receiptVisible, setReceiptVisible] = useState(false);
   const [leaveConfirm, setLeaveConfirm] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [saveOutcome, setSaveOutcome] = useState<'rejected' | 'unknown' | null>(null);
+  const submitting = useRef(false);
+  const discardDraftWrites = useRef(false);
+  const savedBalancesForNext = useRef<Record<string, number> | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
 
@@ -109,8 +125,15 @@ export default function CreateSaleScreen() {
           setPaymentMethod(previous.paymentMethod as PaymentMethod);
           const activeProductIds = new Set(productData.map((product) => product.id));
           const unavailable = previous.items.filter((item) => !activeProductIds.has(item.productId));
+          const missingOption = previous.items.some((item) => item.sellingOptionId && !productData.find((entry) => entry.id === item.productId)?.sellingOptions?.some((entry) => entry.id === item.sellingOptionId));
+          if (missingOption) throw new Error('A saved selling option is no longer available. Start a new sale and choose current options.');
+          setSelectedOptions(previous.items.reduce<Record<string, string>>((values, item) => { if (item.sellingOptionId) values[item.productId] = item.sellingOptionId; return values; }, {}));
           setQuantities(previous.items.reduce<Record<string, string>>((values, item) => {
             if (activeProductIds.has(item.productId)) values[item.productId] = String(item.quantity);
+            return values;
+          }, {}));
+          setSellingUnits(previous.items.reduce<Record<string, string>>((values, item) => {
+            if (activeProductIds.has(item.productId) && item.unit) values[item.productId] = item.unit;
             return values;
           }, {}));
           setPrices((current) => previous.items.reduce<Record<string, string>>((values, item) => {
@@ -155,16 +178,26 @@ export default function CreateSaleScreen() {
 
   const saleItems = useMemo(
     () => products.flatMap((product) => {
-      const quantity = Number(quantities[product.id] ?? 0);
-      if (!Number.isFinite(quantity) || quantity <= 0) return [];
-      return [{ product, quantity, price: Number(prices[product.id] ?? product.sellingPrice) }];
+      if (!Object.prototype.hasOwnProperty.call(quantities, product.id)) return [];
+      const parsedQuantity = Number(quantities[product.id]);
+      const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
+      const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
+      return [{ product, quantity, option, unit: option?.unit ?? sellingUnits[product.id] ?? product.unit, price: Number(option?.sellingPrice ?? prices[product.id] ?? product.sellingPrice) }];
     }),
-    [prices, products, quantities],
+    [prices, products, quantities, sellingUnits, selectedOptions],
   );
-  const total = saleItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+  const { subtotal, tax: taxTotal, total } = transactionTotals(saleItems);
+  const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
+  const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
   const quantityError = (product: ProductRecord, quantity: number) => {
-    if (quantity > (stock[product.id] ?? 0)) return `Only ${stock[product.id] ?? 0} ${formatUnitLabel(product.unit)} available.`;
-    if (product.unit === 'PIECE' && !Number.isInteger(quantity)) return 'Enter a whole number of pieces.';
+    if (quantity <= 0) return 'Enter a quantity greater than zero.';
+    const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
+    if (option && !Number.isInteger(quantity)) return 'Enter a whole number of options.';
+    quantity *= Number(option?.quantity ?? 1);
+    const retail = (option?.unit ?? sellingUnits[product.id]) === 'PIECE' && product.piecesPerUnit;
+    if (quantity / (retail ? product.piecesPerUnit! : 1) > (stock[product.id] ?? 0) + 1e-9) return `Only ${stock[product.id] ?? 0} ${formatUnitLabel(product.unit)} available.`;
+    if ((product.unit === 'PIECE' || retail) && !Number.isInteger(quantity)) return 'Enter a whole number of pieces.';
+    if (product.piecesPerUnit && !retail && Math.abs(quantity * product.piecesPerUnit - Math.round(quantity * product.piecesPerUnit)) > 1e-8) return 'Enter a quantity representing whole pieces, or switch to pieces.';
     return '';
   };
   const quantitiesValid = saleItems.every((item) => item.price > 0 && !quantityError(item.product, item.quantity));
@@ -174,11 +207,43 @@ export default function CreateSaleScreen() {
   useEffect(() => {
     if (!hasChanges || receiptVisible || Platform.OS === 'web') return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      setLeaveConfirm(true);
+      if (!submitting.current) setLeaveConfirm(true);
       return true;
     });
     return () => subscription.remove();
   }, [hasChanges, receiptVisible]);
+
+  useEffect(() => {
+    if (loading || draftReady || !appSession.current) return;
+    let active = true;
+    readDraft(appSession.current, 'sale').then((draft) => { if (active) setDraftCandidate(draft); }).catch(() => { if (active) setDraftStorageError('Could not read your saved draft.'); }).finally(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
+  }, [loading, draftReady]);
+
+  const restoreDraft = () => {
+    const draft = draftCandidate;
+    if (!draft) return;
+    const available = new Set(products.map((product) => product.id));
+    setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
+    setPrices(draft.prices); setCustomerId(draft.contactId); setShowCustomerPicker(!draft.contactId); setStep(draft.step);
+    setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as PaymentMethod); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
+    setSellingUnits(draft.sellingUnits ?? {}); setSelectedOptions(draft.selectedOptions ?? {});
+    setDraftCandidate(null);
+    if (Object.keys(draft.quantities).some((id) => !available.has(id))) setError('Some products are no longer active and were removed from this draft.');
+  };
+  const discardStoredDraft = async () => {
+    const session = appSession.current;
+    if (!session) return;
+    try { await clearDraft(session, 'sale'); setDraftCandidate(null); setSaveRequestId(requestKey()); } catch { setDraftStorageError('Could not discard the saved draft. Please try again.'); }
+  };
+  useEffect(() => {
+    const session = appSession.current;
+    if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || customerId)) return;
+    const draft: TransactionDraft = { version: 1, kind: 'sale', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: customerId, contactName: selectedCustomer?.name ?? '', quantities, prices, sellingUnits, selectedOptions, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
+    const persist = () => { if (discardDraftWrites.current) return; void saveDraft(session, draft).catch(() => setDraftStorageError('Could not save this draft on your device. Keep this screen open.')); };
+    const timer = setTimeout(persist, 350);
+    return () => { clearTimeout(timer); persist(); };
+  }, [draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, sellingUnits, selectedOptions, customerId, selectedCustomer?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
 
   const changeQuantity = (productId: string, value: string) => {
     if (!/^\d*(?:\.\d{0,3})?$/.test(value)) return;
@@ -213,36 +278,43 @@ export default function CreateSaleScreen() {
 
   const saveSale = async () => {
     const session = appSession.current;
-    if (!session || !customerId || !saleItems.length || !quantitiesValid || saving) return;
+    if (!session || !customerId || !saleItems.length || !quantitiesValid || saving || submitting.current || receiptVisible || !paymentValid || draftCandidate) return;
+    submitting.current = true;
+    setSaveOutcome(null);
     setSaving(true);
     setError('');
     try {
       const savedSale = await createSale(session, {
+        requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
         customerId,
         paymentMethod,
         saleDate: new Date().toISOString(),
-        items: saleItems.map(({ product, quantity, price }) => ({
+        items: saleItems.map(({ product, quantity, price, unit, option }) => ({
           productId: product.id,
+          unit,
+          sellingOptionId: option?.id,
           quantity: String(quantity),
           sellingPrice: price.toFixed(2),
         })),
       });
-      setSuccessMessage([
-        `Sale saved · ${formatMoney(total)}`,
-        `Customer: ${selectedCustomer?.name ?? 'Customer'}`,
-        `Receipt: ${savedSale.invoiceNumber || savedSale.id.slice(-8).toUpperCase()}`,
-        `Payment: ${paymentMethods.find((method) => method.value === paymentMethod)?.label}`,
-        ...saleItems.map((item) => `${item.product.name} · ${item.quantity} ${formatUnitLabel(item.product.unit)} × ${formatMoney(item.price)}`),
-      ].join('\n'));
+      discardDraftWrites.current = true;
+      await clearDraft(session, 'sale').catch(() => setDraftStorageError('Transaction saved, but the draft could not be cleared. Check Activity before restoring it.'));
+      const refreshedInventory = await fetchInventory(session).catch(() => null);
+      if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
+      const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
+      setReceiptData({ id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, contact: savedSale.customer.name, total: savedSale.total, subtotal: savedSale.subtotal, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
+      setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
       setError(saveError instanceof Error ? saveError.message : 'Could not record sale. Your sale is still here; review and retry.');
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
 
   const goBack = () => {
+    if (submitting.current) return;
     if (step > 1) {
       setStep((current) => (current - 1) as 1 | 2 | 3);
       return;
@@ -273,9 +345,22 @@ export default function CreateSaleScreen() {
     setStep(3);
   };
 
+  const changeSellingUnit = (product: ProductRecord, nextUnit: string) => {
+    const currentUnit = sellingUnits[product.id] ?? product.unit;
+    if (currentUnit === nextUnit) return;
+    const size = product.piecesPerUnit ?? 1;
+    const price = Number(prices[product.id] ?? product.sellingPrice);
+    const nextPrice = unitPrices[`${product.id}:${nextUnit}`] ?? (nextUnit === 'PIECE' ? price / size : price * size).toFixed(2);
+    setUnitPrices((current) => ({ ...current, [`${product.id}:${currentUnit}`]: price.toFixed(2) }));
+    setSellingUnits((current) => ({ ...current, [product.id]: nextUnit }));
+    setPrices((current) => ({ ...current, [product.id]: nextPrice }));
+    setQuantities((current) => ({ ...current, [product.id]: '1' }));
+    clearErrorOnEdit();
+  };
+
   const toggleProduct = (product: ProductRecord) => {
     setQuantities((current) => {
-      if (current[product.id]) {
+      if (Object.prototype.hasOwnProperty.call(current, product.id)) {
         const next = { ...current };
         delete next[product.id];
         return next;
@@ -323,8 +408,11 @@ export default function CreateSaleScreen() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+        <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {error && !saveOutcome ? <Text style={styles.error}>{error}</Text> : null}
+          {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
+          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
+          <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedCustomer && !showCustomerPicker ? (
             <View style={styles.selectedCustomer}>
               <Text style={styles.customerGlyph}>♙</Text>
@@ -382,16 +470,17 @@ export default function CreateSaleScreen() {
               {filteredProducts.map((product) => {
                 const available = stock[product.id] ?? 0;
                 const quantity = quantities[product.id];
+                const selected = Object.prototype.hasOwnProperty.call(quantities, product.id);
                 return (
-                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, Boolean(quantity) && styles.productCardSelected]}>
+                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, selected && styles.productCardSelected]}>
                     <View style={styles.productTop}>
                       <View style={styles.productGlyph}><Text style={styles.productGlyphText}>⌁</Text></View>
                       <View style={styles.productCopy}>
                         <Text numberOfLines={1} style={styles.productName}>{product.name}</Text>
                         <Text numberOfLines={1} style={styles.productMeta}>{product.category ? `${product.category} · ` : ''}{product.sku}</Text>
                       </View>
-                      <View style={[styles.addProductButton, Boolean(quantity) && styles.addProductSelected]}>
-                        <Text style={[styles.addProductText, Boolean(quantity) && styles.addProductTextSelected]}>{quantity ? '✓' : '+'}</Text>
+                      <View style={[styles.addProductButton, selected && styles.addProductSelected]}>
+                        <Text style={[styles.addProductText, selected && styles.addProductTextSelected]}>{selected ? '✓' : '+'}</Text>
                       </View>
                     </View>
                     <View style={styles.productFacts}>
@@ -410,7 +499,7 @@ export default function CreateSaleScreen() {
                         <Text style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
                       </View>
                     </View>
-                    {quantity ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(product.unit)}</Text> : null}
+                    {selected ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(sellingUnits[product.id] ?? product.unit)}</Text> : null}
                   </Pressable>
                 );
               })}
@@ -425,7 +514,7 @@ export default function CreateSaleScreen() {
                 <Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>Add item</Text></Pressable>
               </View>
               {!saleItems.length ? <Text style={styles.empty}>Add a product before entering quantities.</Text> : null}
-              {saleItems.map(({ product, quantity, price }) => {
+              {saleItems.map(({ product, quantity, price, unit, option }) => {
                 const invalidMessage = quantityError(product, quantity);
                 return (
                   <View key={product.id} style={[styles.quantityCard, invalidMessage && styles.quantityCardInvalid]}>
@@ -436,18 +525,46 @@ export default function CreateSaleScreen() {
                       </View>
                       <Pressable onPress={() => toggleProduct(product)}><Text style={styles.removeText}>×</Text></Pressable>
                     </View>
+                    {product.sellingOptions?.length ? <>
+                      <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Choose a selling option</Text>
+                      <View style={styles.sellingOptionList}>
+                        {product.sellingOptions.map((entry) => {
+                          const selected = option?.id === entry.id;
+                          return <Pressable key={entry.id} accessibilityRole="button" accessibilityLabel={`${entry.name}, ${entry.quantity} ${formatUnitLabel(entry.unit)}, ${formatMoney(Number(entry.sellingPrice))}`} accessibilityState={{ selected }} onPress={() => { setSelectedOptions((current) => ({ ...current, [product.id]: entry.id })); changeQuantity(product.id, '1'); }} style={[styles.sellingOptionCard, selected && styles.sellingOptionSelected]}>
+                            <View style={[styles.optionRadio, selected && styles.optionRadioSelected]}>{selected ? <View style={styles.optionRadioDot} /> : null}</View>
+                            <View style={{ flex: 1 }}><Text style={styles.sellingOptionName}>{entry.name}</Text><Text style={styles.sellingOptionQuantity}>{entry.quantity} {formatUnitLabel(entry.unit)} included</Text></View>
+                            <Text style={styles.sellingOptionPrice}>{formatMoney(Number(entry.sellingPrice))}</Text>
+                          </Pressable>;
+                        })}
+                        <Pressable accessibilityRole="button" accessibilityState={{ selected: !option }} onPress={() => { setSelectedOptions((current) => ({ ...current, [product.id]: '' })); changeQuantity(product.id, '1'); }} style={[styles.sellingOptionCard, !option && styles.sellingOptionSelected]}>
+                          <View style={[styles.optionRadio, !option && styles.optionRadioSelected]}>{!option ? <View style={styles.optionRadioDot} /> : null}</View>
+                          <View style={{ flex: 1 }}><Text style={styles.sellingOptionName}>Standard sale</Text><Text style={styles.sellingOptionQuantity}>Use the regular unit and price</Text></View>
+                        </Pressable>
+                      </View>
+                    </> : null}
+                    {!option ? <>
+                    <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Selling unit</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginVertical: 10 }}>
+                      {(product.piecesPerUnit || ['BOX', 'PACK', 'DOZEN'].includes(product.unit) ? [product.unit, 'PIECE'] : [product.unit]).map((choice) => {
+                        const unavailable = choice === 'PIECE' && product.unit !== 'PIECE' && !product.piecesPerUnit;
+                        const selected = unit === choice;
+                        return <Pressable key={choice} accessibilityLabel={`Sell ${product.name} by ${formatUnitLabel(choice)}`} accessibilityRole="button" accessibilityState={{ selected, disabled: unavailable }} disabled={unavailable} onPress={() => changeSellingUnit(product, choice)} style={{ borderWidth: 1, borderColor: selected ? '#176B50' : '#D5DAD7', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: selected ? '#176B50' : '#F4F4F4', opacity: unavailable ? 0.45 : 1 }}><Text style={{ color: selected ? '#FFFFFF' : '#24332A', fontWeight: '600' }}>{formatUnitLabel(choice)}{selected ? ' ✓' : ''}</Text></Pressable>;
+                      })}
+                    </View>
+                    {product.piecesPerUnit ? <Text style={styles.helperText}>1 {formatUnitLabel(product.unit)} = {product.piecesPerUnit} pieces. Changing the selling unit resets quantity to 1; check the suggested rate.</Text> : ['BOX', 'PACK', 'DOZEN'].includes(product.unit) ? <Text style={styles.helperText}>Piece sales are unavailable because pieces per group is not configured. Set the group size on the product before recording opening stock.</Text> : null}
+                    </> : <Text style={styles.helperText}>Each {option.name} contains {option.quantity} {formatUnitLabel(option.unit)}.</Text>}
                     <View style={styles.inputRow}>
                       <View style={styles.quantityField}>
-                        <Text style={styles.fieldLabel}>Quantity · {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.fieldLabel}>{option ? `Number of ${option.name}` : `Quantity · ${formatUnitLabel(unit)}`}</Text>
                         <View style={styles.quantityControl}>
-                          <Pressable accessibilityLabel={`Decrease ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(Math.max(0, quantity - (product.unit === 'PIECE' ? 1 : 0.5))))} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable>
+                          <Pressable accessibilityLabel={`Decrease ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(Math.max(0, quantity - (option || unit === 'PIECE' ? 1 : 0.5))))} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable>
                           <TextInput accessibilityLabel={`${product.name} quantity`} value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.quantityInput} />
-                          <Pressable accessibilityLabel={`Increase ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(quantity + (product.unit === 'PIECE' ? 1 : 0.5)))} style={styles.stepButton}><Text style={styles.stepText}>+</Text></Pressable>
+                          <Pressable accessibilityLabel={`Increase ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(quantity + (option || unit === 'PIECE' ? 1 : 0.5)))} style={styles.stepButton}><Text style={styles.stepText}>+</Text></Pressable>
                         </View>
                       </View>
                       <View style={styles.priceField}>
-                        <Text style={styles.fieldLabel}>Sell rate / {formatUnitLabel(product.unit)}</Text>
-                        <TextInput value={prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.priceInput} />
+                        <Text style={styles.fieldLabel}>Sell rate / {formatUnitLabel(unit)}</Text>
+                        <TextInput editable={!option} value={option?.sellingPrice ?? prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.priceInput} />
                       </View>
                     </View>
                     {invalidMessage ? <Text style={styles.invalidText}>{invalidMessage}</Text> : null}
@@ -478,34 +595,21 @@ export default function CreateSaleScreen() {
                 <Text style={styles.chevron}>›</Text>
               </Pressable>
               <View style={styles.reviewHeading}><Text style={styles.sectionTitle}>Items · {saleItems.length}</Text><Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>+ Add item</Text></Pressable></View>
-              {saleItems.map(({ product, quantity, price }) => (
+              {saleItems.map(({ product, quantity, price, unit, option }) => (
                 <View key={product.id} style={styles.reviewCard}>
                   <Text style={styles.reviewProductName}>{product.name}</Text>
                   <Text style={styles.productMeta}>{product.sku}</Text>
                   <View style={styles.reviewLine}>
-                    <Text style={styles.reviewQuantity}>{quantity} {formatUnitLabel(product.unit)} × {formatMoney(price)} / {formatUnitLabel(product.unit)}</Text>
+                    <Text style={styles.reviewQuantity}>{quantity} {option?.name ?? formatUnitLabel(unit)} × {formatMoney(price)} / {formatUnitLabel(unit)}</Text>
                     <Text style={styles.reviewTotal}>{formatMoney(quantity * price)}</Text>
                   </View>
                   <Text style={styles.projectedStock}>
-                    Projected stock after saving: {Math.max(0, (stock[product.id] ?? 0) - quantity).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}
+                    Projected stock after saving: {Math.max(0, (stock[product.id] ?? 0) - quantity * Number(option?.quantity ?? 1) / (unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1)).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}
                     {product.unit === 'PIECE' ? ' · Whole units confirmed' : ''}
                   </Text>
                 </View>
               ))}
-              <View style={styles.paymentCard}>
-                <Text style={styles.sectionTitle}>Payment method</Text>
-                <View style={styles.paymentList}>
-                  {paymentMethods.map((method) => (
-                    <Pressable key={method.value} onPress={() => setPaymentMethod(method.value)} style={[styles.paymentOption, paymentMethod === method.value && styles.paymentOptionSelected]}>
-                      <Text style={[styles.paymentText, paymentMethod === method.value && styles.paymentTextSelected]}>{method.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Total amount</Text>
-                  <Text style={styles.totalValue}>{formatMoney(total)}</Text>
-                </View>
-              </View>
+              <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
             </>
           ) : null}
         </ScrollView>
@@ -520,24 +624,14 @@ export default function CreateSaleScreen() {
               <Text style={styles.submitText}>Review sale · {formatMoney(total)}</Text>
             </Pressable>
           ) : (
-            <Pressable disabled={!quantitiesValid || saving} onPress={() => void saveSale()} style={[styles.submitButton, (!quantitiesValid || saving) && styles.disabled]}>
-              <Text style={styles.submitText}>{saving ? 'Saving sale…' : `Save sale · ${formatMoney(total)}`}</Text>
+            <Pressable disabled={!quantitiesValid || saving || !paymentValid || Boolean(draftCandidate)} onPress={() => void saveSale()} style={[styles.submitButton, (!quantitiesValid || saving || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
+              <Text style={styles.submitText}>{saving ? 'Saving sale…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save sale · ${formatMoney(total)}`}</Text>
             </Pressable>
           )}
         </View>
 
-        <Modal visible={receiptVisible} transparent animationType="slide" onRequestClose={() => setReceiptVisible(false)}>
-          <View style={styles.receiptBackdrop}>
-            <View style={styles.receiptCard}>
-              <View style={styles.receiptIcon}><Text style={styles.receiptCheck}>✓</Text></View>
-              <Text style={styles.receiptTitle}>Sale saved</Text>
-              <Text style={styles.receiptSubtitle}>Inventory updated successfully</Text>
-              <ScrollView style={styles.receiptBody}><Text style={styles.receiptText}>{successMessage}</Text></ScrollView>
-              <Pressable onPress={() => { setReceiptVisible(false); router.back(); }} style={styles.submitButton}>
-                <Text style={styles.submitText}>Done</Text>
-              </Pressable>
-            </View>
-          </View>
+        <Modal visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
+          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setCustomerId(''); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}
@@ -546,7 +640,7 @@ export default function CreateSaleScreen() {
           confirmLabel="Leave sale"
           cancelLabel="Keep editing"
           onCancel={() => setLeaveConfirm(false)}
-          onConfirm={() => { setLeaveConfirm(false); router.back(); }}
+          onConfirm={() => { discardDraftWrites.current = true; if (appSession.current) void clearDraft(appSession.current, 'sale'); setLeaveConfirm(false); router.back(); }}
         />
       </View>
     </AppScreen>
@@ -558,6 +652,16 @@ function formatMoney(value: number) {
 }
 
 const styles = StyleSheet.create({
+  sellingOptionList: { gap: 8, marginTop: 8, marginBottom: 14 },
+  sellingOptionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, minHeight: 70, borderWidth: 1, borderColor: '#E1E7E3', borderRadius: 12, backgroundColor: '#FAFCFB' },
+  sellingOptionSelected: { borderColor: '#176B50', backgroundColor: '#EDF6F0' },
+  sellingOptionName: { color: '#24332A', fontSize: 14, fontWeight: '700' },
+  sellingOptionQuantity: { color: '#737B77', fontSize: 12, marginTop: 4 },
+  sellingOptionPrice: { color: '#176B50', fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  optionRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#BAC8C0', alignItems: 'center', justifyContent: 'center' },
+  optionRadioSelected: { borderColor: '#176B50' },
+  optionRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#176B50' },
+
   centered: { justifyContent: 'center', alignItems: 'center', gap: 12 },
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
   header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },

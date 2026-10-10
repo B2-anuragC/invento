@@ -10,7 +10,7 @@ function createFakeEnvironment(
     role?: string;
     isActive?: boolean;
     supplier?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string; unit?: string }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -78,7 +78,7 @@ function createFakeEnvironment(
   const prisma = {
     businessUser: { findUnique: vi.fn(async () => (isActive ? { isActive, role } : { isActive: false, role })) },
     supplier: { findFirst: vi.fn(async () => supplier) },
-    product: { findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
+    product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     purchase: { findFirst: vi.fn(async () => null) },
     // Simulates real Postgres transaction semantics: writes made during the
     // callback are staged into a snapshot and only merged into the

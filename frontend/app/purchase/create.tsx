@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
+import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
+import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
+import { usePreventRemove } from '@react-navigation/native';
+import { ApiError } from '@/services/api';
+import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
+import { TransactionSaveNotice } from '@/components/transaction-save-notice';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -40,10 +47,23 @@ export default function CreatePurchaseScreen() {
   const [showSupplierPicker, setShowSupplierPicker] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'full' | 'partial' | 'credit'>('credit');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paidInput, setPaidInput] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [saveRequestId, setSaveRequestId] = useState(requestKey);
+  const [draftCandidate, setDraftCandidate] = useState<TransactionDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStorageError, setDraftStorageError] = useState('');
+  usePreventRemove(saving, () => {});
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [error, setError] = useState('');
   const [receiptVisible, setReceiptVisible] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [saveOutcome, setSaveOutcome] = useState<'rejected' | 'unknown' | null>(null);
+  const submitting = useRef(false);
+  const discardDraftWrites = useRef(false);
+  const savedBalancesForNext = useRef<Record<string, number> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -107,17 +127,52 @@ export default function CreatePurchaseScreen() {
 
   const purchaseItems = useMemo(
     () => products.flatMap((product) => {
-      const quantity = Number(quantities[product.id] ?? 0);
+      if (!Object.prototype.hasOwnProperty.call(quantities, product.id)) return [];
+      const parsedQuantity = Number(quantities[product.id]);
+      const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
       const price = Number(prices[product.id] ?? 0);
-      if (!Number.isFinite(quantity) || quantity <= 0) return [];
       return [{ product, quantity, price }];
     }),
     [products, quantities, prices],
   );
-  const total = purchaseItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-  const linesValid = purchaseItems.every((item) => item.price > 0 &&
+  const { subtotal, tax: taxTotal, total } = transactionTotals(purchaseItems);
+  const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
+  const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
+  const linesValid = purchaseItems.every((item) => item.quantity > 0 && item.price > 0 &&
     !(item.product.unit === 'PIECE' && !Number.isInteger(item.quantity)));
   const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
+
+  useEffect(() => {
+    if (loading || draftReady || !appSession.current) return;
+    let active = true;
+    readDraft(appSession.current, 'purchase').then((draft) => { if (active) setDraftCandidate(draft); }).catch(() => { if (active) setDraftStorageError('Could not read your saved draft.'); }).finally(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
+  }, [loading, draftReady]);
+
+  const restoreDraft = () => {
+    const draft = draftCandidate;
+    if (!draft) return;
+    const available = new Set(products.map((product) => product.id));
+    setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
+    setPrices(draft.prices); setSupplierId(draft.contactId); setShowSupplierPicker(!draft.contactId); setStep(draft.step);
+    setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as string); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
+    setInvoiceNumber(draft.invoiceNumber ?? '');
+    setDraftCandidate(null);
+    if (Object.keys(draft.quantities).some((id) => !available.has(id))) setError('Some products are no longer active and were removed from this draft.');
+  };
+  const discardStoredDraft = async () => {
+    const session = appSession.current;
+    if (!session) return;
+    try { await clearDraft(session, 'purchase'); setDraftCandidate(null); setSaveRequestId(requestKey()); } catch { setDraftStorageError('Could not discard the saved draft. Please try again.'); }
+  };
+  useEffect(() => {
+    const session = appSession.current;
+    if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || supplierId)) return;
+    const draft: TransactionDraft = { version: 1, kind: 'purchase', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: supplierId, contactName: selectedSupplier?.name ?? '', quantities, prices, invoiceNumber, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
+    const persist = () => { if (discardDraftWrites.current) return; void saveDraft(session, draft).catch(() => setDraftStorageError('Could not save this draft on your device. Keep this screen open.')); };
+    const timer = setTimeout(persist, 350);
+    return () => { clearTimeout(timer); persist(); };
+  }, [draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
 
   const changeQuantity = (productId: string, value: string) => {
     if (!/^\d*(?:\.\d{0,3})?$/.test(value)) return;
@@ -152,7 +207,7 @@ export default function CreatePurchaseScreen() {
 
   const toggleProduct = (product: ProductRecord) => {
     setQuantities((current) => {
-      if (current[product.id]) {
+      if (Object.prototype.hasOwnProperty.call(current, product.id)) {
         const next = { ...current };
         delete next[product.id];
         return next;
@@ -186,12 +241,16 @@ export default function CreatePurchaseScreen() {
 
   const savePurchase = async () => {
     const session = appSession.current;
-    if (!session || !supplierId || !purchaseItems.length || !linesValid || saving) return;
+    if (!session || !supplierId || !purchaseItems.length || !linesValid || saving || submitting.current || receiptVisible || !paymentValid || draftCandidate) return;
+    submitting.current = true;
+    setSaveOutcome(null);
     setSaving(true);
     setError('');
     try {
       const savedPurchase = await createPurchase(session, {
+        requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
         supplierId,
+        paymentMethod: paymentMethod as 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER',
         purchaseDate: new Date().toISOString(),
         ...(invoiceNumber.trim() ? { invoiceNumber: invoiceNumber.trim() } : {}),
         items: purchaseItems.map(({ product, quantity, price }) => ({
@@ -200,21 +259,24 @@ export default function CreatePurchaseScreen() {
           purchasePrice: price.toFixed(2),
         })),
       });
-      setSuccessMessage([
-        `${formatMoney(total)} recorded · stock updated`,
-        `Supplier: ${selectedSupplier?.name ?? 'Supplier'}`,
-        `Receipt: ${savedPurchase.invoiceNumber || savedPurchase.id.slice(-8).toUpperCase()}`,
-        ...purchaseItems.map((item) => `${item.product.name} · ${item.quantity} ${formatUnitLabel(item.product.unit)} × ${formatMoney(item.price)}`),
-      ].join('\n'));
+      discardDraftWrites.current = true;
+      await clearDraft(session, 'purchase').catch(() => setDraftStorageError('Transaction saved, but the draft could not be cleared. Check Activity before restoring it.'));
+      const refreshedInventory = await fetchInventory(session).catch(() => null);
+      if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
+      const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
+      setReceiptData({ id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
+      setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
       setError(saveError instanceof Error ? saveError.message : 'Could not record purchase.');
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
 
   const goBack = () => {
+    if (submitting.current) return;
     if (step > 1) setStep(step === 3 ? 2 : 1);
     else router.back();
   };
@@ -256,8 +318,11 @@ export default function CreatePurchaseScreen() {
             })}
           </View>
         </View>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+        <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {error && !saveOutcome ? <Text style={styles.error}>{error}</Text> : null}
+          {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
+          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
+          <TransactionSaveNotice kind="purchase" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedSupplier && !showSupplierPicker ? (
             <View style={styles.selectedSupplier}>
               <Text style={styles.supplierGlyph}>▰</Text>
@@ -306,16 +371,17 @@ export default function CreatePurchaseScreen() {
               </View>
               {filteredProducts.map((product) => {
                 const quantity = quantities[product.id];
+                const selected = Object.prototype.hasOwnProperty.call(quantities, product.id);
                 return (
-                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, Boolean(quantity) && styles.productCardSelected]}>
+                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, selected && styles.productCardSelected]}>
                     <View style={styles.productTop}>
                       <View style={styles.productGlyph}><Text style={styles.productGlyphText}>⌁</Text></View>
                       <View style={styles.productCopy}>
                         <Text style={styles.productName}>{product.name}</Text>
                         <Text style={styles.productMeta}>{product.category ? `${product.category} · ` : ''}{product.sku}</Text>
                       </View>
-                      <View style={[styles.addProductButton, Boolean(quantity) && styles.addProductSelected]}>
-                        <Text style={[styles.addProductText, Boolean(quantity) && styles.addProductTextSelected]}>{quantity ? '✓' : '+'}</Text>
+                      <View style={[styles.addProductButton, selected && styles.addProductSelected]}>
+                        <Text style={[styles.addProductText, selected && styles.addProductTextSelected]}>{selected ? '✓' : '+'}</Text>
                       </View>
                     </View>
                     <View style={styles.productFacts}>
@@ -328,7 +394,7 @@ export default function CreatePurchaseScreen() {
                         <Text style={styles.priceValue}>{product.purchasePrice == null ? 'Hidden' : formatMoney(Number(product.purchasePrice))}</Text>
                       </View>
                     </View>
-                    {quantity ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(product.unit)}</Text> : null}
+                    {selected ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(product.unit)}</Text> : null}
                   </Pressable>
                 );
               })}
@@ -344,7 +410,7 @@ export default function CreatePurchaseScreen() {
               </View>
               {purchaseItems.map(({ product, quantity, price }) => {
                 const invalidPrice = price <= 0;
-                const invalidQuantity = product.unit === 'PIECE' && !Number.isInteger(quantity);
+                const invalidQuantity = quantity <= 0 || (product.unit === 'PIECE' && !Number.isInteger(quantity));
                 return (
                   <View key={product.id} style={[styles.quantityCard, (invalidPrice || invalidQuantity) && styles.quantityCardInvalid]}>
                     <View style={styles.productTop}>
@@ -364,7 +430,7 @@ export default function CreatePurchaseScreen() {
                         <TextInput accessibilityLabel={`${product.name} purchase price`} value={prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.numberInput} />
                       </View>
                     </View>
-                    {invalidQuantity ? <Text style={styles.invalidText}>Enter a whole number of pieces.</Text> : null}
+                    {invalidQuantity ? <Text style={styles.invalidText}>{quantity <= 0 ? 'Enter a quantity greater than zero.' : 'Enter a whole number of pieces.'}</Text> : null}
                     {invalidPrice ? <Text style={styles.invalidText}>Enter a valid purchase price.</Text> : null}
                     {product.unit === 'SQUARE_FOOT' ? (
                       <Pressable onPress={() => router.push(`/calculator/glass?productId=${encodeURIComponent(product.id)}`)} style={styles.measureLink}>
@@ -409,9 +475,7 @@ export default function CreatePurchaseScreen() {
                 <Text style={styles.fieldLabel}>Invoice number · optional</Text>
                 <TextInput value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
               </View>
-              <View style={styles.totalCard}>
-                <Text style={styles.totalLabel}>Total amount</Text><Text style={styles.totalValue}>{formatMoney(total)}</Text>
-              </View>
+              <TransactionFinanceFields kind="purchase" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as string)} />
             </>
           ) : null}
         </ScrollView>
@@ -421,21 +485,13 @@ export default function CreatePurchaseScreen() {
           ) : step === 2 ? (
             <Pressable onPress={continueToReview} style={styles.submitButton}><Text style={styles.submitText}>Review purchase · {formatMoney(total)}</Text></Pressable>
           ) : (
-            <Pressable disabled={!linesValid || saving || !supplierId} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || !supplierId) && styles.disabled]}>
-              <Text style={styles.submitText}>{saving ? 'Saving purchase…' : `Save purchase · ${formatMoney(total)}`}</Text>
+            <Pressable disabled={!linesValid || saving || !supplierId || !paymentValid || Boolean(draftCandidate)} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || !supplierId || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
+              <Text style={styles.submitText}>{saving ? 'Saving purchase…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save purchase · ${formatMoney(total)}`}</Text>
             </Pressable>
           )}
         </View>
-        <Modal visible={receiptVisible} transparent animationType="slide" onRequestClose={() => setReceiptVisible(false)}>
-          <View style={styles.receiptBackdrop}>
-            <View style={styles.receiptCard}>
-              <View style={styles.receiptIcon}><Text style={styles.receiptCheck}>✓</Text></View>
-              <Text style={styles.receiptTitle}>Purchase saved</Text>
-              <Text style={styles.receiptSubtitle}>Inventory updated successfully</Text>
-              <ScrollView style={styles.receiptBody}><Text style={styles.receiptText}>{successMessage}</Text></ScrollView>
-              <Pressable onPress={() => { setReceiptVisible(false); router.back(); }} style={styles.submitButton}><Text style={styles.submitText}>Done</Text></Pressable>
-            </View>
-          </View>
+        <Modal visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
+          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
       </View>
     </AppScreen>

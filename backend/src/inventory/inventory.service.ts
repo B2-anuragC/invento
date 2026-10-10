@@ -10,6 +10,7 @@ export interface ApplyMovementInput {
   type: InventoryTransactionType;
   /** Unsigned magnitude of the movement. Direction is derived from `type`. */
   quantity: Prisma.Decimal | string;
+  unit?: string;
   note?: string;
   userId: string;
 }
@@ -46,37 +47,40 @@ export class InventoryService {
 
   async list(userId: string, businessId: string) {
     await this.requireMembership(userId, businessId);
-    return this.prisma.inventory.findMany({
+    const rows = await this.prisma.inventory.findMany({
       where: { businessId },
-      include: { product: { select: { id: true, name: true, sku: true, unit: true, status: true } } },
+      include: { product: { select: { id: true, name: true, sku: true, unit: true, piecesPerUnit: true, status: true } } },
       orderBy: { updatedAt: 'desc' },
     });
+    return rows.map((row) => this.display(row, row.product.piecesPerUnit));
   }
 
   async get(userId: string, businessId: string, productId: string) {
     await this.requireMembership(userId, businessId);
-    await this.requireProduct(businessId, productId);
+    const product = await this.requireProduct(businessId, productId);
     const inventory = await this.prisma.inventory.findUnique({ where: { productId } });
-    return inventory ?? { businessId, productId, quantity: new Prisma.Decimal(0), createdAt: null, updatedAt: null };
+    return inventory ? this.display(inventory, product.piecesPerUnit) : { businessId, productId, quantity: new Prisma.Decimal(0), createdAt: null, updatedAt: null };
   }
 
   async history(userId: string, businessId: string, productId: string) {
     await this.requireMembership(userId, businessId);
-    await this.requireProduct(businessId, productId);
-    return this.prisma.inventoryTransaction.findMany({
+    const product = await this.requireProduct(businessId, productId);
+    const rows = await this.prisma.inventoryTransaction.findMany({
       where: { businessId, productId },
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map((row) => this.display(row, product.piecesPerUnit));
   }
 
   async activity(userId: string, businessId: string) {
     await this.requireMembership(userId, businessId);
-    return this.prisma.inventoryTransaction.findMany({
+    const rows = await this.prisma.inventoryTransaction.findMany({
       where: { businessId },
-      include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
+      include: { product: { select: { id: true, name: true, sku: true, unit: true, piecesPerUnit: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    return rows.map((row) => this.display(row, row.product.piecesPerUnit));
   }
 
   /**
@@ -93,7 +97,8 @@ export class InventoryService {
    * caller's existing transaction and no nested `$transaction` is started.
    */
   async recordOpeningStock(input: OpeningStockInput, tx?: Prisma.TransactionClient) {
-    const quantity = this.validateQuantity(input.quantity, true);
+    const product = await this.requireProduct(input.businessId, input.productId);
+    const quantity = this.storageQuantity(input.quantity, product, undefined, true);
 
     const run = async (client: Prisma.TransactionClient) => {
       const inventory = await client.inventory.create({
@@ -114,7 +119,7 @@ export class InventoryService {
           createdByUserId: input.userId,
         },
       });
-      return inventory;
+      return this.display(inventory, product.piecesPerUnit);
     };
 
     try {
@@ -148,7 +153,9 @@ export class InventoryService {
    * caller's existing transaction and no nested `$transaction` is started.
    */
   async applyMovement(input: ApplyMovementInput, tx?: Prisma.TransactionClient) {
-    const magnitude = this.validateQuantity(input.quantity);
+    this.validateQuantity(input.quantity);
+    const product = await this.requireProduct(input.businessId, input.productId);
+    const magnitude = this.storageQuantity(input.quantity, product, input.unit);
 
     const run = async (client: Prisma.TransactionClient) => {
       const locked = await client.$queryRaw<{ id: string; quantity: Prisma.Decimal }[]>(
@@ -164,10 +171,11 @@ export class InventoryService {
       if (balanceAfter.lessThan(0)) {
         throw new BadRequestException('Insufficient stock for this operation.');
       }
-      this.validateQuantity(balanceAfter, true);
+      this.validateQuantity(balanceAfter, true, true);
+      if (balanceAfter.div(product.piecesPerUnit ?? 1).gt('999999999.999')) throw new BadRequestException('Inventory balance exceeds the supported stock quantity.');
 
       await client.inventory.update({ where: { id: locked[0].id }, data: { quantity: balanceAfter } });
-      return client.inventoryTransaction.create({
+      const movement = await client.inventoryTransaction.create({
         data: {
           businessId: input.businessId,
           productId: input.productId,
@@ -178,19 +186,33 @@ export class InventoryService {
           createdByUserId: input.userId,
         },
       });
+      return this.display(movement, product.piecesPerUnit);
     };
 
     return tx ? run(tx) : this.prisma.$transaction((client) => run(client));
   }
 
-  private validateQuantity(value: Prisma.Decimal | string, allowZero = false) {
+  private display<T extends { quantity: Prisma.Decimal; balanceAfter?: Prisma.Decimal }>(row: T, size?: number | null): T {
+    if (!size) return row;
+    return { ...row, quantity: row.quantity.div(size), ...(row.balanceAfter !== undefined ? { balanceAfter: row.balanceAfter.div(size) } : {}) };
+  }
+
+  private storageQuantity(value: Prisma.Decimal | string, product: { unit: string; piecesPerUnit?: number | null }, unit?: string, allowZero = false) {
+    if (unit !== undefined && unit !== product.unit && !(unit === 'PIECE' && product.piecesPerUnit)) throw new BadRequestException('Unsupported inventory movement unit for this product.');
+    const quantity = this.validateQuantity(value, allowZero);
+    const converted = unit === 'PIECE' && product.piecesPerUnit ? quantity : quantity.times(product.piecesPerUnit ?? 1);
+    if (product.piecesPerUnit && !converted.isInteger()) throw new BadRequestException('Grouped stock must represent a whole number of pieces.');
+    return this.validateQuantity(converted, allowZero, true);
+  }
+
+  private validateQuantity(value: Prisma.Decimal | string, allowZero = false, internal = false) {
     let quantity: Prisma.Decimal;
     try {
       quantity = new Prisma.Decimal(value);
     } catch {
       throw new BadRequestException('Invalid inventory quantity.');
     }
-    if (!quantity.isFinite() || quantity.lessThan(0) || (!allowZero && quantity.isZero()) || quantity.decimalPlaces() > 3 || quantity.greaterThan('999999999.999')) {
+    if (!quantity.isFinite() || quantity.lessThan(0) || (!allowZero && quantity.isZero()) || quantity.decimalPlaces() > 3 || quantity.greaterThan(internal ? '999999999999999.999' : '999999999.999')) {
       throw new BadRequestException('Inventory quantity must be finite, within range, and positive (zero is allowed for opening stock).');
     }
     return quantity;

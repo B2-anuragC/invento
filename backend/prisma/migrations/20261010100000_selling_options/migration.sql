@@ -1,0 +1,4 @@
+BEGIN;
+ALTER TABLE "products" ADD COLUMN "sellingOptions" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "sale_items" ADD COLUMN "sellingOptionId" TEXT, ADD COLUMN "optionName" TEXT, ADD COLUMN "unitsPerOption" DECIMAL(12,3) NOT NULL DEFAULT 1;
+COMMIT;

@@ -1,3 +1,4 @@
+import { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -16,6 +17,11 @@ export class SalesController {
   @Post()
   create(@Req() req: Request, @Body() dto: CreateSaleDto) {
     return this.sales.create(req.user.id, this.businessId(req), dto);
+  }
+
+  @Post(':id/payments')
+  recordPayment(@Req() req: Request, @Param('id') id: string, @Body() dto: RecordPaymentDto) {
+    return this.sales.recordPayment(req.user.id, this.businessId(req), id, dto);
   }
 
   @Get()

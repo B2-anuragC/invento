@@ -65,6 +65,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterEach(async () => {
     // Remove dependent fixtures in FK order, scoped exclusively to this test.
     for (const id of businessIds.splice(0)) {
+      await prisma.transactionPayment.deleteMany({ where: { businessId: id } });
       await prisma.sale.deleteMany({ where: { businessId: id } });
       await prisma.purchase.deleteMany({ where: { businessId: id } });
       await prisma.business.delete({ where: { id } });
@@ -75,6 +76,46 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (app) await app.close();
+  });
+
+  it('snapshots GST and serializes payments and retried sales without repeating stock changes', async () => {
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    const saleInput = { ...input('0.8'), amountPaid: '10', dueDate: '2026-09-30', requestId: randomUUID() };
+    const [first, retry] = await Promise.all([
+      api('post', '/sales').send(saleInput).expect(201),
+      api('post', '/sales').send(saleInput).expect(201),
+    ]);
+    const sale = first.body.data;
+    expect(retry.body.data.id).toBe(sale.id);
+    expect(sale).toMatchObject({ subtotal: '40', taxTotal: '7.2', total: '47.2', amountPaid: '10' });
+    expect(sale.items[0]).toMatchObject({ gstRate: '18', taxAmount: '7.2' });
+    expect(sale.payments).toHaveLength(1);
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('99.2');
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '5' }).expect(200);
+    expect((await api('get', `/sales/${sale.id}`).expect(200)).body.data.items[0].gstRate).toBe('18');
+    const payment = { amount: '20', method: 'UPI', requestId: randomUUID() };
+    const responses = await Promise.all([api('post', `/sales/${sale.id}/payments`).send(payment), api('post', `/sales/${sale.id}/payments`).send(payment)]);
+    expect(responses.map((response) => response.status)).toEqual([201, 201]);
+    const paid = (await api('get', `/sales/${sale.id}`).expect(200)).body.data;
+    expect(paid.amountPaid).toBe('30');
+    expect(paid.payments).toHaveLength(2);
+    const race = await Promise.all([1, 2].map(() => api('post', `/sales/${sale.id}/payments`).send({ amount: '10', method: 'CASH', requestId: randomUUID() })));
+    expect(race.map((response) => response.status).sort()).toEqual([201, 400]);
+    expect((await api('get', `/sales/${sale.id}`).expect(200)).body.data.amountPaid).toBe('40');
+    await api('post', '/sales').send({ ...saleInput, requestId: randomUUID(), amountPaid: '100' }).expect(400);
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('99.2');
+    const supplier = (await api('post', '/suppliers').send({ name: 'Accounting supplier' }).expect(201)).body.data;
+    const purchaseInput = { supplierId: supplier.id, purchaseDate: '2026-09-20', amountPaid: '0', dueDate: '2026-10-01', requestId: randomUUID(), items: [{ productId: products[0], quantity: '2', purchasePrice: '40' }] };
+    const purchase = (await api('post', '/purchases').send(purchaseInput).expect(201)).body.data;
+    expect(purchase).toMatchObject({ subtotal: '80', taxTotal: '4', total: '84', amountPaid: '0' });
+    expect((await api('post', '/purchases').send(purchaseInput).expect(201)).body.data.id).toBe(purchase.id);
+    await api('post', `/purchases/${purchase.id}/payments`).send({ amount: '84', method: 'CASH', requestId: randomUUID() }).expect(201);
+    expect((await api('get', `/purchases/${purchase.id}`).expect(200)).body.data.amountPaid).toBe('84');
+    const historical = (await api('post', '/sales').send(input('1')).expect(201)).body.data;
+    await api('post', `/sales/${historical.id}/payments`).send({ amount: '1', method: 'CASH', requestId: randomUUID() }).expect(400);
+    const confirmed = (await api('post', `/sales/${historical.id}/payments`).send({ amount: '1', openingAmountPaid: '10', method: 'CASH', requestId: randomUUID() }).expect(201)).body.data;
+    expect(confirmed.amountPaid).toBe('11');
+    expect(confirmed.payments.map((entry: any) => entry.kind).sort()).toEqual(['OPENING_BALANCE', 'PAYMENT']);
   });
 
   it('completes the non-AI workflow and verifies dashboard metrics against known amounts', async () => {

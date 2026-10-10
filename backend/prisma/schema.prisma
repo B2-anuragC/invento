@@ -27,6 +27,7 @@ model Business {
   purchases             Purchase[]
   customers             Customer[]
   sales                 Sale[]
+  payments              TransactionPayment[]
 
   @@map("businesses")
 }
@@ -48,6 +49,7 @@ model User {
   updatedAt     DateTime       @updatedAt
   businesses    BusinessUser[]
   refreshTokens RefreshToken[]
+  payments      TransactionPayment[]
 
   @@map("users")
 }
@@ -91,6 +93,9 @@ model Product {
   barcode               String?
   category              String?
   unit                  String
+  piecesPerUnit         Int?
+  gstRate               Decimal                @default(0) @db.Decimal(5, 2)
+  sellingOptions        Json                   @default("[]")
   purchasePrice         Decimal                @db.Decimal(12, 2)
   sellingPrice          Decimal                @db.Decimal(12, 2)
   minimumStock          Decimal                @db.Decimal(12, 3)
@@ -127,7 +132,7 @@ model Inventory {
   id         String   @id @default(cuid())
   businessId String
   productId  String   @unique
-  quantity   Decimal  @db.Decimal(12, 3)
+  quantity   Decimal  @db.Decimal(18, 3)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -142,8 +147,8 @@ model InventoryTransaction {
   businessId      String
   productId       String
   type            InventoryTransactionType
-  quantity        Decimal                  @db.Decimal(12, 3)
-  balanceAfter    Decimal                  @db.Decimal(12, 3)
+  quantity        Decimal                  @db.Decimal(18, 3)
+  balanceAfter    Decimal                  @db.Decimal(18, 3)
   note            String?
   createdByUserId String
   createdAt       DateTime                 @default(now())
@@ -190,6 +195,12 @@ model Purchase {
   supplierId      String
   invoiceNumber   String?
   purchaseDate    DateTime
+  subtotal        Decimal       @db.Decimal(14, 2)
+  taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
+  amountPaid      Decimal?      @db.Decimal(14, 2)
+  dueDate         DateTime?     @db.Date
+  requestId       String?
+  payments        TransactionPayment[]
   total           Decimal        @db.Decimal(14, 2)
   status          PurchaseStatus @default(COMPLETED)
   note            String?
@@ -203,6 +214,7 @@ model Purchase {
   @@index([businessId, purchaseDate])
   @@index([businessId, supplierId])
   @@map("purchases")
+  @@unique([businessId, requestId])
 }
 
 model PurchaseItem {
@@ -211,6 +223,8 @@ model PurchaseItem {
   productId     String
   quantity      Decimal  @db.Decimal(12, 3)
   purchasePrice Decimal  @db.Decimal(12, 2)
+  gstRate      Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount    Decimal @default(0) @db.Decimal(14, 2)
   lineTotal     Decimal  @db.Decimal(14, 2)
   createdAt     DateTime @default(now())
   purchase      Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
@@ -266,6 +280,12 @@ model Sale {
   invoiceNumber   String?
   saleDate        DateTime
   paymentMethod   PaymentMethod
+  subtotal        Decimal       @db.Decimal(14, 2)
+  taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
+  amountPaid      Decimal?      @db.Decimal(14, 2)
+  dueDate         DateTime?     @db.Date
+  requestId       String?
+  payments        TransactionPayment[]
   total           Decimal       @db.Decimal(14, 2)
   status          SaleStatus    @default(COMPLETED)
   note            String?
@@ -279,6 +299,7 @@ model Sale {
   @@index([businessId, saleDate])
   @@index([businessId, customerId])
   @@map("sales")
+  @@unique([businessId, requestId])
 }
 
 model SaleItem {
@@ -286,7 +307,13 @@ model SaleItem {
   saleId       String
   productId    String
   quantity     Decimal  @db.Decimal(12, 3)
+  unit         String?
+  sellingOptionId String?
+  optionName   String?
+  unitsPerOption Decimal @default(1) @db.Decimal(12,3)
   sellingPrice Decimal  @db.Decimal(12, 2)
+  gstRate      Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount    Decimal @default(0) @db.Decimal(14, 2)
   lineTotal    Decimal  @db.Decimal(14, 2)
   createdAt    DateTime @default(now())
   sale         Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
@@ -295,4 +322,25 @@ model SaleItem {
   @@index([saleId])
   @@index([productId])
   @@map("sale_items")
+}
+
+model TransactionPayment {
+  id              String @id @default(cuid())
+  businessId      String
+  saleId          String?
+  purchaseId      String?
+  requestId       String
+  amount          Decimal @db.Decimal(14,2)
+  method          PaymentMethod
+  kind            String @default("PAYMENT")
+  paidAt          DateTime @default(now())
+  createdByUserId String
+  business        Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy       User @relation(fields: [createdByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sale            Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  purchase        Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  @@unique([businessId, requestId])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@map("transaction_payments")
 }
