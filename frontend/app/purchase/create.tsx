@@ -1,7 +1,7 @@
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
-import { usePreventRemove } from '@react-navigation/native';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
 import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
 import { TransactionSaveNotice } from '@/components/transaction-save-notice';
