@@ -43,6 +43,32 @@ describe('Product retail group sizes', () => {
 
 
 describe('Multiple product quantity prices', () => {
+  it('allows dozens and custom box sizes for a piece-stocked product', async () => {
+    const { service } = environment();
+    const saved = await service.create('user', 'business', { ...input, unit: 'PIECE', sellingOptions: [
+      { id: 'dozen', name: 'Dozen', unit: 'DOZEN', quantity: '1', sellingPrice: '100' },
+      { id: 'box', name: 'Small box', unit: 'BOX', piecesPerUnit: 6, quantity: '1', sellingPrice: '55' },
+    ] });
+    expect((saved.sellingOptions as { piecesPerUnit?: number }[])[1]).toMatchObject({ piecesPerUnit: 6 });
+  });
+  it('allows gram options and independently labelled units', async () => {
+    const { service } = environment();
+    await expect(service.create('user', 'business', { ...input, unit: 'KG', sellingOptions: [{ id: 'half', name: 'Half kg', unit: 'GRAM', quantity: '500', sellingPrice: '30' }] })).resolves.toBeDefined();
+    await expect(service.create('user', 'business', { ...input, unit: 'KG', sellingOptions: [{ id: 'wrong', name: 'Piece', unit: 'PIECE', quantity: '1', sellingPrice: '30' }] })).resolves.toBeDefined();
+  });
+  it('accepts feet and square feet options without sheet dimension calculations', async () => {
+    const { service } = environment();
+    const saved = await service.create('user', 'business', { ...input, unit: 'PIECE', sellingOptions: [
+      { id: 'feet', name: 'Length', unit: 'FOOT', quantity: '2.5', sellingPrice: '30' },
+      { id: 'area', name: '8 x 4 sheet', unit: 'SQUARE_FOOT', quantity: '32', sellingPrice: '100' },
+    ] });
+    expect(saved.sellingOptions).toHaveLength(2);
+  });
+  it('rejects undefined box sizes and fractional pieces', async () => {
+    const { service } = environment();
+    await expect(service.create('user', 'business', { ...input, unit: 'PIECE', sellingOptions: [{ id: 'box', name: 'Box', unit: 'BOX', quantity: '1', sellingPrice: '30' }] })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.create('user', 'business', { ...input, sellingOptions: [{ id: 'part', name: 'Part dozen', unit: 'DOZEN', quantity: '0.8', sellingPrice: '30' }] })).rejects.toBeInstanceOf(BadRequestException);
+  });
   it('saves all quantity and price options together when editing a product', async () => {
     const { service, prisma } = environment();
     const sellingOptions = [

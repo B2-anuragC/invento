@@ -9,6 +9,7 @@ const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 
 export class SellingOptionDto {
+  @ValidateIf((_o, value) => value !== undefined) @IsInt() @Min(1) @Max(100000) piecesPerUnit?: number;
   @IsString() @Matches(/^[A-Za-z0-9_-]{1,64}$/) id!: string;
   @IsString() @MinLength(1) @MaxLength(60) @Matches(/\S/) name!: string;
   @IsIn(productUnits) unit!: string;

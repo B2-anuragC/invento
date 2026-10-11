@@ -1,3 +1,4 @@
+import { sellingUnitConversion } from '@invento/shared';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
@@ -32,6 +33,7 @@ import {
   type CustomerRecord,
   type InventoryRecord,
   type ProductRecord,
+  type SellingOption,
 } from '@/services/api';
 
 type PaymentMethod = 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
@@ -193,12 +195,20 @@ export default function CreateSaleScreen() {
     if (quantity <= 0) return 'Enter a quantity greater than zero.';
     const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
     if (option && !Number.isInteger(quantity)) return 'Enter a whole number of options.';
-    quantity *= Number(option?.quantity ?? 1);
-    const retail = (option?.unit ?? sellingUnits[product.id]) === 'PIECE' && product.piecesPerUnit;
-    if (quantity / (retail ? product.piecesPerUnit! : 1) > (stock[product.id] ?? 0) + 1e-9) return `Only ${stock[product.id] ?? 0} ${formatUnitLabel(product.unit)} available.`;
-    if ((product.unit === 'PIECE' || retail) && !Number.isInteger(quantity)) return 'Enter a whole number of pieces.';
-    if (product.piecesPerUnit && !retail && Math.abs(quantity * product.piecesPerUnit - Math.round(quantity * product.piecesPerUnit)) > 1e-8) return 'Enter a quantity representing whole pieces, or switch to pieces.';
+    const selectedUnit = option?.unit ?? sellingUnits[product.id] ?? product.unit;
+    const conversion = sellingUnitConversion(product.unit, product.piecesPerUnit, selectedUnit, option?.piecesPerUnit);
+    if (!conversion) return 'This option needs a valid stock conversion. Edit the product.';
+    const movement = quantity * (conversion.perOption ? 1 : Number(option?.quantity ?? 1)) * conversion.numerator / conversion.denominator;
+    const stockQuantity = movement / (conversion.unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1);
+    if (stockQuantity > (stock[product.id] ?? 0) + 1e-9) return `Only ${stock[product.id] ?? 0} ${formatUnitLabel(product.unit)} available.`;
+    const pieces = movement * (conversion.unit === 'PIECE' ? 1 : product.piecesPerUnit ?? 1);
+    if ((product.piecesPerUnit || product.unit === 'PIECE') && Math.abs(pieces - Math.round(pieces)) > 1e-8) return 'Enter a quantity representing whole pieces.';
+    if (Math.abs(movement * 1000 - Math.round(movement * 1000)) > 1e-7) return 'This quantity needs more precision than the stock unit supports.';
     return '';
+  };
+  const stockUsed = (product: ProductRecord, quantity: number, option: SellingOption | undefined, unit: string) => {
+    const conversion = sellingUnitConversion(product.unit, product.piecesPerUnit, unit, option?.piecesPerUnit);
+    return conversion ? quantity * (conversion.perOption ? 1 : Number(option?.quantity ?? 1)) * conversion.numerator / conversion.denominator / (conversion.unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1) : 0;
   };
   const quantitiesValid = saleItems.every((item) => item.price > 0 && !quantityError(item.product, item.quantity));
   const hasChanges = Boolean(customerId || customerName.trim()) || saleItems.length > 0;
@@ -563,7 +573,7 @@ export default function CreateSaleScreen() {
                         </View>
                       </View>
                       <View style={styles.priceField}>
-                        <Text style={styles.fieldLabel}>Sell rate / {formatUnitLabel(unit)}</Text>
+                        <Text style={styles.fieldLabel}>{option ? 'Price per option' : `Sell rate / ${formatUnitLabel(unit)}`}</Text>
                         <TextInput editable={!option} value={option?.sellingPrice ?? prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.priceInput} />
                       </View>
                     </View>
@@ -604,7 +614,7 @@ export default function CreateSaleScreen() {
                     <Text style={styles.reviewTotal}>{formatMoney(quantity * price)}</Text>
                   </View>
                   <Text style={styles.projectedStock}>
-                    Projected stock after saving: {Math.max(0, (stock[product.id] ?? 0) - quantity * Number(option?.quantity ?? 1) / (unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1)).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}
+                    Projected stock after saving: {Math.max(0, (stock[product.id] ?? 0) - stockUsed(product, quantity, option, unit)).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}
                     {product.unit === 'PIECE' ? ' · Whole units confirmed' : ''}
                   </Text>
                 </View>

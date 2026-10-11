@@ -1,3 +1,4 @@
+import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -163,9 +164,17 @@ export default function ProductDetailsScreen() {
       return;
     }
     const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || 0;
-    if (sellingOptions.some((option) => !option.name.trim() || !/^\d{1,9}(?:\.\d{1,3})?$/.test(option.quantity) || Number(option.quantity) <= 0 || !/^\d{1,10}(?:\.\d{1,2})?$/.test(option.sellingPrice) || Number(option.sellingPrice) <= 0 || (option.unit !== unit && !(option.unit === 'PIECE' && groupSize)) || ((groupSize || unit === 'PIECE') && !Number.isInteger(Number(option.quantity) * (option.unit === 'PIECE' ? 1 : groupSize || 1))))) {
-      setError('Each selling option needs a name, positive quantity and price, and a valid unit. Grouped options must contain whole pieces.');
-      return;
+    for (const [index, option] of sellingOptions.entries()) {
+      const prefix = `Option ${index + 1}: `;
+      if (!option.name.trim()) { setError(prefix + 'enter a name.'); return; }
+      if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(option.quantity) || Number(option.quantity) <= 0) { setError(prefix + 'enter a quantity greater than zero.'); return; }
+      if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(option.sellingPrice) || Number(option.sellingPrice) <= 0) { setError(prefix + 'enter a price greater than zero.'); return; }
+      const conversion = sellingUnitConversion(unit, groupSize || null, option.unit, option.piecesPerUnit);
+      if (!conversion) { setError(prefix + 'select a compatible unit and enter pieces per box or pack.'); return; }
+      const movement = (conversion.perOption ? 1 : Number(option.quantity)) * conversion.numerator / conversion.denominator;
+      const pieces = movement * (conversion.unit === 'PIECE' ? 1 : groupSize || 1);
+      if ((groupSize || unit === 'PIECE') && Math.abs(pieces - Math.round(pieces)) > 1e-8) { setError(prefix + 'the quantity must contain whole pieces.'); return; }
+      if (Math.abs(movement * 1000 - Math.round(movement * 1000)) > 1e-7) { setError(prefix + 'use a quantity that fits the stock unit’s three-decimal precision.'); return; }
     }
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
     const input: ProductInput = {
@@ -379,20 +388,23 @@ export default function ProductDetailsScreen() {
             </View>
             <View style={[styles.form, styles.formGap]}>
             <View style={styles.optionHeading}>
-              <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Selling options</Text><Text style={styles.helperText}>Different quantities. Your own price for each.</Text></View>
+              <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Selling options</Text><Text style={styles.helperText}>Choose a unit, quantity and total price for each option.</Text></View>
               <Text style={styles.optionCount}>{sellingOptions.length}/20</Text>
             </View>
-            {!sellingOptions.length ? <View style={styles.optionEmpty}><Text style={styles.optionEmptyTitle}>Make everyday sales quicker</Text><Text style={styles.optionHint}>Offer a single piece, a bundle, or a full box. Each option gets its own price.</Text></View> : null}
+            {!sellingOptions.length ? <View style={styles.optionEmpty}><Text style={styles.optionEmptyTitle}>Make everyday sales quicker</Text><Text style={styles.optionHint}>Offer a single piece, a bundle, or a full box. Each option gets its own unit, quantity and price.</Text></View> : null}
             {sellingOptions.map((option, index) => {
-              const change = (field: keyof SellingOption, value: string) => setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, [field]: value } : entry));
-              const choices = [...new Set([unit, ...((unit === 'DOZEN' || (['BOX', 'PACK'].includes(unit) && Number(piecesPerUnit) > 0)) ? ['PIECE'] : [])])];
+              const change = (field: Exclude<keyof SellingOption, 'piecesPerUnit'>, value: string) => setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, [field]: value, ...(field === 'unit' ? { piecesPerUnit: undefined } : {}) } : entry));
+              const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || 0;
+              const choices = sellingUnitChoices(unit, unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || null);
               return <View key={option.id} style={styles.optionEditor}>
                 <View style={styles.optionHeading}><Text style={styles.optionNumber}>OPTION {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Remove selling option ${index + 1}`} onPress={() => setSellingOptions((current) => current.filter((entry) => entry.id !== option.id))} style={styles.optionRemove}><Text style={styles.optionRemoveText}>Remove</Text></Pressable></View>
                 <Text style={styles.label}>Name</Text>
                 <TextInput accessibilityLabel={`Selling option ${index + 1} name`} maxLength={60} value={option.name} onChangeText={(value) => change('name', value)} placeholder="e.g. Single piece or Family pack" style={[styles.input, styles.optionInput]} />
-                {choices.length > 1 ? <><Text style={styles.label}>Sell by</Text><View style={styles.units}>{choices.map((choice) => <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: option.unit === choice }} onPress={() => change('unit', choice)} style={[styles.unitOption, option.unit === choice && styles.unitSelected]}><Text style={[styles.unitText, option.unit === choice && styles.unitTextSelected]}>{formatUnitLabel(choice)}</Text></Pressable>)}</View></> : null}
+                <><Text style={styles.label}>Unit for this option</Text><View style={styles.units}>{choices.map((choice) => <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: option.unit === choice }} onPress={() => change('unit', choice)} style={[styles.unitOption, option.unit === choice && styles.unitSelected]}><Text style={[styles.unitText, option.unit === choice && styles.unitTextSelected]}>{formatUnitLabel(choice)}</Text></Pressable>)}</View></>
+                {['BOX', 'PACK'].includes(option.unit) ? <><Text style={styles.label}>Pieces in one {formatUnitLabel(option.unit)} of this option</Text><TextInput accessibilityLabel={`Selling option ${index + 1} pieces per group`} value={option.piecesPerUnit == null ? '' : String(option.piecesPerUnit)} placeholder={option.unit === unit && groupSize ? `Uses stock size: ${groupSize}` : 'e.g. 6'} keyboardType="number-pad" onChangeText={(value) => { if (/^\d{0,6}$/.test(value)) setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, piecesPerUnit: value ? Number(value) : undefined } : entry)); }} style={[styles.input, styles.optionInput]} /><Text style={styles.optionHint}>This converts the selling box or pack into pieces for stock deduction.</Text></> : null}
+                {sellingUnitConversion(unit, groupSize || null, option.unit, option.piecesPerUnit)?.perOption ? <Text style={styles.optionHint}>Custom unit: each option sold deducts one stock unit. No dimension calculation.</Text> : null}
                 <View style={[styles.fieldsRow, { marginTop: 12 }]}>
-                  <View style={styles.field}><Text style={styles.label}>Quantity ({formatUnitLabel(option.unit)})</Text><TextInput accessibilityLabel={`Selling option ${index + 1} quantity`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) change('quantity', value); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput]} /></View>
+                  <View style={styles.field}><Text style={styles.label}>Amount in one option ({formatUnitLabel(option.unit)})</Text><TextInput accessibilityLabel={`Selling option ${index + 1} quantity`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) change('quantity', value); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput]} /></View>
                   <View style={styles.field}><Text style={styles.label}>Price for this quantity</Text><View style={styles.optionPriceField}><Text style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Selling option ${index + 1} price`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) change('sellingPrice', value); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View></View>
                 </View>
                 {Number(option.quantity) > 0 && Number(option.sellingPrice) > 0 ? <View style={styles.optionPreview}><Text style={styles.optionPreviewText}>{option.quantity} {formatUnitLabel(option.unit)} for {formatMoney(Number(option.sellingPrice))}</Text><Text style={styles.optionHint}>{formatMoney(Number(option.sellingPrice) / Number(option.quantity))} / {formatUnitLabel(option.unit)}</Text></View> : null}

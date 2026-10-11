@@ -79,6 +79,25 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     if (app) await app.close();
   });
 
+  it('sells compatible units and custom boxes with exact stock deductions', async () => {
+    await api('patch', `/products/${products[0]}`).send({ sellingOptions: [{ id: 'half', name: 'Half kilogram', unit: 'GRAM', quantity: '500', sellingPrice: '30' }] }).expect(200);
+    const weightSale = (await api('post', '/sales').send({ ...input('2'), items: [{ productId: products[0], quantity: '2', sellingPrice: '1', sellingOptionId: 'half' }] }).expect(201)).body.data;
+    expect(weightSale.total).toBe('60');
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('99');
+    const product = (await api('post', '/products').send({ name: 'Mixed egg packs', sku: 'MIXED-EGGS', unit: 'PIECE', purchasePrice: '5', sellingPrice: '10', minimumStock: '0', sellingOptions: [
+      { id: 'dozen', name: 'Dozen', unit: 'DOZEN', quantity: '1', sellingPrice: '100' },
+      { id: 'smallbox', name: 'Small box', unit: 'BOX', piecesPerUnit: 6, quantity: '1', sellingPrice: '55' },
+    ] }).expect(201)).body.data;
+    await api('post', '/inventory/opening-stock').send({ productId: product.id, quantity: '100' }).expect(201);
+    const sale = await api('post', '/sales').send({ ...input(), items: [{ productId: product.id, quantity: '2', sellingPrice: '1', sellingOptionId: 'dozen' }] }).expect(201);
+    expect(sale.body.data.total).toBe('200');
+    await api('post', '/sales').send({ ...input(), items: [{ productId: product.id, quantity: '3', sellingPrice: '1', sellingOptionId: 'smallbox' }] }).expect(201);
+    expect((await api('get', `/inventory/${product.id}`).expect(200)).body.data.quantity).toBe('58');
+    await api('post', '/sales').send({ ...input(), items: [{ productId: product.id, quantity: '0.5', sellingPrice: '1', sellingOptionId: 'dozen' }] }).expect(400);
+    await api('patch', `/products/${product.id}`).send({ sellingOptions: [{ id: 'invalid', name: 'Missing box size', unit: 'BOX', quantity: '1', sellingPrice: '20' }] }).expect(400);
+    await api('patch', `/products/${products[0]}`).send({ sellingOptions: [{ id: 'invalid', name: 'Custom unit', unit: 'PIECE', quantity: '1', sellingPrice: '20' }] }).expect(200);
+  });
+
   it('uploads offline catalog/contact/stock changes exactly once and detects stale revisions', async () => {
     const command = { operationId: randomUUID(), entityId: randomUUID(), entity: 'products', action: 'create', payload: { name: 'Offline product', sku: 'OFFLINE-001', unit: 'KG', purchasePrice: '40', sellingPrice: '50', minimumStock: '0' } };
     const responses = await Promise.all([api('post', '/sync/push').send(command), api('post', '/sync/push').send(command)]);

@@ -1,4 +1,4 @@
-export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string };
+export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';

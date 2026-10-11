@@ -1,3 +1,4 @@
+import { sellingUnitConversion } from '@invento/shared';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -145,13 +146,17 @@ export class ProductsService {
     return options.map((option) => {
       if (ids.has(option.id)) throw new BadRequestException('Selling option identifiers must be unique.');
       ids.add(option.id);
-      if (option.unit !== unit && !(option.unit === 'PIECE' && size)) throw new BadRequestException('Selling options must use the stock unit, or pieces for a configured group.');
+      const conversion = sellingUnitConversion(unit, size, option.unit, option.piecesPerUnit);
+      if (!conversion) throw new BadRequestException('Choose a compatible selling unit and configure pieces per box or pack.');
+      if (option.piecesPerUnit !== undefined && !['BOX', 'PACK'].includes(option.unit)) throw new BadRequestException('Only box and pack options need pieces per unit.');
       const quantity = new Prisma.Decimal(option.quantity);
       const price = new Prisma.Decimal(option.sellingPrice);
       if (!quantity.isFinite() || quantity.lte(0) || !price.isFinite() || price.lte(0)) throw new BadRequestException('Selling option quantity and price must be positive.');
-      const pieces = quantity.times(option.unit === 'PIECE' ? 1 : size ?? 1);
-      if ((size || unit === 'PIECE') && !pieces.isInteger()) throw new BadRequestException('Selling options must represent whole pieces.');
-      return { id: option.id, name: option.name.trim(), unit: option.unit, quantity: quantity.toString(), sellingPrice: price.toFixed(2) };
+      const converted = (conversion.perOption ? new Prisma.Decimal(1) : quantity).times(conversion.numerator).div(conversion.denominator);
+      const pieces = converted.times(conversion.unit === 'PIECE' ? 1 : size ?? 1);
+      if (converted.decimalPlaces() > 3) throw new BadRequestException('This option needs more than three decimal places in the stock unit. Use a larger quantity.');
+      if ((size || unit === 'PIECE' || unit === 'DOZEN') && !pieces.isInteger()) throw new BadRequestException('Selling options must represent whole pieces.');
+      return { id: option.id, name: option.name.trim(), unit: option.unit, quantity: quantity.toString(), sellingPrice: price.toFixed(2), ...(option.piecesPerUnit !== undefined ? { piecesPerUnit: option.piecesPerUnit } : {}) };
     });
   }
 

@@ -1,3 +1,4 @@
+import { sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -63,7 +64,7 @@ export class SalesService {
       if (sellingPrice.lessThanOrEqualTo(0)) throw new BadRequestException('Sale item price must be greater than zero.');
 
       const lineTotal = quantity.times(sellingPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, unitsPerOption: new Prisma.Decimal(1), gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
+      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, unitsPerOption: new Prisma.Decimal(1), movementUnit: undefined as string | undefined, movementQuantity: undefined as Prisma.Decimal | undefined, gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
     });
 
     const products = await this.prisma.product.findMany({ where: { businessId, id: { in: lines.map((line) => line.productId) } } });
@@ -73,18 +74,22 @@ export class SalesService {
       if (!product) throw new NotFoundException(`Product ${line.productId} not found in this business.`);
       if (product.status !== ProductStatus.ACTIVE) throw new ConflictException(`Product ${product.name} is not active.`);
       if (line.sellingOptionId) {
-        const options = (Array.isArray(product.sellingOptions) ? product.sellingOptions : []) as { id: string; name: string; unit: string; quantity: string; sellingPrice: string }[];
+        const options = (Array.isArray(product.sellingOptions) ? product.sellingOptions : []) as { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number }[];
         const option = options.find((entry) => entry.id === line.sellingOptionId);
         if (!option) throw new BadRequestException('This selling option is no longer available. Reload the product.');
         if (!line.quantity.times(line.unitsPerOption).isInteger()) throw new BadRequestException('Enter a whole number of selling options.');
         line.unit = option.unit;
         line.optionName = option.name;
         line.unitsPerOption = new Prisma.Decimal(option.quantity);
+        const conversion = sellingUnitConversion(product.unit, product.piecesPerUnit, option.unit, option.piecesPerUnit);
+        if (!conversion) throw new BadRequestException('This selling option has no valid stock conversion. Edit the product option.');
+        line.movementUnit = conversion.unit;
+        line.movementQuantity = line.quantity.times(conversion.perOption ? 1 : line.unitsPerOption).times(conversion.numerator).div(conversion.denominator);
         line.sellingPrice = new Prisma.Decimal(option.sellingPrice);
         line.lineTotal = line.quantity.times(line.sellingPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
       }
       line.unit ??= product.unit;
-      if (line.unit !== product.unit && !(line.unit === 'PIECE' && product.piecesPerUnit)) throw new BadRequestException('Unsupported selling unit for this product.');
+      if (!line.sellingOptionId && line.unit !== product.unit && !(line.unit === 'PIECE' && product.piecesPerUnit)) throw new BadRequestException('Unsupported selling unit for this product.');
       if (line.unit === 'PIECE' && !line.quantity.times(line.unitsPerOption).isInteger()) throw new BadRequestException(`${product.name} must be sold in whole pieces.`);
     }
 
@@ -122,8 +127,8 @@ export class SalesService {
             businessId,
             productId: line.productId,
             type: InventoryTransactionType.SALE,
-            quantity: line.quantity.times(line.unitsPerOption),
-            unit: line.unit,
+            quantity: line.movementQuantity ?? line.quantity.times(line.unitsPerOption),
+            unit: line.movementUnit ?? line.unit,
             note: `Sale ${sale.id}`,
             userId,
           },
