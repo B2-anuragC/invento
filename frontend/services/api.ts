@@ -367,14 +367,14 @@ async function request<T>(
     headers.set('X-Business-Id', session.businessId);
   }
 
-  console.log('[API request]', options.method ?? 'GET', `${API_BASE_URL}${path}`);
+  // console.log('[API request]', options.method ?? 'GET', `${API_BASE_URL}${path}`);
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
   });
 
-  console.log('[API response]', response.status, response.url);
+  // console.log('[API response]', response.status, response.url);
 
   const text = await response.text();
   let payload: any = null;
