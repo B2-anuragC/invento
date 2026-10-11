@@ -93,6 +93,6 @@ describe('SuppliersService', () => {
     const result = await new SuppliersService(prisma as never).deactivate('user-a', 'business-a', 'supplier-a');
 
     expect(result.status).toBe('INACTIVE');
-    expect(prisma.supplier.update).toHaveBeenCalledWith({ where: { id: 'supplier-a' }, data: { status: 'INACTIVE' } });
+    expect(prisma.supplier.update).toHaveBeenCalledWith({ where: { id: 'supplier-a' }, data: { revision: { increment: 1 }, status: 'INACTIVE' } });
   });
 });

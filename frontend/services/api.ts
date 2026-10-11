@@ -2,6 +2,9 @@ export type SellingOption = { id: string; name: string; unit: string; quantity: 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import { configureOffline, offlineView, saveOfflineCatalog, saveOfflineOpening, requireSyncedCatalog, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+export { hasOfflineBusiness, syncOffline } from './offline-catalog';
+const nativeOffline = Platform.OS !== 'web';
 
 export type ApiUser = {
   id: string;
@@ -54,6 +57,8 @@ export type DashboardSummary = {
 };
 
 export type ProductRecord = {
+  revision?: number;
+  syncState?: string;
   id: string;
   businessId: string;
   name: string;
@@ -87,6 +92,9 @@ export type ProductInput = {
 };
 
 export type CustomerRecord = {
+  revision?: number;
+  updatedAt?: string;
+  syncState?: string;
   id: string;
   name: string;
   contactName?: string | null;
@@ -105,6 +113,7 @@ export type InventoryRecord = {
 };
 
 export type InventoryTransactionRecord = {
+  productId?: string;
   id: string;
   type: string;
   quantity: string | number;
@@ -142,6 +151,9 @@ export type CreateSaleInput = {
 };
 
 export type SupplierRecord = {
+  revision?: number;
+  updatedAt?: string;
+  syncState?: string;
   id: string;
   name: string;
   contactName?: string | null;
@@ -451,6 +463,15 @@ export async function createBusiness(
 }
 
 export async function fetchDashboardSummary(session: AppSession): Promise<DashboardSummary> {
+  if (nativeOffline) {
+    const view = await offlineView(session);
+    const today = new Date(Date.now() + 19800000).toISOString().slice(0, 10);
+    const dateOf = (value: string) => new Date(new Date(value).getTime() + 19800000).toISOString().slice(0, 10);
+    const sales = view.sales.filter((sale) => dateOf(sale.saleDate) === today);
+    const purchases = view.purchases.filter((purchase) => dateOf(purchase.purchaseDate) === today);
+    const canViewCosts = view.access.role !== 'MEMBER' || view.access.membersCanViewPurchasePrice;
+    return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.reduce((sum, sale) => sum + Number(sale.total), 0), todayPurchases: canViewCosts ? purchases.reduce((sum, purchase) => sum + Number(purchase.total ?? 0), 0) : null, saleCount: sales.length, purchaseCount: purchases.length, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
+  }
   return request<DashboardSummary>('/dashboard/summary', { method: 'GET' }, session);
 }
 
@@ -458,6 +479,7 @@ export async function fetchProducts(
   session: AppSession,
   query: { search?: string; status?: 'ACTIVE' | 'INACTIVE'; category?: string } = {},
 ): Promise<ProductRecord[]> {
+  if (nativeOffline) { const view = await offlineView(session); return (view.products as ProductRecord[]).filter((product) => product.status === (query.status ?? 'ACTIVE') && (!query.category || product.category === query.category) && (!query.search?.trim() || [product.name, product.sku, product.barcode, product.category].some((field) => field?.toLowerCase().includes(query.search!.trim().toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)); }
   const params = new URLSearchParams();
   if (query.search?.trim()) params.set('search', query.search.trim());
   if (query.status) params.set('status', query.status);
@@ -467,14 +489,17 @@ export async function fetchProducts(
 }
 
 export async function fetchProductCategories(session: AppSession): Promise<string[]> {
+  if (nativeOffline) return [...new Set((await offlineView(session)).products.filter((product) => product.status === 'ACTIVE').map((product) => (product as ProductRecord).category).filter((value): value is string => Boolean(value)))].sort();
   return request<string[]>('/products/categories', { method: 'GET' }, session);
 }
 
 export async function fetchProduct(session: AppSession, productId: string): Promise<ProductRecord> {
+  if (nativeOffline) { const product = (await offlineView(session)).products.find((record) => record.id === productId); if (!product) throw new Error('Product not downloaded to this device.'); return product as ProductRecord; }
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, { method: 'GET' }, session);
 }
 
 export async function createProduct(session: AppSession, input: ProductInput): Promise<ProductRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'products', { ...input }) as ProductRecord;
   return request<ProductRecord>('/products', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -486,6 +511,7 @@ export async function updateProduct(
   productId: string,
   input: Partial<ProductInput> & { status?: 'ACTIVE' | 'INACTIVE' },
 ): Promise<ProductRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'products', { ...input }, productId) as ProductRecord;
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
@@ -493,10 +519,12 @@ export async function updateProduct(
 }
 
 export async function deactivateProduct(session: AppSession, productId: string): Promise<ProductRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'products', { status: 'INACTIVE' }, productId) as ProductRecord;
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, { method: 'DELETE' }, session);
 }
 
 export async function fetchProductStock(session: AppSession, productId: string): Promise<InventoryRecord> {
+  if (nativeOffline) return (await offlineView(session)).inventory.find((record) => record.productId === productId) ?? { productId, quantity: '0', createdAt: null, updatedAt: null };
   return request<InventoryRecord>(`/products/${encodeURIComponent(productId)}/stock`, { method: 'GET' }, session);
 }
 
@@ -504,6 +532,7 @@ export async function fetchProductTransactions(
   session: AppSession,
   productId: string,
 ): Promise<InventoryTransactionRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).inventoryActivity.filter((record) => record.productId === productId || record.product.id === productId);
   return request<InventoryTransactionRecord[]>(
     `/products/${encodeURIComponent(productId)}/transactions`,
     { method: 'GET' },
@@ -516,6 +545,7 @@ export async function recordOpeningStock(
   productId: string,
   quantity: string,
 ): Promise<InventoryRecord> {
+  if (nativeOffline) return saveOfflineOpening(session, productId, quantity);
   return request<InventoryRecord>('/inventory/opening-stock', {
     method: 'POST',
     body: JSON.stringify({ productId, quantity }),
@@ -523,6 +553,7 @@ export async function recordOpeningStock(
 }
 
 export async function fetchCustomers(session: AppSession): Promise<CustomerRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).customers.filter((record) => record.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name)) as CustomerRecord[];
   return request<CustomerRecord[]>('/customers', { method: 'GET' }, session);
 }
 
@@ -530,6 +561,7 @@ export async function createCustomer(
   session: AppSession,
   input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
 ): Promise<CustomerRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'customers', typeof input === 'string' ? { name: input } : { ...input }) as CustomerRecord;
   const body = typeof input === 'string' ? { name: input } : input;
   return request<CustomerRecord>(
     '/customers',
@@ -539,6 +571,7 @@ export async function createCustomer(
 }
 
 export async function fetchCustomer(session: AppSession, customerId: string): Promise<CustomerRecord> {
+  if (nativeOffline) { const record = (await offlineView(session)).customers.find((record) => record.id === customerId); if (!record) throw new Error('Customer not downloaded to this device.'); return record as CustomerRecord; }
   return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, { method: 'GET' }, session);
 }
 
@@ -547,17 +580,20 @@ export async function updateCustomer(
   customerId: string,
   input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
 ): Promise<CustomerRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'customers', { ...input }, customerId) as CustomerRecord;
   return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   }, session);
 }
 
-export async function fetchInventory(session: AppSession): Promise<InventoryRecord[]> {
+export async function fetchInventory(session: AppSession, requireFresh = false): Promise<InventoryRecord[]> {
+  if (nativeOffline && !requireFresh) return (await offlineView(session)).inventory;
   return request<InventoryRecord[]>('/inventory', { method: 'GET' }, session);
 }
 
 export async function fetchSales(session: AppSession, query: { customerId?: string } = {}): Promise<SaleRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).sales.filter((sale) => !query.customerId || sale.customer.id === query.customerId);
   const params = new URLSearchParams();
   if (query.customerId) params.set('customerId', query.customerId);
   const suffix = params.size ? `?${params.toString()}` : '';
@@ -565,21 +601,27 @@ export async function fetchSales(session: AppSession, query: { customerId?: stri
 }
 
 export async function fetchSale(session: AppSession, saleId: string): Promise<SaleRecord> {
+  if (nativeOffline) { const sale = (await offlineView(session)).sales.find((record) => record.id === saleId); if (sale) return sale; }
   return request<SaleRecord>(`/sales/${encodeURIComponent(saleId)}`, { method: 'GET' }, session);
 }
 
 export async function fetchInventoryActivity(session: AppSession): Promise<InventoryActivityRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).inventoryActivity;
   return request<InventoryActivityRecord[]>('/inventory/activity', { method: 'GET' }, session);
 }
 
 export async function createSale(session: AppSession, input: CreateSaleInput): Promise<SaleRecord> {
-  return request<SaleRecord>('/sales', {
+  if (nativeOffline) await requireSyncedCatalog(session, [input.customerId, ...input.items.map((item) => item.productId)]);
+  const saved = await request<SaleRecord>('/sales', {
     method: 'POST',
     body: JSON.stringify(input),
   }, session);
+  if (nativeOffline) { await rememberConfirmedTransaction(session, 'sale', saved).catch(() => undefined); await refreshOfflineSnapshot(session); }
+  return saved;
 }
 
 export async function fetchSuppliers(session: AppSession): Promise<SupplierRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).suppliers.filter((record) => record.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name)) as SupplierRecord[];
   return request<SupplierRecord[]>('/suppliers', { method: 'GET' }, session);
 }
 
@@ -587,6 +629,7 @@ export async function createSupplier(
   session: AppSession,
   input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
 ): Promise<SupplierRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', typeof input === 'string' ? { name: input } : { ...input }) as SupplierRecord;
   const body = typeof input === 'string' ? { name: input } : input;
   return request<SupplierRecord>(
     '/suppliers',
@@ -596,6 +639,7 @@ export async function createSupplier(
 }
 
 export async function fetchSupplier(session: AppSession, supplierId: string): Promise<SupplierRecord> {
+  if (nativeOffline) { const record = (await offlineView(session)).suppliers.find((record) => record.id === supplierId); if (!record) throw new Error('Supplier not downloaded to this device.'); return record as SupplierRecord; }
   return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, { method: 'GET' }, session);
 }
 
@@ -604,6 +648,7 @@ export async function updateSupplier(
   supplierId: string,
   input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
 ): Promise<SupplierRecord> {
+  if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', { ...input }, supplierId) as SupplierRecord;
   return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
@@ -611,6 +656,7 @@ export async function updateSupplier(
 }
 
 export async function fetchPurchases(session: AppSession, query: { supplierId?: string } = {}): Promise<PurchaseRecord[]> {
+  if (nativeOffline) return (await offlineView(session)).purchases.filter((purchase) => !query.supplierId || purchase.supplier.id === query.supplierId);
   const params = new URLSearchParams();
   if (query.supplierId) params.set('supplierId', query.supplierId);
   const suffix = params.size ? `?${params.toString()}` : '';
@@ -649,6 +695,7 @@ export async function removeBusinessUser(session: AppSession, userId: string): P
 }
 
 export async function fetchPricingAccess(session: AppSession): Promise<PricingAccess> {
+  if (nativeOffline) return (await offlineView(session)).access;
   return request<PricingAccess>(`/businesses/${encodeURIComponent(session.businessId)}/pricing-access`, { method: 'GET' }, session);
 }
 
@@ -661,16 +708,29 @@ export async function updatePricingAccess(session: AppSession, membersCanViewPur
 }
 
 export async function createPurchase(session: AppSession, input: CreatePurchaseInput): Promise<PurchaseRecord> {
-  return request<PurchaseRecord>('/purchases', {
+  if (nativeOffline) await requireSyncedCatalog(session, [input.supplierId, ...input.items.map((item) => item.productId)]);
+  const saved = await request<PurchaseRecord>('/purchases', {
     method: 'POST',
     body: JSON.stringify(input),
   }, session);
+  if (nativeOffline) { await rememberConfirmedTransaction(session, 'purchase', saved).catch(() => undefined); await refreshOfflineSnapshot(session); }
+  return saved;
 }
 
 export async function fetchPurchase(session: AppSession, purchaseId: string): Promise<PurchaseRecord> {
+  if (nativeOffline) { const purchase = (await offlineView(session)).purchases.find((record) => record.id === purchaseId); if (purchase) return purchase; }
   return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
 }
 
 export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string }): Promise<SaleRecord | PurchaseRecord> {
-  return request(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);
+  const saved = await request<SaleRecord | PurchaseRecord>(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);
+  if (nativeOffline) { await rememberConfirmedTransaction(session, kind, saved).catch(() => undefined); await refreshOfflineSnapshot(session); }
+  return saved;
 }
+
+configureOffline(async <T>(path: string, options: RequestInit, session: AppSession) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try { return await request<T>(path, { ...options, signal: controller.signal }, session); }
+  finally { clearTimeout(timeout); }
+}, () => appSession.current);

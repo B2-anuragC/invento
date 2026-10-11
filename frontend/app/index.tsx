@@ -4,7 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
-import { appSession, fetchBusinesses, loginWithEmail, persistSession, restoreSession, type AppSession } from '@/services/api';
+import { appSession, fetchBusinesses, loginWithEmail, persistSession, restoreSession, hasOfflineBusiness, syncOffline, type AppSession } from '@/services/api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -26,6 +26,12 @@ export default function LoginScreen() {
 
       appSession.current = session;
       try {
+        if (await hasOfflineBusiness(session)) {
+          if (!active) return;
+          router.replace('/(tabs)');
+          void syncOffline(session);
+          return;
+        }
         const memberships = await fetchBusinesses(session);
         if (!active) return;
         const selected = memberships.find((membership) => membership.business.id === session.businessId);

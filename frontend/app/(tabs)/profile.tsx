@@ -1,7 +1,7 @@
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard } from '@/components/invento-ui';
 import { appSession, logoutSession, persistSession, updateProfile } from '@/services/api';
@@ -174,6 +174,7 @@ export default function ProfileScreen() {
           ) : (
             <ActionButton title="Edit profile" variant="secondary" onPress={beginEditing} />
           )}
+          {Platform.OS !== 'web' ? <ActionButton title="Device sync status" variant="secondary" onPress={() => router.push('/settings/sync')} /> : null}
           <ActionButton title={loggingOut ? 'Signing out…' : 'Log out'} onPress={() => void handleLogout()} disabled={loggingOut || saving} />
         </View>
       </ScrollView>

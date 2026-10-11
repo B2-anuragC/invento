@@ -7,7 +7,7 @@ export class CreateCustomerDto {
   @ApiProperty() @IsString() @MinLength(1) @Matches(/\S/, { message: 'name must contain a non-whitespace character' }) @MaxLength(160) name!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(160) contactName?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(30) phone?: string;
-  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsEmail() @MaxLength(160) email?: string;
+  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined && value !== '') @IsEmail() @MaxLength(160) email?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(300) address?: string;
 }
 
@@ -15,7 +15,7 @@ export class UpdateCustomerDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MinLength(1) @Matches(/\S/, { message: 'name must contain a non-whitespace character' }) @MaxLength(160) name?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(160) contactName?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(30) phone?: string;
-  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsEmail() @MaxLength(160) email?: string;
+  @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined && value !== '') @IsEmail() @MaxLength(160) email?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(300) address?: string;
   @ApiPropertyOptional({ enum: customerStatuses }) @ValidateIf((_object, value) => value !== undefined) @IsIn(customerStatuses) status?: (typeof customerStatuses)[number];
 }

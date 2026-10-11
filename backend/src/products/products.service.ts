@@ -23,13 +23,14 @@ type ProductInput = {
 export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate'>) {
+  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
     const piecesPerUnit = this.groupSize(input.unit, input.piecesPerUnit);
     const sellingOptions = this.validateOptions(input.sellingOptions ?? [], input.unit, piecesPerUnit);
     try {
       return await this.prisma.product.create({
         data: {
+          id: clientId,
           businessId,
           name: input.name.trim(),
           sku: input.sku.trim().toUpperCase(),
@@ -105,6 +106,7 @@ export class ProductsService {
         where: { id: productId },
         data: {
           ...input,
+          revision: { increment: 1 },
           sellingOptions,
           piecesPerUnit,
           name: input.name?.trim(),
@@ -126,7 +128,7 @@ export class ProductsService {
   async deactivate(userId: string, businessId: string, productId: string) {
     await this.requireManagerMembership(userId, businessId);
     await this.requireProduct(businessId, productId);
-    return this.prisma.product.update({ where: { id: productId }, data: { status: ProductStatus.INACTIVE } });
+    return this.prisma.product.update({ where: { id: productId }, data: { revision: { increment: 1 }, status: ProductStatus.INACTIVE } });
   }
 
   async stock(userId: string, businessId: string, productId: string) {

@@ -1,5 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
+import { OfflineSyncStatus } from '@/components/offline-sync-status';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -13,6 +15,8 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <View style={{ flex: 1 }}>
+      <OfflineSyncStatus />
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -25,8 +29,10 @@ export default function RootLayout() {
         <Stack.Screen name="purchase/create" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="product/[id]" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="people/[kind]/[id]" options={{ headerShown: false, animation: 'slide_from_right' }} />
+        <Stack.Screen name="settings/sync" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
+      </View>
       <StatusBar style="dark" />
     </ThemeProvider>
   );

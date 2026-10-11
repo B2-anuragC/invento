@@ -14,6 +14,7 @@ import { PurchasesModule } from './purchases/purchases.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { SalesModule } from './sales/sales.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { SyncModule } from './sync/sync.module.js';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
     CustomersModule,
     SalesModule,
     DashboardModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],

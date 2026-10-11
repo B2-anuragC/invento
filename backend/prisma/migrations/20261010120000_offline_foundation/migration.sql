@@ -1,0 +1,8 @@
+ALTER TABLE products ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE customers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE suppliers ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+CREATE TABLE sync_operations (
+ "businessId" TEXT NOT NULL, "operationId" TEXT NOT NULL, "userId" TEXT NOT NULL,
+ "payloadHash" TEXT NOT NULL, result JSONB NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY ("businessId", "operationId")
+);

@@ -126,6 +126,6 @@ describe('CustomersService', () => {
     const result = await new CustomersService(prisma as never).deactivate('user-a', 'business-a', 'customer-a');
 
     expect(result.status).toBe('INACTIVE');
-    expect(prisma.customer.update).toHaveBeenCalledWith({ where: { id: 'customer-a' }, data: { status: 'INACTIVE' } });
+    expect(prisma.customer.update).toHaveBeenCalledWith({ where: { id: 'customer-a' }, data: { revision: { increment: 1 }, status: 'INACTIVE' } });
   });
 });

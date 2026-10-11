@@ -261,7 +261,7 @@ export default function CreatePurchaseScreen() {
       });
       discardDraftWrites.current = true;
       await clearDraft(session, 'purchase').catch(() => setDraftStorageError('Transaction saved, but the draft could not be cleared. Check Activity before restoring it.'));
-      const refreshedInventory = await fetchInventory(session).catch(() => null);
+      const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
       setReceiptData({ id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });

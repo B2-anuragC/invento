@@ -16,10 +16,11 @@ type SupplierInput = {
 export class SuppliersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<SupplierInput, 'name'>> & Omit<SupplierInput, 'name' | 'status'>) {
+  async create(userId: string, businessId: string, input: Required<Pick<SupplierInput, 'name'>> & Omit<SupplierInput, 'name' | 'status'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
     return this.prisma.supplier.create({
       data: {
+        id: clientId,
         businessId,
         name: input.name.trim(),
         contactName: input.contactName?.trim() || null,
@@ -63,6 +64,7 @@ export class SuppliersService {
     return this.prisma.supplier.update({
       where: { id: supplierId },
       data: {
+        revision: { increment: 1 },
         name: input.name?.trim(),
         contactName: input.contactName === undefined ? undefined : input.contactName.trim() || null,
         phone: input.phone === undefined ? undefined : input.phone.trim() || null,
@@ -77,7 +79,7 @@ export class SuppliersService {
   async deactivate(userId: string, businessId: string, supplierId: string) {
     await this.requireManagerMembership(userId, businessId);
     await this.requireSupplier(businessId, supplierId);
-    return this.prisma.supplier.update({ where: { id: supplierId }, data: { status: SupplierStatus.INACTIVE } });
+    return this.prisma.supplier.update({ where: { id: supplierId }, data: { revision: { increment: 1 }, status: SupplierStatus.INACTIVE } });
   }
 
   /**

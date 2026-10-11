@@ -65,6 +65,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterEach(async () => {
     // Remove dependent fixtures in FK order, scoped exclusively to this test.
     for (const id of businessIds.splice(0)) {
+      await prisma.syncOperation.deleteMany({ where: { businessId: id } });
       await prisma.transactionPayment.deleteMany({ where: { businessId: id } });
       await prisma.sale.deleteMany({ where: { businessId: id } });
       await prisma.purchase.deleteMany({ where: { businessId: id } });
@@ -76,6 +77,41 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (app) await app.close();
+  });
+
+  it('uploads offline catalog/contact/stock changes exactly once and detects stale revisions', async () => {
+    const command = { operationId: randomUUID(), entityId: randomUUID(), entity: 'products', action: 'create', payload: { name: 'Offline product', sku: 'OFFLINE-001', unit: 'KG', purchasePrice: '40', sellingPrice: '50', minimumStock: '0' } };
+    const responses = await Promise.all([api('post', '/sync/push').send(command), api('post', '/sync/push').send(command)]);
+    expect(responses.map((response) => response.status)).toEqual([201, 201]);
+    expect(responses[0].body.data.record.id).toBe(command.entityId);
+    expect(await prisma.product.count({ where: { businessId, sku: 'OFFLINE-001' } })).toBe(1);
+    await api('post', '/sync/push').send({ ...command, payload: { ...command.payload, name: 'Changed replay' } }).expect(409);
+    const edit = { operationId: randomUUID(), entityId: command.entityId, entity: 'products', action: 'update', baseRevision: 1, payload: { name: 'Edited offline' } };
+    expect((await api('post', '/sync/push').send(edit).expect(201)).body.data.record.revision).toBe(2);
+    await api('patch', `/products/${command.entityId}`).send({ name: 'Edited elsewhere' }).expect(200);
+    await api('post', '/sync/push').send({ ...edit, operationId: randomUUID(), baseRevision: 2, payload: { name: 'Stale edit' } }).expect(409);
+    expect((await api('get', `/products/${command.entityId}`).expect(200)).body.data.name).toBe('Edited elsewhere');
+    const opening = { operationId: randomUUID(), entityId: randomUUID(), entity: 'opening-stock', action: 'create', payload: { productId: command.entityId, quantity: '0.8' } };
+    await api('post', '/sync/push').send(opening).expect(201);
+    await api('post', '/sync/push').send(opening).expect(201);
+    expect(await prisma.inventoryTransaction.count({ where: { businessId, productId: command.entityId } })).toBe(1);
+    await api('post', '/sync/push').send({ ...opening, operationId: randomUUID() }).expect(409);
+    for (const entity of ['customers', 'suppliers']) {
+      const contact = { operationId: randomUUID(), entityId: randomUUID(), entity, action: 'create', payload: { name: 'Offline contact' } };
+      await api('post', '/sync/push').send(contact).expect(201);
+      await api('post', '/sync/push').send(contact).expect(201);
+      await api('post', '/sync/push').send({ operationId: randomUUID(), entityId: contact.entityId, entity, action: 'update', baseRevision: 1, payload: { phone: '9876543210' } }).expect(201);
+    }
+    await api('post', '/sync/push').send({ ...command, operationId: randomUUID(), entityId: randomUUID(), payload: { ...command.payload, unknown: 'unsafe' } }).expect(422);
+    const snapshot = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(snapshot.products.find((product: any) => product.id === command.entityId).name).toBe('Edited elsewhere');
+    expect(snapshot.inventory.find((stock: any) => stock.productId === command.entityId).quantity).toBe('0.8');
+    await prisma.business.update({ where: { id: businessId }, data: { membersCanViewPurchasePrice: false } });
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'MEMBER' } });
+    const restricted = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(restricted.products.every((product: any) => product.purchasePrice === undefined)).toBe(true);
+    await api('post', '/sync/push').send(command).expect(403);
+    await api('get', '/sync/snapshot', 'other-business').expect(403);
   });
 
   it('snapshots GST and serializes payments and retried sales without repeating stock changes', async () => {

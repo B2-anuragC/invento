@@ -218,7 +218,7 @@ export class PurchasesService {
     return membership;
   }
 
-  private async applyPriceVisibility<T extends PriceSensitivePurchase>(
+  async applyPriceVisibility<T extends PriceSensitivePurchase>(
     businessId: string,
     membership: { role: string },
     purchases: T[],

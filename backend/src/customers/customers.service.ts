@@ -16,10 +16,11 @@ type CustomerInput = {
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<CustomerInput, 'name'>> & Omit<CustomerInput, 'name' | 'status'>) {
+  async create(userId: string, businessId: string, input: Required<Pick<CustomerInput, 'name'>> & Omit<CustomerInput, 'name' | 'status'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
     return this.prisma.customer.create({
       data: {
+        id: clientId,
         businessId,
         name: input.name.trim(),
         contactName: input.contactName?.trim() || null,
@@ -63,6 +64,7 @@ export class CustomersService {
     return this.prisma.customer.update({
       where: { id: customerId },
       data: {
+        revision: { increment: 1 },
         name: input.name?.trim(),
         contactName: input.contactName === undefined ? undefined : input.contactName.trim() || null,
         phone: input.phone === undefined ? undefined : input.phone.trim() || null,
@@ -77,7 +79,7 @@ export class CustomersService {
   async deactivate(userId: string, businessId: string, customerId: string) {
     await this.requireManagerMembership(userId, businessId);
     await this.requireCustomer(businessId, customerId);
-    return this.prisma.customer.update({ where: { id: customerId }, data: { status: CustomerStatus.INACTIVE } });
+    return this.prisma.customer.update({ where: { id: customerId }, data: { revision: { increment: 1 }, status: CustomerStatus.INACTIVE } });
   }
 
   /**
