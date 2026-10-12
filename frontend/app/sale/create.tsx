@@ -170,17 +170,19 @@ export default function CreateSaleScreen() {
   );
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
+    if (!query) return [];
     return products.filter((product) =>
       (category === 'All' || product.category === category) &&
       (!stockOnly || (stock[product.id] ?? 0) > 0) &&
       (!query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query) ||
         (product.barcode ?? '').toLowerCase().includes(query) || product.category?.toLowerCase().includes(query)),
-    );
+    ).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   }, [category, productSearch, products, stock, stockOnly]);
 
   const saleItems = useMemo(
-    () => products.flatMap((product) => {
-      if (!Object.prototype.hasOwnProperty.call(quantities, product.id)) return [];
+    () => Object.keys(quantities).reverse().flatMap((productId) => {
+      const product = products.find((entry) => entry.id === productId);
+      if (!product) return [];
       const parsedQuantity = Number(quantities[product.id]);
       const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
       const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
@@ -235,7 +237,7 @@ export default function CreateSaleScreen() {
     if (!draft) return;
     const available = new Set(products.map((product) => product.id));
     setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
-    setPrices(draft.prices); setCustomerId(draft.contactId); setShowCustomerPicker(!draft.contactId); setStep(draft.step);
+    setPrices(draft.prices); setCustomerId(draft.contactId); setShowCustomerPicker(!draft.contactId); setStep(draft.step === 3 ? 3 : 1);
     setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as PaymentMethod); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
     setSellingUnits(draft.sellingUnits ?? {}); setSelectedOptions(draft.selectedOptions ?? {});
     setDraftCandidate(null);
@@ -326,27 +328,15 @@ export default function CreateSaleScreen() {
   const goBack = () => {
     if (submitting.current) return;
     if (step > 1) {
-      setStep((current) => (current - 1) as 1 | 2 | 3);
+      setStep(1);
       return;
     }
     if (hasChanges) setLeaveConfirm(true);
     else router.back();
   };
 
-  const continueToQuantity = () => {
-    if (!customerId) {
-      setError('Choose a customer to continue.');
-      return;
-    }
-    if (!saleItems.length) {
-      setError('Add at least one product to continue.');
-      return;
-    }
-    setError('');
-    setStep(2);
-  };
-
   const continueToReview = () => {
+    if (!customerId) { setError('Choose a customer to continue.'); return; }
     if (!saleItems.length || !quantitiesValid) {
       setError('Check quantities and selling prices before reviewing this sale.');
       return;
@@ -402,8 +392,8 @@ export default function CreateSaleScreen() {
             <Pressable accessibilityLabel="Sale options" onPress={() => setLeaveConfirm(true)} style={styles.moreButton}><Text style={styles.moreText}>•••</Text></Pressable>
           </View>
           <View style={styles.steps}>
-            {(['Products', 'Quantity', 'Review'] as const).map((label, index) => {
-              const value = (index + 1) as 1 | 2 | 3;
+            {(['Items & quantities', 'Review'] as const).map((label, index) => {
+              const value = (index === 0 ? 1 : 3) as 1 | 3;
               const completed = step > value;
               const active = step === value;
               return (
@@ -422,7 +412,7 @@ export default function CreateSaleScreen() {
           {error && !saveOutcome ? <Text style={styles.error}>{error}</Text> : null}
           {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
           {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
-          <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
+          <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(1)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedCustomer && !showCustomerPicker ? (
             <View style={styles.selectedCustomer}>
               <Text style={styles.customerGlyph}>♙</Text>
@@ -464,6 +454,18 @@ export default function CreateSaleScreen() {
                 <Text style={styles.searchIcon}>⌕</Text>
                 <TextInput value={productSearch} onChangeText={(value) => { setProductSearch(value); clearErrorOnEdit(); }} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
               </View>
+              {productSearch.trim() ? <View style={styles.suggestionDropdown}>
+                <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                  {filteredProducts.map((product) => {
+                    const added = Object.prototype.hasOwnProperty.call(quantities, product.id);
+                    return <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Select ${product.name}`} onPress={() => { if (!added) toggleProduct(product); else setQuantities((current) => { const next = { ...current }; const quantity = next[product.id]; delete next[product.id]; return { ...next, [product.id]: quantity }; }); setProductSearch(''); }} style={styles.suggestionRow}>
+                      <View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productMeta}>{product.sku} · {(stock[product.id] ?? 0).toLocaleString('en-IN')} {formatUnitLabel(product.unit)} available</Text></View>
+                      <Text style={styles.changeText}>{added ? 'Added ✓' : formatMoney(Number(product.sellingPrice))}</Text>
+                    </Pressable>;
+                  })}
+                  {!filteredProducts.length ? <Text style={[styles.helperText, { padding: 14 }]}>No matching products. Try another search or category.</Text> : null}
+                </ScrollView>
+              </View> : null}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
                 {categories.map((value) => (
                   <Pressable key={value} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categorySelected]}>
@@ -472,60 +474,18 @@ export default function CreateSaleScreen() {
                 ))}
               </ScrollView>
               <View style={styles.sectionHeading}>
-                <Text style={styles.sectionTitle}>Recently sold</Text>
+                <Text style={styles.sectionTitle}>{`Sale items · ${saleItems.length}`}</Text>
                 <Pressable onPress={() => setStockOnly((current) => !current)} style={[styles.stockOnly, stockOnly && styles.stockOnlyActive]}>
                   <Text style={[styles.stockOnlyText, stockOnly && styles.stockOnlyTextActive]}>☷  {stockOnly ? 'In stock only' : 'All stock'}</Text>
                 </Pressable>
               </View>
-              {filteredProducts.map((product) => {
-                const available = stock[product.id] ?? 0;
-                const quantity = quantities[product.id];
+              {saleItems.map(({ product }) => {
                 const selected = Object.prototype.hasOwnProperty.call(quantities, product.id);
-                return (
-                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, selected && styles.productCardSelected]}>
-                    <View style={styles.productTop}>
-                      <View style={styles.productGlyph}><Text style={styles.productGlyphText}>⌁</Text></View>
-                      <View style={styles.productCopy}>
-                        <Text numberOfLines={1} style={styles.productName}>{product.name}</Text>
-                        <Text numberOfLines={1} style={styles.productMeta}>{product.category ? `${product.category} · ` : ''}{product.sku}</Text>
-                      </View>
-                      <View style={[styles.addProductButton, selected && styles.addProductSelected]}>
-                        <Text style={[styles.addProductText, selected && styles.addProductTextSelected]}>{selected ? '✓' : '+'}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.productFacts}>
-                      <View style={styles.stockFact}>
-                        <Text style={styles.stockValue}>{available.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
-                        <Text style={styles.factLabel}>{available > 0 ? 'Available' : 'Out of stock'}</Text>
-                      </View>
-                      {product.purchasePrice != null ? (
-                        <View style={styles.priceFact}>
-                          <Text style={styles.factLabel}>BUY / {formatUnitLabel(product.unit)}</Text>
-                          <Text style={styles.priceValue}>{formatMoney(Number(product.purchasePrice))}</Text>
-                        </View>
-                      ) : null}
-                      <View style={styles.priceFact}>
-                        <Text style={styles.factLabel}>SELL / {formatUnitLabel(product.unit)}</Text>
-                        <Text style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
-                      </View>
-                    </View>
-                    {selected ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(sellingUnits[product.id] ?? product.unit)}</Text> : null}
-                  </Pressable>
-                );
-              })}
-              {!filteredProducts.length ? <Text style={styles.empty}>No matching products. Try another search or category.</Text> : null}
-            </>
-          ) : null}
-
-          {step === 2 ? (
-            <>
-              <View style={styles.sectionHeading}>
-                <View><Text style={styles.sectionTitle}>Set quantity & price</Text><Text style={styles.helperText}>Confirm the unit and sell rate for each item.</Text></View>
-                <Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>Add item</Text></Pressable>
-              </View>
-              {!saleItems.length ? <Text style={styles.empty}>Add a product before entering quantities.</Text> : null}
-              {saleItems.map(({ product, quantity, price, unit, option }) => {
-                const invalidMessage = quantityError(product, quantity);
+                const quantity = Number(quantities[product.id]) || 0;
+                const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
+                const unit = option?.unit ?? sellingUnits[product.id] ?? product.unit;
+                const price = Number(option?.sellingPrice ?? prices[product.id] ?? product.sellingPrice);
+                const invalidMessage = selected ? quantityError(product, quantity) : null;
                 return (
                   <View key={product.id} style={[styles.quantityCard, invalidMessage && styles.quantityCardInvalid]}>
                     <View style={styles.productHeader}>
@@ -533,7 +493,7 @@ export default function CreateSaleScreen() {
                         <Text style={styles.productName}>{product.name}</Text>
                         <Text style={styles.productMeta}>{product.sku} · {stock[product.id] ?? 0} {formatUnitLabel(product.unit)} available</Text>
                       </View>
-                      <Pressable onPress={() => toggleProduct(product)}><Text style={styles.removeText}>×</Text></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`${selected ? "Remove" : "Add"} ${product.name}`} onPress={() => toggleProduct(product)} style={{ minHeight: 44, justifyContent: "center" }}><Text style={styles.changeText}>{selected ? "Remove" : "Add"}</Text></Pressable>
                     </View>
                     {product.sellingOptions?.length ? <>
                       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Choose a selling option</Text>
@@ -568,13 +528,13 @@ export default function CreateSaleScreen() {
                         <Text style={styles.fieldLabel}>{option ? `Number of ${option.name}` : `Quantity · ${formatUnitLabel(unit)}`}</Text>
                         <View style={styles.quantityControl}>
                           <Pressable accessibilityLabel={`Decrease ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(Math.max(0, quantity - (option || unit === 'PIECE' ? 1 : 0.5))))} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable>
-                          <TextInput accessibilityLabel={`${product.name} quantity`} value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.quantityInput} />
+                          <TextInput accessibilityLabel={`${product.name} quantity`} placeholder="0" value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.quantityInput} />
                           <Pressable accessibilityLabel={`Increase ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(quantity + (option || unit === 'PIECE' ? 1 : 0.5)))} style={styles.stepButton}><Text style={styles.stepText}>+</Text></Pressable>
                         </View>
                       </View>
                       <View style={styles.priceField}>
                         <Text style={styles.fieldLabel}>{option ? 'Price per option' : `Sell rate / ${formatUnitLabel(unit)}`}</Text>
-                        <TextInput editable={!option} value={option?.sellingPrice ?? prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.priceInput} />
+                        <TextInput accessibilityLabel={`${product.name} selling price`} editable={!option} value={option?.sellingPrice ?? prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.priceInput} />
                       </View>
                     </View>
                     {invalidMessage ? <Text style={styles.invalidText}>{invalidMessage}</Text> : null}
@@ -590,6 +550,7 @@ export default function CreateSaleScreen() {
                   </View>
                 );
               })}
+              {!saleItems.length ? <Text style={styles.empty}>Search above and select a product to start this sale.</Text> : null}
             </>
           ) : null}
 
@@ -625,13 +586,9 @@ export default function CreateSaleScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          {step === 1 ? (
-            <Pressable onPress={continueToQuantity} style={styles.submitButton}>
-              <Text style={styles.submitText}>Continue · {saleItems.length} item{saleItems.length === 1 ? '' : 's'}</Text>
-            </Pressable>
-          ) : step === 2 ? (
+          {step !== 3 ? (
             <Pressable onPress={continueToReview} style={styles.submitButton}>
-              <Text style={styles.submitText}>Review sale · {formatMoney(total)}</Text>
+              <Text style={styles.submitText}>Review sale · {saleItems.length} items · {formatMoney(total)}</Text>
             </Pressable>
           ) : (
             <Pressable disabled={!quantitiesValid || saving || !paymentValid || Boolean(draftCandidate)} onPress={() => void saveSale()} style={[styles.submitButton, (!quantitiesValid || saving || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
@@ -716,6 +673,8 @@ const styles = StyleSheet.create({
   newCustomerInput: { flex: 1, marginTop: 0 },
   smallButton: { minWidth: 59, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#176B50', paddingHorizontal: 12 },
   smallButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  suggestionDropdown: { backgroundColor: '#FFFFFF', borderColor: '#D5DAD7', borderWidth: 1, borderRadius: 13, marginTop: -9, marginBottom: 13, overflow: 'hidden' },
+  suggestionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, minHeight: 60, borderBottomWidth: 1, borderBottomColor: '#EAEDEB' },
   searchWrap: { minHeight: 52, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#E1E1E1', borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, marginBottom: 13 },
   searchIcon: { color: '#737B77', fontSize: 25, marginRight: 8 },
   search: { flex: 1, color: '#24332A', fontSize: 14, paddingVertical: 11 },
