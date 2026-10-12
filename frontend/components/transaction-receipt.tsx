@@ -1,18 +1,23 @@
-import type { PaymentRecord } from '@/services/api';
+import { PurchaseAttachment } from './purchase-attachment';
+import { SaleReferencePhoto } from './sale-reference-photo';
+import type { PaymentRecord, FileAttachment } from '@/services/api';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatUnitLabel } from './invento-ui';
 
 export type ReceiptData = {
+  referenceImage?: string | null;
+  attachment?: FileAttachment | null;
+  contactPhone?: string | null;
   id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
   subtotal?: string | number; taxTotal?: string | number; amountPaid?: string | number | null; dueDate?: string | null; payments?: PaymentRecord[];
   items: { id: string; name: string; sku?: string; quantity: number; label: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
 };
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-export function TransactionReceipt({ data, onBack, onView, onNew, onRepeat, onPayment }: { data: ReceiptData; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
+export function TransactionReceipt({ data, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
   const insets = useSafeAreaInsets();
   const [error, setError] = useState('');
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
@@ -21,8 +26,22 @@ export function TransactionReceipt({ data, onBack, onView, onNew, onRepeat, onPa
   const overdue = isOverdue(data);
   const total = data.total == null ? 'Restricted price' : money(Number(data.total));
   const share = async () => {
+    setError('');
     try {
-      await Share.share({ message: [`${title} receipt · ${identifier}`, new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' }), `${data.kind === 'sale' ? 'Customer' : 'Supplier'}: ${data.contact}`, ...data.items.map((item) => `${item.name} · ${item.quantity} ${item.label}${item.price == null ? '' : ` × ${money(item.price)} = ${money(Number((item.quantity * item.price).toFixed(2)))}`}`), `Subtotal: ${data.subtotal == null ? 'Restricted' : money(Number(data.subtotal))}`, `GST: ${data.taxTotal == null ? 'Restricted' : money(Number(data.taxTotal))}`, `Total: ${total}`, ...(balance == null ? [] : [`Paid: ${money(Number(data.amountPaid))}`, `Balance: ${money(balance)}`]), ...(data.paymentMethod ? [`Payment method: ${data.paymentMethod.replaceAll('_', ' ')}`] : [])].join('\n') });
+      const message = [`${title} receipt · ${identifier}`, new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' }), `${data.kind === 'sale' ? 'Customer' : 'Supplier'}: ${data.contact}`, ...data.items.map((item) => `${item.name} · ${item.quantity} ${item.label}${item.price == null ? '' : ` × ${money(item.price)} = ${money(Number((item.quantity * item.price).toFixed(2)))}`}`), `Subtotal: ${data.subtotal == null ? 'Restricted' : money(Number(data.subtotal))}`, `GST: ${data.taxTotal == null ? 'Restricted' : money(Number(data.taxTotal))}`, `Total: ${total}`, ...(balance == null ? [] : [`Paid: ${money(Number(data.amountPaid))}`, `Balance: ${money(balance)}`]), ...(data.paymentMethod ? [`Payment method: ${data.paymentMethod.replaceAll('_', ' ')}`] : []) ].join('\n');
+      if (data.kind === 'sale') {
+        const raw = data.contactPhone?.trim() ?? '';
+        let phone = raw.replace(/\D/g, '');
+        if (raw.startsWith('00')) phone = phone.slice(2);
+        if (!raw.startsWith('+') && !raw.startsWith('00')) {
+          if (/^0[6-9]\d{9}$/.test(phone)) phone = phone.slice(1);
+          if (/^[6-9]\d{9}$/.test(phone)) phone = `91${phone}`;
+        }
+        if (!/^[1-9]\d{6,14}$/.test(phone)) { setError('Save a valid customer phone number with country code to share on WhatsApp.'); return; }
+        const webUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        if (Platform.OS === 'web') await Linking.openURL(webUrl);
+        else { try { await Linking.openURL(`whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`); } catch { await Linking.openURL(webUrl); } }
+      } else await Share.share({ message });
     } catch { setError('Could not share this receipt. Please try again.'); }
   };
   return <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -40,8 +59,10 @@ export function TransactionReceipt({ data, onBack, onView, onNew, onRepeat, onPa
       {data.paymentMethod ? <View style={styles.card}><Text style={styles.meta}>Payment method</Text><Text style={styles.bold}>{data.paymentMethod.replaceAll('_', ' ')}</Text></View> : null}
       {data.note ? <View style={styles.card}><Text style={styles.meta}>Note</Text><Text style={styles.bold}>{data.note}</Text></View> : null}
       {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>Stock updated for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
-    </ScrollView>
-    <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}><View style={styles.actions}><Pressable accessibilityRole="button" onPress={() => void share()} style={styles.secondary}><Text style={styles.buttonText}>Share receipt</Text></Pressable>{onView ? <Pressable accessibilityRole="button" onPress={onView} style={styles.secondary}><Text style={styles.buttonText}>View receipt</Text></Pressable> : onRepeat ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
+    <SaleReferencePhoto value={data.referenceImage} />
+      <PurchaseAttachment value={data.attachment} />
+      </ScrollView>
+    <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}><View style={styles.actions}><Pressable accessibilityRole="button" onPress={() => void share()} style={styles.secondary}><Text style={styles.buttonText}>{data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{onRepeat ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
   </View>;
 }
 const styles = StyleSheet.create({

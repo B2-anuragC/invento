@@ -166,6 +166,8 @@ enum SupplierStatus {
 }
 
 model Supplier {
+  categories String[] @default([])
+  productIds String[] @default([])
   revision Int @default(1)
   id          String         @id @default(cuid())
   businessId  String
@@ -192,6 +194,7 @@ enum PurchaseStatus {
 }
 
 model Purchase {
+  attachment Json?
   id              String         @id @default(cuid())
   businessId      String
   supplierId      String
@@ -277,6 +280,7 @@ enum SaleStatus {
 }
 
 model Sale {
+  referenceImage  String?
   id              String        @id @default(cuid())
   businessId      String
   customerId      String

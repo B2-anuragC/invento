@@ -1,3 +1,4 @@
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -25,6 +26,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
+    (app as NestExpressApplication).useBodyParser('json', { limit: '4mb' });
     app.setGlobalPrefix('api');
     app.useGlobalPipes(globalValidationPipe);
     app.useGlobalFilters(new HttpExceptionFilter());
@@ -77,6 +79,21 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (app) await app.close();
+  });
+
+  it('stores an optional reference photo atomically and preserves it on retry', async () => {
+    const referenceImage = 'data:image/jpeg;base64,/9j/2Q==';
+    const input = { requestId: randomUUID(), customerId, paymentMethod: 'CASH', saleDate: new Date().toISOString(), referenceImage, items: [{ productId: products[1], quantity: '1', sellingPrice: '50' }] };
+    const saved = await api('post', '/sales').send(input).expect(201);
+    expect(saved.body.data.referenceImage).toBe(referenceImage);
+    const read = await api('get', `/sales/${saved.body.data.id}`).expect(200);
+    expect(read.body.data.referenceImage).toBe(referenceImage);
+    const retry = await api('post', '/sales').send(input).expect(201);
+    expect(retry.body.data.id).toBe(saved.body.data.id);
+    const list = await api('get', '/sales').expect(200);
+    expect(list.body.data.find((sale: { id: string }) => sale.id === saved.body.data.id).referenceImage).toBeUndefined();
+    await api('post', '/sales').send({ ...input, requestId: randomUUID(), referenceImage: 'data:image/jpeg;base64,aGVsbG8=' }).expect(400);
+    await api('post', '/sales').send({ ...input, requestId: randomUUID(), referenceImage: 'https://example.com/bill.jpg' }).expect(422);
   });
 
   it('sells compatible units and custom boxes with exact stock deductions', async () => {
@@ -259,7 +276,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
 
   it('rejects a disabled user with an existing access token on all protected modules', async () => {
     await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
-    for (const path of ['/auth/me', `/businesses/${businessId}`, '/products', '/inventory', '/suppliers', '/purchases', '/customers', '/sales', '/dashboard/summary']) await api('get', path).expect(401);
+    for (const path of ['/auth/me', `/businesses/${businessId}`, '/products', '/inventory', '/suppliers', '/purchases', '/customers', '/sales', '/dashboard/summary']) { const response = await api('get', path); expect(response.status, path).toBe(401); }
     await api('post', '/sales').send(input()).expect(401);
     await request(app.getHttpServer()).post('/api/auth/refresh').send({ refreshToken }).expect(401);
     expect(await prisma.sale.count({ where: { businessId } })).toBe(0);
@@ -324,6 +341,29 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId } });
     const duplicate = await api('post', '/businesses').send({ name: 'Duplicate', slug: business.slug }).expect(409);
     expect(JSON.stringify(duplicate.body)).not.toContain('Prisma');
+  });
+
+  it('saves supplier catalogs and purchase files and excludes unassigned products', async () => {
+    await api('patch', `/products/${products[0]}`).send({ category: 'Glass' }).expect(200);
+    const supplier = (await api('post', '/suppliers').send({ name: 'Glass supplier', categories: ['Glass'], productIds: [products[1]] }).expect(201)).body.data;
+    expect(supplier.categories).toEqual(['Glass']);
+    expect(supplier.productIds).toEqual([products[1]]);
+    const attachment = { name: 'supplier-invoice.pdf', mimeType: 'application/pdf', base64: Buffer.from('%PDF-1.4\n' + ' '.repeat(200000) + '%%EOF').toString('base64') };
+    const payload = { requestId: randomUUID(), supplierId: supplier.id, purchaseDate: '2026-10-12', attachment, items: [{ productId: products[0], quantity: '1', purchasePrice: '5' }] };
+    const saved = (await api('post', '/purchases').send(payload).expect(201)).body.data;
+    expect(saved.attachment).toEqual(attachment);
+    expect((await api('get', `/purchases/${saved.id}`).expect(200)).body.data.attachment).toEqual(attachment);
+    expect((await api('post', '/purchases').send(payload).expect(201)).body.data.id).toBe(saved.id);
+    expect((await api('get', '/purchases').expect(200)).body.data[0].attachment).toBeUndefined();
+    await api('post', '/purchases').send({ ...payload, requestId: randomUUID(), items: [{ productId: products[1], quantity: '1', purchasePrice: '5' }] }).expect(201);
+    await api('post', '/purchases').send({ ...payload, requestId: randomUUID(), items: [{ productId: products[2], quantity: '1', purchasePrice: '5' }] }).expect(400);
+    await api('patch', `/suppliers/${supplier.id}`).send({ productIds: [randomUUID()] }).expect(400);
+    await api('post', '/purchases').send({ ...payload, requestId: randomUUID(), attachment: { ...attachment, base64: 'not base64!' } }).expect(422);
+    await api('patch', `/suppliers/${supplier.id}`).send({ categories: [], productIds: [] }).expect(200);
+    await api('post', '/purchases').send({ ...payload, requestId: randomUUID(), attachment: undefined, items: [{ productId: products[2], quantity: '1', purchasePrice: '5' }] }).expect(201);
+    await api('patch', `/businesses/${businessId}/pricing-access`).send({ membersCanViewPurchasePrice: false }).expect(200);
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'MEMBER' } });
+    expect((await api('get', `/purchases/${saved.id}`).expect(200)).body.data.attachment).toBeUndefined();
   });
 
   it('enforces ownership and manager permissions in the older inventory and purchase APIs', async () => {

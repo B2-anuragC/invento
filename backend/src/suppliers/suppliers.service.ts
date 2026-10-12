@@ -1,9 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { SupplierStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { supplierStatuses } from './dto/supplier.dto.js';
 
 type SupplierInput = {
+  categories?: string[];
+  productIds?: string[];
   name?: string;
   contactName?: string;
   phone?: string;
@@ -18,8 +20,11 @@ export class SuppliersService {
 
   async create(userId: string, businessId: string, input: Required<Pick<SupplierInput, 'name'>> & Omit<SupplierInput, 'name' | 'status'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
+    await this.validateProducts(businessId, input.productIds);
     return this.prisma.supplier.create({
       data: {
+        categories: input.categories,
+        productIds: input.productIds,
         id: clientId,
         businessId,
         name: input.name.trim(),
@@ -61,9 +66,12 @@ export class SuppliersService {
   async update(userId: string, businessId: string, supplierId: string, input: SupplierInput) {
     await this.requireManagerMembership(userId, businessId);
     await this.requireSupplier(businessId, supplierId);
+    await this.validateProducts(businessId, input.productIds);
     return this.prisma.supplier.update({
       where: { id: supplierId },
       data: {
+        categories: input.categories,
+        productIds: input.productIds,
         revision: { increment: 1 },
         name: input.name?.trim(),
         contactName: input.contactName === undefined ? undefined : input.contactName.trim() || null,
@@ -93,6 +101,12 @@ export class SuppliersService {
       throw new ConflictException('Supplier is not active.');
     }
     return supplier;
+  }
+
+  private async validateProducts(businessId: string, productIds?: string[]) {
+    if (!productIds?.length) return;
+    const count = await this.prisma.product.count({ where: { businessId, id: { in: productIds } } });
+    if (count !== new Set(productIds).size) throw new BadRequestException('Selected products must belong to this business.');
   }
 
   private async requireSupplier(businessId: string, supplierId: string) {

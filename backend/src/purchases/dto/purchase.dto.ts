@@ -1,3 +1,4 @@
+import { FileAttachmentDto } from '../../common/dto/file-attachment.dto.js';
 import { PaymentMethod } from '@prisma/client';
 import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -14,6 +15,7 @@ export class PurchaseItemDto {
 }
 
 export class CreatePurchaseDto extends TransactionFinanceDto {
+  @ApiPropertyOptional({ type: FileAttachmentDto }) @ValidateIf((_o, v) => v !== undefined) @ValidateNested() @Type(() => FileAttachmentDto) attachment?: FileAttachmentDto;
   @ApiPropertyOptional() @ValidateIf((_o, v) => v !== undefined) @IsEnum(PaymentMethod) paymentMethod?: PaymentMethod;
   @ApiProperty() @IsString() supplierId!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;

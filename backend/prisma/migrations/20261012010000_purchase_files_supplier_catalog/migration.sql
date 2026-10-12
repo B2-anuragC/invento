@@ -1,0 +1,2 @@
+ALTER TABLE "suppliers" ADD COLUMN "categories" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], ADD COLUMN "productIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "purchases" ADD COLUMN "attachment" JSONB;

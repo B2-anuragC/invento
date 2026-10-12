@@ -1,3 +1,4 @@
+import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -6,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppScreen, appColors } from '@/components/invento-ui';
 import {
-  appSession,
+  appSession, fetchProducts, type ProductRecord,
   createCustomer,
   createSupplier,
   fetchCustomers,
@@ -27,6 +28,9 @@ export default function PeopleDirectoryScreen() {
   const [filter, setFilter] = useState<PersonFilter>('All');
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<ProductRecord[]>([]);
+  const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
+  const [supplierProductIds, setSupplierProductIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [contactKind, setContactKind] = useState<ContactKind>('customer');
@@ -44,8 +48,9 @@ export default function PeopleDirectoryScreen() {
     }
     setLoading(true);
     setError('');
-    Promise.all([fetchCustomers(session), fetchSuppliers(session)])
-      .then(([customerData, supplierData]) => {
+    Promise.all([fetchCustomers(session), fetchSuppliers(session), fetchProducts(session)])
+      .then(([customerData, supplierData, productData]) => {
+        setCatalogProducts(productData);
         setCustomers(customerData);
         setSuppliers(supplierData);
       })
@@ -74,7 +79,7 @@ export default function PeopleDirectoryScreen() {
         address: contact.address.trim(),
       };
       if (contactKind === 'customer') await createCustomer(session, input);
-      else await createSupplier(session, input);
+      else await createSupplier(session, { ...input, categories: supplierCategories, productIds: supplierProductIds });
       setContact(emptyContact);
       setModalVisible(false);
       loadDirectory();
@@ -86,6 +91,7 @@ export default function PeopleDirectoryScreen() {
   };
 
   const openCreate = (kind?: ContactKind) => {
+    setSupplierCategories([]); setSupplierProductIds([]);
     setContact(emptyContact);
     setError('');
     setContactKind(kind ?? (filter === 'Suppliers' ? 'supplier' : 'customer'));
@@ -196,6 +202,7 @@ export default function PeopleDirectoryScreen() {
                 style={styles.modalInput}
               />
             ))}
+            {contactKind === 'supplier' ? <SupplierCatalogFields products={catalogProducts} categories={supplierCategories} productIds={supplierProductIds} onChange={(categories, productIds) => { setSupplierCategories(categories); setSupplierProductIds(productIds); }} /> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable disabled={!contact.name.trim() || saving} onPress={() => void saveContact()} style={[styles.saveButton, (!contact.name.trim() || saving) && styles.disabled]}>
               <Text style={styles.saveButtonText}>{saving ? 'Saving…' : `Add ${contactKind}`}</Text>

@@ -1,3 +1,4 @@
+import { DatePicker } from './date-picker';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { moneyValue, validDueDate } from '@/services/transaction-accounting';
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
@@ -15,7 +16,7 @@ export function TransactionFinanceFields({ kind, total, subtotal, tax, mode, onM
     {mode === 'partial' ? <><Text style={styles.meta}>{kind === 'sale' ? 'Amount received (₹)' : 'Amount paid (₹)'}</Text><TextInput accessibilityLabel="Initial payment amount" keyboardType="decimal-pad" value={paid} onChangeText={(value) => { if (/^\d{0,12}(?:\.\d{0,2})?$/.test(value)) onPaid(value); }} placeholder="0.00" style={styles.input} />{invalid ? <Text style={styles.error}>Enter an amount greater than zero and below the total.</Text> : null}</> : null}
     {mode !== 'credit' ? <><Text style={styles.meta}>Payment method</Text><View style={styles.chips}>{['CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'OTHER'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: method === value }} onPress={() => onMethod(value)} style={[styles.chip, method === value && styles.selected]}><Text style={[styles.chipText, method === value && styles.selectedText]}>{value.replaceAll('_', ' ')}</Text></Pressable>)}</View></> : null}
     <View style={styles.row}><Text style={styles.meta}>{kind === 'sale' ? 'Balance to collect' : 'Balance to pay'}</Text><Text style={styles.bold}>{money(Math.max(0, moneyValue(total - payment)))}</Text></View>
-    {mode !== 'full' ? <><Text style={styles.meta}>Due date · optional</Text><TextInput accessibilityLabel="Payment due date YYYY-MM-DD" value={dueDate} onChangeText={onDueDate} maxLength={10} placeholder="YYYY-MM-DD" style={styles.input} />{!validDueDate(dueDate) ? <Text style={styles.error}>Enter a valid date in YYYY-MM-DD format.</Text> : null}</> : null}
+    {mode !== 'full' ? <><Text style={styles.meta}>Due date · optional</Text><DatePicker value={dueDate} onChange={onDueDate} title="Select payment due date" placeholder="No due date" clearLabel="Clear due date" />{!validDueDate(dueDate) ? <Text style={styles.error}>Choose a valid due date from the calendar.</Text> : null}</> : null}
     <Text style={styles.meta}>Payment entries are saved with this transaction. No money is transferred by the app.</Text>
   </View>;
 }

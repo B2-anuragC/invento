@@ -8,11 +8,12 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor.
 import { globalValidationPipe } from './common/pipes/validation.pipe.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, new ExpressAdapter());
+  const app = await NestFactory.create<import('@nestjs/platform-express').NestExpressApplication>(AppModule, new ExpressAdapter());
   const configService = app.get(ConfigService);
   const apiPrefix = configService.get<string>('APP_API_PREFIX', 'api');
   const appPort = configService.get<number>('PORT', 3000);
 
+  app.useBodyParser('json', { limit: '4mb' });
   app.setGlobalPrefix(apiPrefix);
   app.useGlobalPipes(globalValidationPipe);
   app.useGlobalFilters(new HttpExceptionFilter());

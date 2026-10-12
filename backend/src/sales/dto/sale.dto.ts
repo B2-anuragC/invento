@@ -16,6 +16,7 @@ export class SaleItemDto {
 }
 
 export class CreateSaleDto extends TransactionFinanceDto {
+  @ApiPropertyOptional({ description: "Optional JPEG bill/reference photo, up to 2 MB." }) @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(2800000) @Matches(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/) referenceImage?: string;
   @ApiProperty({ enum: PaymentMethod }) @IsEnum(PaymentMethod) paymentMethod!: PaymentMethod;
   @ApiProperty() @IsString() customerId!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;

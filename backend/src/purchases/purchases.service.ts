@@ -12,6 +12,7 @@ type PurchaseItemInput = {
 };
 
 type CreatePurchaseInput = {
+  attachment?: { name: string; mimeType: string; base64: string };
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;
@@ -30,6 +31,7 @@ type UpdatePurchaseInput = {
 };
 
 type PriceSensitivePurchase = {
+  attachment?: unknown;
   subtotal?: unknown;
   taxTotal?: unknown;
   amountPaid?: unknown;
@@ -39,7 +41,7 @@ type PriceSensitivePurchase = {
 };
 
 type RedactedPurchase<T extends PriceSensitivePurchase> =
-  Omit<T, 'total' | 'items' | 'subtotal' | 'taxTotal' | 'amountPaid' | 'payments'> & {
+  Omit<T, 'total' | 'items' | 'subtotal' | 'taxTotal' | 'amountPaid' | 'payments' | 'attachment'> & {
     items: Array<Omit<T['items'][number], 'purchasePrice' | 'lineTotal' | 'taxAmount'>>;
   };
 
@@ -61,6 +63,10 @@ export class PurchasesService {
       if (existing) return existing;
     }
 
+    if (input.attachment) {
+      const file = input.attachment;
+      if (!file.name?.trim() || file.name.length > 160 || typeof file.mimeType !== 'string' || !file.mimeType || file.mimeType.length > 120 || typeof file.base64 !== 'string' || file.base64.length > 2796204 || !/^[A-Za-z0-9+/]+={0,2}$/.test(file.base64) || (Buffer.from(file.base64, 'base64').length === 0 || Buffer.from(file.base64, 'base64').length > 2 * 1024 * 1024)) throw new BadRequestException('Attach a valid file up to 2 MB.');
+    }
     const supplier = await this.prisma.supplier.findFirst({ where: { id: input.supplierId, businessId } });
     if (!supplier) throw new NotFoundException('Supplier not found.');
     if (supplier.status !== SupplierStatus.ACTIVE) throw new ConflictException('Supplier is not active.');
@@ -84,6 +90,9 @@ export class PurchasesService {
     });
 
     const products = await this.prisma.product.findMany({ where: { businessId, id: { in: lines.map((line) => line.productId) } } });
+    if (supplier.categories?.length || supplier.productIds?.length) {
+      for (const product of products) if (!supplier.productIds?.includes(product.id) && !(product.category && supplier.categories?.includes(product.category))) throw new BadRequestException('This product is not assigned to the selected supplier. Update their product list in People.');
+    }
     const productsById = new Map(products.map((product) => [product.id, product]));
     for (const line of lines) {
       const product = productsById.get(line.productId);
@@ -112,6 +121,7 @@ export class PurchasesService {
           purchaseDate,
           total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
+          attachment: input.attachment,
           createdByUserId: userId,
         },
       });
@@ -166,7 +176,7 @@ export class PurchasesService {
         ...(query.supplierId ? { supplierId: query.supplierId } : {}),
         ...(query.search ? { invoiceNumber: { contains: query.search, mode: 'insensitive' } } : {}),
       },
-      include: { supplier: { select: { id: true, name: true } }, items: true },
+      select: { id: true, businessId: true, supplierId: true, invoiceNumber: true, purchaseDate: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, supplier: { select: { id: true, name: true } }, items: true },
       orderBy: { purchaseDate: 'desc' },
     });
     return this.applyPriceVisibility(businessId, membership, purchases);
@@ -229,7 +239,7 @@ export class PurchasesService {
       select: { membersCanViewPurchasePrice: true },
     });
     if (business?.membersCanViewPurchasePrice !== false) return purchases;
-    return purchases.map(({ total: _total, subtotal: _subtotal, taxTotal: _taxTotal, amountPaid: _paid, payments: _payments, items, ...purchase }) => ({
+    return purchases.map(({ total: _total, subtotal: _subtotal, taxTotal: _taxTotal, amountPaid: _paid, payments: _payments, attachment: _attachment, items, ...purchase }) => ({
       ...purchase,
       items: items.map(withoutPurchaseCost),
     }));

@@ -1,3 +1,4 @@
+import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { useCallback, useState } from 'react';
@@ -11,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionButton, AppScreen, appColors } from '@/components/invento-ui';
 import {
   appSession,
-  fetchPricingAccess,
+  fetchPricingAccess, fetchProducts, type ProductRecord,
   fetchCustomer,
   fetchPurchases,
   fetchSales,
@@ -36,6 +37,9 @@ export default function ContactDetailsScreen() {
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [canEdit, setCanEdit] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<ProductRecord[]>([]);
+  const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
+  const [supplierProductIds, setSupplierProductIds] = useState<string[]>([]);
   const [form, setForm] = useState({ name: '', contactName: '', phone: '', email: '', address: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,8 +62,12 @@ export default function ContactDetailsScreen() {
       contactRequest,
       contactKind === 'customers' ? fetchSales(session, { customerId: id }) : fetchPurchases(session, { supplierId: id }),
       fetchPricingAccess(session),
+      contactKind === 'suppliers' ? fetchProducts(session) : Promise.resolve([]),
     ])
-      .then(([record, history, access]) => {
+      .then(([record, history, access, productData]) => {
+        setCatalogProducts(productData);
+        setSupplierCategories((record as SupplierRecord).categories ?? []);
+        setSupplierProductIds((record as SupplierRecord).productIds ?? []);
         const loaded = record as Contact;
         setContact(loaded);
         setForm({
@@ -94,7 +102,7 @@ export default function ContactDetailsScreen() {
       };
       const updated = contactKind === 'customers'
         ? await updateCustomer(session, contact.id, input)
-        : await updateSupplier(session, contact.id, input);
+        : await updateSupplier(session, contact.id, { ...input, categories: supplierCategories, productIds: supplierProductIds });
       setContact(updated);
       setEditing(false);
     } catch (saveError: unknown) {
@@ -183,16 +191,16 @@ export default function ContactDetailsScreen() {
           <View style={customerStyles.between}><Text style={customerStyles.sectionTitle}>Transaction history</Text><Text style={customerStyles.link}>All transactions</Text></View>
           {!sales.length ? <Text style={styles.empty}>No transactions linked to this customer yet.</Text> : null}
           {[...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime()).map((sale) => (
-            <Pressable key={sale.id} accessibilityRole="button" accessibilityLabel={`View invoice ${sale.invoiceNumber || sale.id}`} onPress={() => router.push(`/sale/${sale.id}`)} style={customerStyles.card}>
+            <View key={sale.id} style={customerStyles.card}>
               <View style={customerStyles.between}><Text style={customerStyles.name}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={customerStyles.badge}>Saved</Text></View>
               <Text style={customerStyles.meta}>Sale · {formatDate(sale.saleDate)} · {sale.items.length} items</Text>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Payment method</Text><Text style={customerStyles.name}>{sale.paymentMethod.replaceAll('_', ' ')}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Invoice total</Text><Text style={customerStyles.link}>{formatMoney(Number(sale.total))}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>To collect</Text><Text style={customerStyles.link}>{paymentBalance(sale) == null ? 'Not confirmed' : formatMoney(paymentBalance(sale)!)}</Text></View>{sale.dueDate ? <Text style={[customerStyles.meta, isOverdue(sale) && { color: '#A74737' }]}>Due {sale.dueDate.slice(0, 10)} · {isOverdue(sale) ? 'Overdue' : 'Not overdue'}</Text> : null}
-              {canEdit && sale.total != null && paymentBalance(sale) !== 0 ? <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); setPaymentTarget(sale); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
+              {canEdit && sale.total != null && paymentBalance(sale) !== 0 ? <Pressable accessibilityRole="button" onPress={() => setPaymentTarget(sale)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
               <View style={customerStyles.divider} />
-              <View style={customerStyles.row}><Ionicons name="receipt-outline" size={19} color="#176344" /><Text style={[customerStyles.link, customerStyles.copy]}>View invoice / receipt</Text><Ionicons name="chevron-forward" size={22} color="#176344" /></View>
-            </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`View invoice ${sale.invoiceNumber || sale.id}`} onPress={() => router.push(`/sale/${sale.id}`)} style={[customerStyles.row, { minHeight: 44 }]}><Ionicons name="receipt-outline" size={19} color="#176344" /><Text style={[customerStyles.link, customerStyles.copy]}>View invoice / receipt</Text><Ionicons name="chevron-forward" size={22} color="#176344" /></Pressable>
+            </View>
           ))}
         </ScrollView>
         {canEdit ? <View style={[customerStyles.footer, { paddingBottom: 16 + insets.bottom }]}>
@@ -301,6 +309,7 @@ export default function ContactDetailsScreen() {
                       />
                     </View>
                   ))}
+                  {contactKind === 'suppliers' ? <SupplierCatalogFields products={catalogProducts} categories={supplierCategories} productIds={supplierProductIds} onChange={(categories, productIds) => { setSupplierCategories(categories); setSupplierProductIds(productIds); }} /> : null}
                 </View>
               ) : (
                 <>

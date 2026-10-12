@@ -1,3 +1,6 @@
+import { supplierOffersProduct } from '@/services/supplier-catalog';
+import { PurchaseAttachment } from '@/components/purchase-attachment';
+import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
@@ -11,7 +14,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, Text
 
 import { AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
 import {
-  appSession,
+  appSession, type FileAttachment,
   createPurchase,
   createSupplier,
   fetchInventory,
@@ -40,6 +43,10 @@ export default function CreatePurchaseScreen() {
   const [supplierId, setSupplierId] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [attachment, setAttachment] = useState<FileAttachment | undefined>();
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
+  const [supplierProductIds, setSupplierProductIds] = useState<string[]>([]);
   const [supplierSearch, setSupplierSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -118,12 +125,14 @@ export default function CreatePurchaseScreen() {
   );
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
+    const supplier = suppliers.find((entry) => entry.id === supplierId);
     return products.filter((product) =>
+      supplierOffersProduct(supplier, product) &&
       (category === 'All' || product.category === category) &&
       (!query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query) ||
         (product.barcode ?? '').toLowerCase().includes(query) || product.category?.toLowerCase().includes(query)),
     );
-  }, [category, productSearch, products]);
+  }, [category, productSearch, products, suppliers, supplierId]);
 
   const purchaseItems = useMemo(
     () => products.flatMap((product) => {
@@ -138,9 +147,9 @@ export default function CreatePurchaseScreen() {
   const { subtotal, tax: taxTotal, total } = transactionTotals(purchaseItems);
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
   const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
-  const linesValid = purchaseItems.every((item) => item.quantity > 0 && item.price > 0 &&
-    !(item.product.unit === 'PIECE' && !Number.isInteger(item.quantity)));
   const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
+  const linesValid = purchaseItems.every((item) => supplierOffersProduct(selectedSupplier, item.product) && item.quantity > 0 && item.price > 0 &&
+    !(item.product.unit === 'PIECE' && !Number.isInteger(item.quantity)));
 
   useEffect(() => {
     if (loading || draftReady || !appSession.current) return;
@@ -154,7 +163,7 @@ export default function CreatePurchaseScreen() {
     if (!draft) return;
     const available = new Set(products.map((product) => product.id));
     setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
-    setPrices(draft.prices); setSupplierId(draft.contactId); setShowSupplierPicker(!draft.contactId); setStep(draft.step);
+    setAttachment(draft.attachment); setPrices(draft.prices); setSupplierId(draft.contactId); setShowSupplierPicker(!draft.contactId); setStep(draft.step);
     setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as string); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
     setInvoiceNumber(draft.invoiceNumber ?? '');
     setDraftCandidate(null);
@@ -167,12 +176,12 @@ export default function CreatePurchaseScreen() {
   };
   useEffect(() => {
     const session = appSession.current;
-    if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || supplierId)) return;
-    const draft: TransactionDraft = { version: 1, kind: 'purchase', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: supplierId, contactName: selectedSupplier?.name ?? '', quantities, prices, invoiceNumber, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
+    if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || supplierId || attachment)) return;
+    const draft: TransactionDraft = { version: 1, kind: 'purchase', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: supplierId, contactName: selectedSupplier?.name ?? '', quantities, prices, attachment, invoiceNumber, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
     const persist = () => { if (discardDraftWrites.current) return; void saveDraft(session, draft).catch(() => setDraftStorageError('Could not save this draft on your device. Keep this screen open.')); };
     const timer = setTimeout(persist, 350);
     return () => { clearTimeout(timer); persist(); };
-  }, [draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
+  }, [attachment, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
 
   const changeQuantity = (productId: string, value: string) => {
     if (!/^\d*(?:\.\d{0,3})?$/.test(value)) return;
@@ -186,6 +195,15 @@ export default function CreatePurchaseScreen() {
     if (error) setError('');
   };
 
+  const selectSupplier = (supplier: SupplierRecord) => {
+    setSupplierId(supplier.id);
+    setQuantities((current) => Object.fromEntries(Object.entries(current).filter(([productId]) => {
+      const product = products.find((entry) => entry.id === productId);
+      return product && supplierOffersProduct(supplier, product);
+    })));
+    setCategory('All'); setShowSupplierPicker(false);
+  };
+
   const addSupplier = async () => {
     const name = supplierName.trim();
     const session = appSession.current;
@@ -193,10 +211,10 @@ export default function CreatePurchaseScreen() {
     setAddingSupplier(true);
     setError('');
     try {
-      const supplier = await createSupplier(session, name);
+      const supplier = await createSupplier(session, { name, categories: supplierCategories, productIds: supplierProductIds });
       setSuppliers((current) => [...current, supplier].sort((left, right) => left.name.localeCompare(right.name)));
-      setSupplierId(supplier.id);
-      setShowSupplierPicker(false);
+      selectSupplier(supplier);
+      setSupplierCategories([]); setSupplierProductIds([]);
       setSupplierName('');
     } catch (createError: unknown) {
       setError(createError instanceof Error ? createError.message : 'Could not add supplier.');
@@ -241,7 +259,7 @@ export default function CreatePurchaseScreen() {
 
   const savePurchase = async () => {
     const session = appSession.current;
-    if (!session || !supplierId || !purchaseItems.length || !linesValid || saving || submitting.current || receiptVisible || !paymentValid || draftCandidate) return;
+    if (!session || !supplierId || !purchaseItems.length || !linesValid || saving || attachmentBusy || submitting.current || receiptVisible || !paymentValid || draftCandidate) return;
     submitting.current = true;
     setSaveOutcome(null);
     setSaving(true);
@@ -250,6 +268,7 @@ export default function CreatePurchaseScreen() {
       const savedPurchase = await createPurchase(session, {
         requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
         supplierId,
+        attachment,
         paymentMethod: paymentMethod as 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER',
         purchaseDate: new Date().toISOString(),
         ...(invoiceNumber.trim() ? { invoiceNumber: invoiceNumber.trim() } : {}),
@@ -264,7 +283,7 @@ export default function CreatePurchaseScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ attachment: savedPurchase.attachment, id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -334,7 +353,7 @@ export default function CreatePurchaseScreen() {
               <Text style={styles.sectionTitle}>Choose supplier</Text>
               <TextInput value={supplierSearch} onChangeText={setSupplierSearch} placeholder="Search supplier or recent names" placeholderTextColor="#7A817E" style={styles.input} />
               {filteredSuppliers.map((supplier) => (
-                <Pressable key={supplier.id} onPress={() => { setSupplierId(supplier.id); setShowSupplierPicker(false); }} style={[styles.supplierOption, supplier.id === supplierId && styles.supplierOptionSelected]}>
+                <Pressable key={supplier.id} onPress={() => selectSupplier(supplier)} style={[styles.supplierOption, supplier.id === supplierId && styles.supplierOptionSelected]}>
                   <View style={styles.personGlyph}><Text style={styles.personGlyphText}>▰</Text></View>
                   <View style={styles.supplierOptionCopy}>
                     <Text style={styles.supplierOptionName}>{supplier.name}</Text>
@@ -343,6 +362,7 @@ export default function CreatePurchaseScreen() {
                   {supplier.id === supplierId ? <Text style={styles.selectedMark}>✓</Text> : null}
                 </Pressable>
               ))}
+              {supplierName.trim() ? <SupplierCatalogFields products={products} categories={supplierCategories} productIds={supplierProductIds} onChange={(categories, productIds) => { setSupplierCategories(categories); setSupplierProductIds(productIds); }} /> : null}
               <View style={styles.addSupplierRow}>
                 <TextInput value={supplierName} onChangeText={setSupplierName} placeholder="New supplier name" placeholderTextColor="#7A817E" style={[styles.input, styles.newSupplierInput]} returnKeyType="done" />
                 <Pressable disabled={!supplierName.trim() || addingSupplier} onPress={() => void addSupplier()} style={[styles.smallButton, (!supplierName.trim() || addingSupplier) && styles.disabled]}>
@@ -398,7 +418,7 @@ export default function CreatePurchaseScreen() {
                   </Pressable>
                 );
               })}
-              {!filteredProducts.length ? <Text style={styles.empty}>No matching products. Try another search or category.</Text> : null}
+              {!filteredProducts.length ? <Text style={styles.empty}>{supplierId ? 'No matching items for this supplier. Edit the supplier’s categories or products in People.' : 'Choose a supplier to see available products.'}</Text> : null}
             </>
           ) : null}
 
@@ -475,6 +495,7 @@ export default function CreatePurchaseScreen() {
                 <Text style={styles.fieldLabel}>Invoice number · optional</Text>
                 <TextInput value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
               </View>
+              <PurchaseAttachment value={attachment} onChange={(value) => { setAttachment(value); setError(''); }} onBusy={setAttachmentBusy} disabled={saving} />
               <TransactionFinanceFields kind="purchase" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as string)} />
             </>
           ) : null}
@@ -485,13 +506,13 @@ export default function CreatePurchaseScreen() {
           ) : step === 2 ? (
             <Pressable onPress={continueToReview} style={styles.submitButton}><Text style={styles.submitText}>Review purchase · {formatMoney(total)}</Text></Pressable>
           ) : (
-            <Pressable disabled={!linesValid || saving || !supplierId || !paymentValid || Boolean(draftCandidate)} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || !supplierId || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
-              <Text style={styles.submitText}>{saving ? 'Saving purchase…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save purchase · ${formatMoney(total)}`}</Text>
+            <Pressable disabled={!linesValid || saving || attachmentBusy || !supplierId || !paymentValid || Boolean(draftCandidate)} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || attachmentBusy || !supplierId || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
+              <Text style={styles.submitText}>{attachmentBusy ? 'Preparing file…' : saving ? 'Saving purchase…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save purchase · ${formatMoney(total)}`}</Text>
             </Pressable>
           )}
         </View>
         <Modal visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
       </View>
     </AppScreen>

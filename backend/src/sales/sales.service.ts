@@ -15,6 +15,7 @@ type SaleItemInput = {
 };
 
 type CreateSaleInput = {
+  referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;
@@ -43,6 +44,11 @@ export class SalesService {
       if (existing) return existing;
     }
 
+    if (input.referenceImage !== undefined) {
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(input.referenceImage) || input.referenceImage.length > 2800000) throw new BadRequestException('Attach a JPEG photo up to 2 MB.');
+      const bytes = Buffer.from(input.referenceImage.split(',')[1], 'base64');
+      if (bytes.length > 2 * 1024 * 1024 || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) throw new BadRequestException('The reference photo is not a valid JPEG image.');
+    }
     const customer = await this.prisma.customer.findFirst({ where: { id: input.customerId, businessId } });
     if (!customer) throw new NotFoundException('Customer not found.');
     if (customer.status !== CustomerStatus.ACTIVE) throw new ConflictException('Customer is not active.');
@@ -114,6 +120,7 @@ export class SalesService {
           paymentMethod: input.paymentMethod,
           total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
+          referenceImage: input.referenceImage,
           createdByUserId: userId,
         },
       });
@@ -165,7 +172,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { invoiceNumber: { contains: query.search, mode: 'insensitive' } } : {}),
       },
-      include: { customer: { select: { id: true, name: true } }, items: true },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true },
       orderBy: { saleDate: 'desc' },
     });
   }

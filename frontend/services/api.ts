@@ -124,6 +124,7 @@ export type InventoryTransactionRecord = {
 
 export type PaymentRecord = { id: string; amount: string | number; method: string; kind: string; paidAt: string };
 export type SaleRecord = {
+  referenceImage?: string | null;
   subtotal?: string | number;
   taxTotal?: string | number;
   amountPaid?: string | number | null;
@@ -136,11 +137,12 @@ export type SaleRecord = {
   total: string | number;
   paymentMethod: string;
   note?: string | null;
-  customer: { id: string; name: string };
+  customer: { id: string; name: string; phone?: string | null };
   items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
+  referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;
@@ -151,6 +153,8 @@ export type CreateSaleInput = {
 };
 
 export type SupplierRecord = {
+  categories?: string[];
+  productIds?: string[];
   revision?: number;
   updatedAt?: string;
   syncState?: string;
@@ -163,7 +167,10 @@ export type SupplierRecord = {
   status: string;
 };
 
+export type FileAttachment = { name: string; mimeType: string; base64: string };
+
 export type PurchaseRecord = {
+  attachment?: FileAttachment | null;
   subtotal?: string | number;
   taxTotal?: string | number;
   amountPaid?: string | number | null;
@@ -203,6 +210,7 @@ export type InventoryActivityRecord = InventoryTransactionRecord & {
 };
 
 export type CreatePurchaseInput = {
+  attachment?: FileAttachment;
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;
@@ -627,7 +635,7 @@ export async function fetchSuppliers(session: AppSession): Promise<SupplierRecor
 
 export async function createSupplier(
   session: AppSession,
-  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
+  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string; categories?: string[]; productIds?: string[] },
 ): Promise<SupplierRecord> {
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', typeof input === 'string' ? { name: input } : { ...input }) as SupplierRecord;
   const body = typeof input === 'string' ? { name: input } : input;
@@ -646,7 +654,7 @@ export async function fetchSupplier(session: AppSession, supplierId: string): Pr
 export async function updateSupplier(
   session: AppSession,
   supplierId: string,
-  input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
+  input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'categories' | 'productIds'>>,
 ): Promise<SupplierRecord> {
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', { ...input }, supplierId) as SupplierRecord;
   return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, {
