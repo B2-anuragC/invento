@@ -1,3 +1,4 @@
+import { ProductThumbnail } from '@/components/product-photo';
 import { SaleReferencePhoto } from '@/components/sale-reference-photo';
 import { sellingUnitConversion } from '@invento/shared';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
@@ -58,12 +59,10 @@ export default function CreateSaleScreen() {
   const [sellingUnits, setSellingUnits] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [customerId, setCustomerId] = useState('');
-  const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [category, setCategory] = useState('All');
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [showCustomerPicker, setShowCustomerPicker] = useState(true);
-  const [showAllCustomers, setShowAllCustomers] = useState(false);
   const [stockOnly, setStockOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,6 +84,8 @@ export default function CreateSaleScreen() {
   const discardDraftWrites = useRef(false);
   const savedBalancesForNext = useRef<Record<string, number> | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
+  const [showAllCustomers, setShowAllCustomers] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [photoBusy, setPhotoBusy] = useState(false);
   const [referenceImage, setReferenceImage] = useState<string | undefined>();
@@ -161,10 +162,10 @@ export default function CreateSaleScreen() {
 
   const filteredCustomers = useMemo(() => {
     const query = customerSearch.trim().toLowerCase();
-    const matches = customers.filter((customer) =>
-      !query || customer.name.toLowerCase().includes(query) || customer.phone?.toLowerCase().includes(query),
+    if (!query && !showAllCustomers) return [];
+    return customers.filter((customer) =>
+      customer.name.toLowerCase().includes(query) || customer.phone?.toLowerCase().includes(query),
     );
-    return showAllCustomers ? matches : matches.slice(0, 5);
   }, [customerSearch, customers, showAllCustomers]);
 
   const categories = useMemo(
@@ -173,14 +174,14 @@ export default function CreateSaleScreen() {
   );
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
-    if (!query) return [];
+    if (!query && !showAllProducts) return [];
     return products.filter((product) =>
-      (category === 'All' || product.category === category) &&
+      (category === 'All' || product.category?.trim() === category) &&
       (!stockOnly || (stock[product.id] ?? 0) > 0) &&
       (!query || product.name.toLowerCase().includes(query) || product.sku.toLowerCase().includes(query) ||
         (product.barcode ?? '').toLowerCase().includes(query) || product.category?.toLowerCase().includes(query)),
     ).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  }, [category, productSearch, products, stock, stockOnly]);
+  }, [category, productSearch, products, stock, stockOnly, showAllProducts]);
 
   const saleItems = useMemo(
     () => Object.keys(quantities).reverse().flatMap((productId) => {
@@ -216,7 +217,7 @@ export default function CreateSaleScreen() {
     return conversion ? quantity * (conversion.perOption ? 1 : Number(option?.quantity ?? 1)) * conversion.numerator / conversion.denominator / (conversion.unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1) : 0;
   };
   const quantitiesValid = saleItems.every((item) => item.price > 0 && !quantityError(item.product, item.quantity));
-  const hasChanges = Boolean(customerId || customerName.trim() || referenceImage) || saleItems.length > 0;
+  const hasChanges = Boolean(customerId || referenceImage) || saleItems.length > 0;
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
 
   useEffect(() => {
@@ -273,9 +274,9 @@ export default function CreateSaleScreen() {
   };
 
   const addCustomer = async () => {
-    const name = customerName.trim();
+    const name = customerSearch.trim();
     const session = appSession.current;
-    if (!name || !session) return;
+    if (!name || !session || addingCustomer) return;
     setAddingCustomer(true);
     setError('');
     try {
@@ -283,7 +284,8 @@ export default function CreateSaleScreen() {
       setCustomers((current) => [...current, customer].sort((left, right) => left.name.localeCompare(right.name)));
       setCustomerId(customer.id);
       setShowCustomerPicker(false);
-      setCustomerName('');
+      setCustomerSearch('');
+      setShowAllCustomers(false);
     } catch (createError: unknown) {
       setError(createError instanceof Error ? createError.message : 'Could not add customer.');
     } finally {
@@ -421,34 +423,41 @@ export default function CreateSaleScreen() {
             <View style={styles.selectedCustomer}>
               <Text style={styles.customerGlyph}>♙</Text>
               <Text numberOfLines={1} style={styles.selectedCustomerName}>Customer · {selectedCustomer.name}</Text>
-              <Pressable onPress={() => setShowCustomerPicker(true)}><Text style={styles.changeText}>Change</Text></Pressable>
+              <Pressable onPress={() => { setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); }}><Text style={styles.changeText}>Change</Text></Pressable>
             </View>
           ) : (
             <View style={styles.customerSection}>
               <Text style={styles.sectionTitle}>Choose customer</Text>
-              <TextInput value={customerSearch} onChangeText={setCustomerSearch} placeholder="Search customer or recent names" placeholderTextColor="#7A817E" style={styles.input} />
-              {filteredCustomers.map((customer) => {
-                const selected = customer.id === customerId;
-                return (
-                  <Pressable key={customer.id} onPress={() => { setCustomerId(customer.id); setShowCustomerPicker(false); }} style={[styles.customerOption, selected && styles.customerOptionSelected]}>
-                    <View style={styles.personGlyph}><Text style={styles.personGlyphText}>♙</Text></View>
-                    <View style={styles.customerOptionCopy}>
-                      <Text style={styles.customerOptionName}>{customer.name}</Text>
-                      <Text style={styles.customerOptionMeta}>{customer.phone || customer.contactName || 'Customer'}</Text>
-                    </View>
-                    {selected ? <Text style={styles.selectedMark}>✓</Text> : null}
-                  </Pressable>
-                );
-              })}
-              {customers.length > 5 && !showAllCustomers ? (
-                <Pressable onPress={() => setShowAllCustomers(true)} style={styles.textButton}><Text style={styles.textButtonLabel}>View all customers</Text></Pressable>
+              <TextInput accessibilityLabel="Search customers by name or phone" value={customerSearch} onChangeText={(value) => { setCustomerSearch(value); setShowAllCustomers(false); }} editable={!addingCustomer} placeholder="Search customer name or phone" placeholderTextColor="#7A817E" style={styles.input} />
+              <Pressable accessibilityRole="button" onPress={() => { setCustomerSearch(''); setShowAllCustomers((current) => !current); }} style={styles.textButton}><Text style={styles.textButtonLabel}>{showAllCustomers ? 'Hide customers' : 'Show all customers'}</Text></Pressable>
+              {customerSearch.trim() || showAllCustomers ? (
+                <View style={styles.customerDropdown}>
+                  <ScrollView style={styles.customerResults} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                    {filteredCustomers.map((customer) => {
+                      const selected = customer.id === customerId;
+                      return (
+                        <Pressable accessibilityRole="button" key={customer.id} onPress={() => { setCustomerId(customer.id); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(false); }} style={[styles.customerOption, selected && styles.customerOptionSelected]}>
+                          <View style={styles.personGlyph}>{customer.imageThumbnail ? <ProductThumbnail uri={customer.imageThumbnail} /> : <Text style={styles.personGlyphText}>♙</Text>}</View>
+                          <View style={styles.customerOptionCopy}>
+                            <Text style={styles.customerOptionName}>{customer.name}</Text>
+                            <Text style={styles.customerOptionMeta}>{customer.phone || customer.contactName || 'Customer'}</Text>
+                          </View>
+                          {selected ? <Text style={styles.selectedMark}>✓</Text> : null}
+                        </Pressable>
+                      );
+                    })}
+                    {!filteredCustomers.length ? (
+                      <>
+                        <Text style={styles.customerEmpty}>{customerSearch.trim() ? 'No customer found.' : 'No customers yet. Search a name to add a customer.'}</Text>
+                        {customerSearch.trim() ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: addingCustomer }} disabled={addingCustomer} onPress={() => void addCustomer()} style={[styles.customerOption, addingCustomer && styles.disabled]}>
+                          <View style={styles.personGlyph}><Text style={styles.personGlyphText}>+</Text></View>
+                          <Text style={styles.customerOptionName}>{addingCustomer ? 'Adding…' : `Add customer “${customerSearch.trim()}”`}</Text>
+                        </Pressable> : null}
+                      </>
+                    ) : null}
+                  </ScrollView>
+                </View>
               ) : null}
-              <View style={styles.addCustomerRow}>
-                <TextInput value={customerName} onChangeText={setCustomerName} placeholder="New customer name" placeholderTextColor="#7A817E" style={[styles.input, styles.newCustomerInput]} returnKeyType="done" />
-                <Pressable disabled={!customerName.trim() || addingCustomer} onPress={() => void addCustomer()} style={[styles.smallButton, (!customerName.trim() || addingCustomer) && styles.disabled]}>
-                  <Text style={styles.smallButtonText}>{addingCustomer ? 'Adding…' : 'Add'}</Text>
-                </Pressable>
-              </View>
             </View>
           )}
 
@@ -456,20 +465,8 @@ export default function CreateSaleScreen() {
             <>
               <View style={styles.searchWrap}>
                 <Text style={styles.searchIcon}>⌕</Text>
-                <TextInput value={productSearch} onChangeText={(value) => { setProductSearch(value); clearErrorOnEdit(); }} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
+                <TextInput value={productSearch} onChangeText={(value) => { setProductSearch(value); setShowAllProducts(false); clearErrorOnEdit(); }} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
               </View>
-              {productSearch.trim() ? <View style={styles.suggestionDropdown}>
-                <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                  {filteredProducts.map((product) => {
-                    const added = Object.prototype.hasOwnProperty.call(quantities, product.id);
-                    return <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Select ${product.name}`} onPress={() => { if (!added) toggleProduct(product); else setQuantities((current) => { const next = { ...current }; const quantity = next[product.id]; delete next[product.id]; return { ...next, [product.id]: quantity }; }); setProductSearch(''); }} style={styles.suggestionRow}>
-                      <View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productMeta}>{product.sku} · {(stock[product.id] ?? 0).toLocaleString('en-IN')} {formatUnitLabel(product.unit)} available</Text></View>
-                      <Text style={styles.changeText}>{added ? 'Added ✓' : formatMoney(Number(product.sellingPrice))}</Text>
-                    </Pressable>;
-                  })}
-                  {!filteredProducts.length ? <Text style={[styles.helperText, { padding: 14 }]}>No matching products. Try another search or category.</Text> : null}
-                </ScrollView>
-              </View> : null}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
                 {categories.map((value) => (
                   <Pressable key={value} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categorySelected]}>
@@ -477,6 +474,20 @@ export default function CreateSaleScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
+              <Pressable accessibilityRole="button" onPress={() => { setProductSearch(''); setShowAllProducts((current) => !current); }} style={styles.textButton}><Text style={styles.textButtonLabel}>{showAllProducts ? 'Hide products' : category === 'All' ? 'Show all products' : `Show all products in ${category}`}</Text></Pressable>
+              {productSearch.trim() || showAllProducts ? <View style={styles.suggestionDropdown}>
+                <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                  {filteredProducts.map((product) => {
+                    const added = Object.prototype.hasOwnProperty.call(quantities, product.id);
+                    return <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Select ${product.name}`} onPress={() => { if (!added) toggleProduct(product); else setQuantities((current) => { const next = { ...current }; const quantity = next[product.id]; delete next[product.id]; return { ...next, [product.id]: quantity }; }); setProductSearch(''); }} style={styles.suggestionRow}>
+                      <ProductThumbnail uri={product.imageThumbnail} />
+                      <View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productMeta}>{product.sku} · {(stock[product.id] ?? 0).toLocaleString('en-IN')} {formatUnitLabel(product.unit)} available</Text></View>
+                      <Text style={styles.changeText}>{added ? 'Added ✓' : formatMoney(Number(product.sellingPrice))}</Text>
+                    </Pressable>;
+                  })}
+                  {!filteredProducts.length ? <Text style={[styles.helperText, { padding: 14 }]}>No matching products. Try another search or category.</Text> : null}
+                </ScrollView>
+              </View> : null}
               <View style={styles.sectionHeading}>
                 <Text style={styles.sectionTitle}>{`Sale items · ${saleItems.length}`}</Text>
                 <Pressable onPress={() => setStockOnly((current) => !current)} style={[styles.stockOnly, stockOnly && styles.stockOnlyActive]}>
@@ -493,6 +504,7 @@ export default function CreateSaleScreen() {
                 return (
                   <View key={product.id} style={[styles.quantityCard, invalidMessage && styles.quantityCardInvalid]}>
                     <View style={styles.productHeader}>
+                      <ProductThumbnail uri={product.imageThumbnail} />
                       <View style={styles.productCopy}>
                         <Text style={styles.productName}>{product.name}</Text>
                         <Text style={styles.productMeta}>{product.sku} · {stock[product.id] ?? 0} {formatUnitLabel(product.unit)} available</Text>
@@ -560,8 +572,8 @@ export default function CreateSaleScreen() {
 
           {step === 3 ? (
             <>
-              <Pressable onPress={() => { setStep(1); setShowCustomerPicker(true); }} style={styles.reviewCustomer}>
-                <View style={styles.personGlyph}><Text style={styles.personGlyphText}>♙</Text></View>
+              <Pressable onPress={() => { setStep(1); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); }} style={styles.reviewCustomer}>
+                <View style={styles.personGlyph}>{selectedCustomer?.imageThumbnail ? <ProductThumbnail uri={selectedCustomer?.imageThumbnail} /> : <Text style={styles.personGlyphText}>♙</Text>}</View>
                 <View style={styles.customerOptionCopy}>
                   <Text style={styles.customerOptionMeta}>Customer</Text>
                   <Text style={styles.customerOptionName}>{selectedCustomer?.name ?? 'Select customer'}</Text>
@@ -603,7 +615,7 @@ export default function CreateSaleScreen() {
         </View>
 
         <Modal visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setCustomerId(''); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setShowAllProducts(false); setProductSearch(''); setCustomerId(''); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}
@@ -674,8 +686,9 @@ const styles = StyleSheet.create({
   selectedMark: { color: '#176B50', fontSize: 17, fontWeight: '800', paddingHorizontal: 8 },
   textButton: { paddingVertical: 10, alignItems: 'center' },
   textButtonLabel: { color: '#176B50', fontSize: 11, fontWeight: '700' },
-  addCustomerRow: { flexDirection: 'row', gap: 8, marginTop: 7 },
-  newCustomerInput: { flex: 1, marginTop: 0 },
+  customerDropdown: { borderWidth: 1, borderColor: '#D5DAD7', borderRadius: 11, marginTop: 6, paddingHorizontal: 10, overflow: 'hidden' },
+  customerResults: { maxHeight: 285 },
+  customerEmpty: { color: '#737B77', fontSize: 12, paddingVertical: 12 },
   smallButton: { minWidth: 59, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#176B50', paddingHorizontal: 12 },
   smallButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   suggestionDropdown: { backgroundColor: '#FFFFFF', borderColor: '#D5DAD7', borderWidth: 1, borderRadius: 13, marginTop: -9, marginBottom: 13, overflow: 'hidden' },

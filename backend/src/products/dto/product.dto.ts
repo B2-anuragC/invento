@@ -18,6 +18,9 @@ export class SellingOptionDto {
 }
 
 export class CreateProductDto {
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(140000) @Matches(/^(?:data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/thumbnail)$/) imageThumbnail?: string | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
+
   @ApiPropertyOptional({ description: 'GST percentage added to the entered tax-exclusive price.', default: '0' }) @ValidateIf((_o, v) => v !== undefined) @IsDecimal({ decimal_digits: '0,2' }) @Matches(/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/) gstRate?: string;
 
   @ApiPropertyOptional({ type: [SellingOptionDto] }) @ValidateIf((_object, value) => value !== undefined) @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SellingOptionDto) sellingOptions?: SellingOptionDto[];
@@ -34,6 +37,9 @@ export class CreateProductDto {
 }
 
 export class UpdateProductDto {
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(140000) @Matches(/^(?:data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/thumbnail)$/) imageThumbnail?: string | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
+
   @ApiPropertyOptional({ description: 'GST percentage added to the entered tax-exclusive price.', default: '0' }) @ValidateIf((_o, v) => v !== undefined) @IsDecimal({ decimal_digits: '0,2' }) @Matches(/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/) gstRate?: string;
 
   @ApiPropertyOptional({ type: [SellingOptionDto] }) @ValidateIf((_object, value) => value !== undefined) @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SellingOptionDto) sellingOptions?: SellingOptionDto[];

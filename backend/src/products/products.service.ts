@@ -1,3 +1,4 @@
+import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
@@ -6,6 +7,8 @@ import { InventoryService } from '../inventory/inventory.service.js';
 import { type SellingOptionDto, productStatuses } from './dto/product.dto.js';
 
 type ProductInput = {
+  imageThumbnail?: string | null;
+  imageOriginal?: string | null;
   gstRate?: string;
   name?: string;
   sku?: string;
@@ -22,10 +25,11 @@ type ProductInput = {
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
+  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate'>, clientId?: string) {
+  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'imageThumbnail' | 'imageOriginal'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
+    const images = await this.normalizeImages(businessId, input);
     const piecesPerUnit = this.groupSize(input.unit, input.piecesPerUnit);
     const sellingOptions = this.validateOptions(input.sellingOptions ?? [], input.unit, piecesPerUnit);
     try {
@@ -33,6 +37,7 @@ export class ProductsService {
         data: {
           id: clientId,
           businessId,
+          ...images,
           name: input.name.trim(),
           sku: input.sku.trim().toUpperCase(),
           barcode: input.barcode?.trim() || null,
@@ -66,7 +71,7 @@ export class ProductsService {
       },
       orderBy: { name: 'asc' },
     });
-    return this.applyPurchasePriceVisibility(businessId, membership, products);
+    return this.applyPurchasePriceVisibility(businessId, membership, products.map(({ imageOriginal: _original, ...product }) => product));
   }
 
   async search(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number] }) {
@@ -93,6 +98,7 @@ export class ProductsService {
 
   async update(userId: string, businessId: string, productId: string, input: ProductInput) {
     await this.requireManagerMembership(userId, businessId);
+    const images = await this.normalizeImages(businessId, input);
     const product = await this.requireProduct(businessId, productId);
     const unit = input.unit ?? product.unit;
     const piecesPerUnit = this.groupSize(unit, input.piecesPerUnit ?? (unit === product.unit ? product.piecesPerUnit ?? undefined : undefined));
@@ -107,6 +113,7 @@ export class ProductsService {
         where: { id: productId },
         data: {
           ...input,
+          ...images,
           revision: { increment: 1 },
           sellingOptions,
           piecesPerUnit,
@@ -138,6 +145,14 @@ export class ProductsService {
 
   async transactions(userId: string, businessId: string, productId: string) {
     return this.inventory.history(userId, businessId, productId);
+  }
+
+  private async normalizeImages(businessId: string, input: Pick<ProductInput, 'imageThumbnail' | 'imageOriginal'>) {
+    if (input.imageThumbnail === undefined && input.imageOriginal === undefined) return {};
+    if (input.imageThumbnail === null && input.imageOriginal === null) return { imageThumbnail: null, imageOriginal: null };
+    if (!input.imageOriginal || !this.files) throw new BadRequestException('Provide an uploaded product image or remove both versions.');
+    const file = await this.files.image(businessId, input.imageOriginal, 'product');
+    return { imageOriginal: file.url, imageThumbnail: file.thumbnailUrl };
   }
 
   private validateOptions(options: SellingOptionDto[], unit: string, size: number | null): Prisma.InputJsonArray {

@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { AppSession } from './api';
 import type { TransactionDraft } from './transaction-drafts';
 
+vi.mock('./file-storage', () => ({ localizeLegacyUploads: async (value: unknown) => value }));
 const storage = vi.hoisted(() => new Map<string, string>());
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: {
   setItem: async (key: string, value: string) => { storage.set(key, value); },
@@ -31,4 +32,11 @@ describe('Persistent transaction drafts', () => {
     for (const key of storage.keys()) storage.set(key, '{bad json');
     expect(await readDraft(session, 'sale')).toBeNull();
   });
+  it('retains physical attachment references without storing bytes', async () => {
+    const physical = { ...draft, referenceImage: `/files/${'a'.repeat(64)}/original` };
+    await saveDraft(session, physical);
+    expect(await readDraft(session, 'sale')).toEqual(physical);
+    expect([...storage.values()].join('')).not.toContain('base64');
+  });
+
 });

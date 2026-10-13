@@ -86,6 +86,8 @@ model BusinessUser {
 }
 
 model Product {
+  imageThumbnail String?
+  imageOriginal String?
   revision Int @default(1)
   id                    String                 @id @default(cuid())
   businessId            String
@@ -254,6 +256,8 @@ enum CustomerStatus {
 }
 
 model Customer {
+  imageOriginal String?
+  imageThumbnail String?
   revision Int @default(1)
   id          String         @id @default(cuid())
   businessId  String

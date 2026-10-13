@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
@@ -10,9 +14,27 @@ import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter
 import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor.js';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
+function testPdf() {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 300] /Contents 4 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 5\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf);
+}
+
 // Opt in against a migrated development/test database. Each test creates and
 // removes only its own tenant and user fixtures; no shared data is reset.
 describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (PostgreSQL)', () => {
+  let uploadRoot: string;
+  const oldUploadPath = process.env.UPLOAD_STORAGE_PATH;
+  const oldMigrationFlag = process.env.UPLOAD_MIGRATE_LEGACY;
   let app: INestApplication;
   let prisma: PrismaService;
   let token: string;
@@ -24,6 +46,9 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   const businessIds: string[] = [];
 
   beforeAll(async () => {
+    uploadRoot = await mkdtemp(join(tmpdir(), 'invento-upload-e2e-'));
+    process.env.UPLOAD_STORAGE_PATH = uploadRoot;
+    process.env.UPLOAD_MIGRATE_LEGACY = 'false';
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication();
     (app as NestExpressApplication).useBodyParser('json', { limit: '4mb' });
@@ -79,15 +104,43 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (app) await app.close();
+    if (uploadRoot) await rm(uploadRoot, { recursive: true, force: true });
+    if (oldUploadPath === undefined) delete process.env.UPLOAD_STORAGE_PATH; else process.env.UPLOAD_STORAGE_PATH = oldUploadPath;
+    if (oldMigrationFlag === undefined) delete process.env.UPLOAD_MIGRATE_LEGACY; else process.env.UPLOAD_MIGRATE_LEGACY = oldMigrationFlag;
+  });
+
+  it('uploads protected product and customer images and stores only references', async () => {
+    const base64 = (await sharp({ create: { width: 2200, height: 1100, channels: 3, background: '#176b50' } }).png().toBuffer()).toString('base64');
+    const productFile = (await api('post', '/files').send({ name: 'product.png', mimeType: 'image/png', base64, kind: 'product' }).expect(201)).body.data;
+    expect(productFile).not.toHaveProperty('base64');
+    const saved = (await api('patch', `/products/${products[0]}`).send({ imageOriginal: productFile.url, imageThumbnail: productFile.thumbnailUrl }).expect(200)).body.data;
+    expect(saved.imageOriginal).toBe(productFile.url);
+    expect(saved.imageThumbnail).toBe(productFile.thumbnailUrl);
+    const thumbnail = await api('get', productFile.thumbnailUrl).expect(200);
+    expect((await sharp(thumbnail.body).metadata()).width).toBe(320);
+    const original = await api('get', productFile.url).expect(200);
+    expect((await sharp(original.body).metadata()).width).toBe(1600);
+    await request(app.getHttpServer()).get(`/api${productFile.url}`).expect(401);
+    const list = (await api('get', '/products').expect(200)).body.data.find((record: { id: string }) => record.id === products[0]);
+    expect(list.imageThumbnail).toBe(productFile.thumbnailUrl);
+    expect(list).not.toHaveProperty('imageOriginal');
+    const customerFile = (await api('post', '/files').send({ name: 'customer.png', mimeType: 'image/png', base64, kind: 'customer' }).expect(201)).body.data;
+    const customer = (await api('patch', `/customers/${customerId}`).send({ imageOriginal: customerFile.url, imageThumbnail: customerFile.thumbnailUrl }).expect(200)).body.data;
+    expect(customer.imageOriginal).toBe(customerFile.url);
+    await api('patch', `/customers/${customerId}`).send({ imageOriginal: productFile.url, imageThumbnail: productFile.thumbnailUrl }).expect(400);
+    await api('patch', `/customers/${customerId}`).send({ imageOriginal: null, imageThumbnail: null }).expect(200);
   });
 
   it('stores an optional reference photo atomically and preserves it on retry', async () => {
-    const referenceImage = 'data:image/jpeg;base64,/9j/2Q==';
+    const referenceImage = `data:image/jpeg;base64,${(await sharp({ create: { width: 100, height: 80, channels: 3, background: 'white' } }).jpeg().toBuffer()).toString('base64')}`;
     const input = { requestId: randomUUID(), customerId, paymentMethod: 'CASH', saleDate: new Date().toISOString(), referenceImage, items: [{ productId: products[1], quantity: '1', sellingPrice: '50' }] };
     const saved = await api('post', '/sales').send(input).expect(201);
-    expect(saved.body.data.referenceImage).toBe(referenceImage);
+    expect(saved.body.data.referenceImage).toMatch(/^\/files\/[a-f0-9]{64}\/original$/);
+    const stored = await api('get', saved.body.data.referenceImage).expect(200);
+    expect(stored.headers['content-type']).toContain('image/webp');
+    await api('get', saved.body.data.referenceImage.replace('/original', '/thumbnail')).expect(200);
     const read = await api('get', `/sales/${saved.body.data.id}`).expect(200);
-    expect(read.body.data.referenceImage).toBe(referenceImage);
+    expect(read.body.data.referenceImage).toBe(saved.body.data.referenceImage);
     const retry = await api('post', '/sales').send(input).expect(201);
     expect(retry.body.data.id).toBe(saved.body.data.id);
     const list = await api('get', '/sales').expect(200);
@@ -348,11 +401,13 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const supplier = (await api('post', '/suppliers').send({ name: 'Glass supplier', categories: ['Glass'], productIds: [products[1]] }).expect(201)).body.data;
     expect(supplier.categories).toEqual(['Glass']);
     expect(supplier.productIds).toEqual([products[1]]);
-    const attachment = { name: 'supplier-invoice.pdf', mimeType: 'application/pdf', base64: Buffer.from('%PDF-1.4\n' + ' '.repeat(200000) + '%%EOF').toString('base64') };
+    const attachment = { name: 'supplier-invoice.pdf', mimeType: 'application/pdf', base64: testPdf().toString('base64') };
     const payload = { requestId: randomUUID(), supplierId: supplier.id, purchaseDate: '2026-10-12', attachment, items: [{ productId: products[0], quantity: '1', purchasePrice: '5' }] };
     const saved = (await api('post', '/purchases').send(payload).expect(201)).body.data;
-    expect(saved.attachment).toEqual(attachment);
-    expect((await api('get', `/purchases/${saved.id}`).expect(200)).body.data.attachment).toEqual(attachment);
+    expect(saved.attachment.url).toMatch(/^\/files\/[a-f0-9]{64}\/original$/);
+    expect(saved.attachment).not.toHaveProperty('base64');
+    await api('get', saved.attachment.thumbnailUrl).expect(200);
+    expect((await api('get', `/purchases/${saved.id}`).expect(200)).body.data.attachment).toEqual(saved.attachment);
     expect((await api('post', '/purchases').send(payload).expect(201)).body.data.id).toBe(saved.id);
     expect((await api('get', '/purchases').expect(200)).body.data[0].attachment).toBeUndefined();
     await api('post', '/purchases').send({ ...payload, requestId: randomUUID(), items: [{ productId: products[1], quantity: '1', purchasePrice: '5' }] }).expect(201);

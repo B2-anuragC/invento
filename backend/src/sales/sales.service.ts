@@ -1,3 +1,4 @@
+import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
@@ -35,7 +36,7 @@ type UpdateSaleInput = {
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
+  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: CreateSaleInput) {
     await this.requireManagerMembership(userId, businessId);
@@ -44,11 +45,7 @@ export class SalesService {
       if (existing) return existing;
     }
 
-    if (input.referenceImage !== undefined) {
-      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(input.referenceImage) || input.referenceImage.length > 2800000) throw new BadRequestException('Attach a JPEG photo up to 2 MB.');
-      const bytes = Buffer.from(input.referenceImage.split(',')[1], 'base64');
-      if (bytes.length > 2 * 1024 * 1024 || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) throw new BadRequestException('The reference photo is not a valid JPEG image.');
-    }
+    const referenceImage = input.referenceImage === undefined ? undefined : (await this.files!.image(businessId, input.referenceImage, 'sale')).url;
     const customer = await this.prisma.customer.findFirst({ where: { id: input.customerId, businessId } });
     if (!customer) throw new NotFoundException('Customer not found.');
     if (customer.status !== CustomerStatus.ACTIVE) throw new ConflictException('Customer is not active.');
@@ -120,7 +117,7 @@ export class SalesService {
           paymentMethod: input.paymentMethod,
           total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
-          referenceImage: input.referenceImage,
+          referenceImage,
           createdByUserId: userId,
         },
       });

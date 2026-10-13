@@ -13,7 +13,7 @@ async function bootstrap() {
   const apiPrefix = configService.get<string>('APP_API_PREFIX', 'api');
   const appPort = configService.get<number>('PORT', 3000);
 
-  app.useBodyParser('json', { limit: '4mb' });
+  app.useBodyParser('json', { limit: '16mb' });
   app.setGlobalPrefix(apiPrefix);
   app.useGlobalPipes(globalValidationPipe);
   app.useGlobalFilters(new HttpExceptionFilter());

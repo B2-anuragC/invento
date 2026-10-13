@@ -1,3 +1,4 @@
+import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
@@ -40,6 +41,8 @@ export default function ContactDetailsScreen() {
   const [catalogProducts, setCatalogProducts] = useState<ProductRecord[]>([]);
   const [supplierCategories, setSupplierCategories] = useState<string[]>([]);
   const [supplierProductIds, setSupplierProductIds] = useState<string[]>([]);
+  const [photo, setPhoto] = useState<ProductPhotoValue>({ imageOriginal: null, imageThumbnail: null });
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [form, setForm] = useState({ name: '', contactName: '', phone: '', email: '', address: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,6 +73,7 @@ export default function ContactDetailsScreen() {
         setSupplierProductIds((record as SupplierRecord).productIds ?? []);
         const loaded = record as Contact;
         setContact(loaded);
+        setPhoto({ imageOriginal: (loaded as CustomerRecord).imageOriginal ?? null, imageThumbnail: (loaded as CustomerRecord).imageThumbnail ?? null });
         setForm({
           name: loaded.name,
           contactName: loaded.contactName ?? '',
@@ -89,7 +93,7 @@ export default function ContactDetailsScreen() {
 
   const saveContact = async () => {
     const session = appSession.current;
-    if (!session || !contact || !form.name.trim() || saving) return;
+    if (!session || !contact || !form.name.trim() || saving || photoBusy) return;
     setSaving(true);
     setError('');
     try {
@@ -101,7 +105,7 @@ export default function ContactDetailsScreen() {
         address: form.address.trim(),
       };
       const updated = contactKind === 'customers'
-        ? await updateCustomer(session, contact.id, input)
+        ? await updateCustomer(session, contact.id, { ...input, ...photo })
         : await updateSupplier(session, contact.id, { ...input, categories: supplierCategories, productIds: supplierProductIds });
       setContact(updated);
       setEditing(false);
@@ -165,6 +169,7 @@ export default function ContactDetailsScreen() {
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={customerStyles.content}>
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+          <ProductPhoto kind="customer" value={photo} />
           <View style={customerStyles.card}>
             <View style={customerStyles.row}>
               <View style={customerStyles.avatar}><Ionicons name="person-outline" size={22} color="#176344" /></View>
@@ -289,6 +294,7 @@ export default function ContactDetailsScreen() {
               <View style={styles.avatar}><Text style={styles.avatarText}>{contact.name.slice(0, 1).toUpperCase()}</Text></View>
               {editing ? (
                 <View style={styles.form}>
+                  {contactKind === 'customers' ? <ProductPhoto kind="customer" value={photo} onChange={setPhoto} onBusy={setPhotoBusy} disabled={saving} /> : null}
                   {([
                     ['name', 'Business name'],
                     ['contactName', 'Contact person'],
@@ -326,7 +332,7 @@ export default function ContactDetailsScreen() {
               {canEdit ? (
                 editing ? (
                   <View style={styles.editActions}>
-                    <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void saveContact()} disabled={saving || !form.name.trim()} />
+                    <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void saveContact()} disabled={saving || photoBusy || !form.name.trim()} />
                     <ActionButton title="Cancel" variant="secondary" onPress={() => setEditing(false)} disabled={saving} />
                   </View>
                 ) : (

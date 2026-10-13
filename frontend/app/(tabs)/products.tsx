@@ -1,3 +1,5 @@
+import { ListingLayout, ListingViewToggle, type ListingView } from '@/components/listing-layout';
+import { ProductThumbnail } from '@/components/product-photo';
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -16,6 +18,8 @@ const sectionLabels: Record<ProductSection, string> = {
 
 export default function ProductsScreen() {
   const router = useRouter();
+  const [listingView, setListingView] = useState<ListingView>('list');
+  const isGrid = listingView === 'grid';
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [products, setProducts] = useState<ProductRecord[]>([]);
@@ -214,6 +218,8 @@ export default function ProductsScreen() {
           </View>
         </View>
 
+        <View style={{ marginTop: 12 }}><ListingViewToggle value={listingView} onChange={setListingView} /></View>
+
         <View style={styles.sectionTabs}>
           {(Object.keys(sectionLabels) as ProductSection[]).map((value) => (
             <Pressable key={value} onPress={() => setSection(value)} style={[styles.sectionTab, section === value && styles.sectionTabSelected]}>
@@ -242,33 +248,33 @@ export default function ProductsScreen() {
             {!search && section !== 'favorites' ? <ActionButton title="Add product" onPress={() => router.push('/product/new')} /> : null}
           </View>
         ) : null}
-        {!loading && !error ? filteredProducts.map((product) => {
+        {!loading && !error ? <ListingLayout view={listingView}>{filteredProducts.map((product) => {
           const quantity = Number(inventory[product.id]?.quantity ?? 0);
           const low = quantity < Number(product.minimumStock);
           return (
-            <View key={product.id} style={styles.productCard}>
+            <View key={product.id} style={[styles.productCard, isGrid && styles.gridCard]}>
               <View style={styles.cardTop}>
-                <Pressable style={styles.productMain} onPress={() => router.push(`/product/${product.id}`)}>
-                  <View style={styles.productIcon}><Text style={styles.productIconText}>◇</Text></View>
-                  <View style={styles.productTitleWrap}>
-                    <Text numberOfLines={1} style={styles.productName}>{product.name}</Text>
-                    <Text numberOfLines={1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text>
+                <Pressable style={[styles.productMain, isGrid && styles.gridMain]} onPress={() => router.push(`/product/${product.id}`)}>
+                  <View style={[styles.productIcon, isGrid && styles.gridIcon]}>{product.imageThumbnail ? <ProductThumbnail uri={product.imageThumbnail} size={isGrid ? 48 : 44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
+                  <View style={[styles.productTitleWrap, isGrid && styles.gridTitle]}>
+                    <Text numberOfLines={isGrid ? 2 : 1} style={[styles.productName, isGrid && styles.gridName]}>{product.name}</Text>
+                    <Text numberOfLines={isGrid ? 2 : 1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text>
                   </View>
                 </Pressable>
                 <Pressable
                   accessibilityLabel={favorites[product.id] ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
                   onPress={() => setFavorites((current) => ({ ...current, [product.id]: !current[product.id] }))}
-                  style={styles.favoriteButton}>
+                  style={[styles.favoriteButton, isGrid && styles.gridFavorite]}>
                   <Text style={[styles.favoriteText, favorites[product.id] && styles.favoriteSelected]}>{favorites[product.id] ? '♥' : '♡'}</Text>
                 </Pressable>
               </View>
               <Pressable onPress={() => router.push(`/product/${product.id}`)}>
-                <View style={styles.productFacts}>
-                  <View style={styles.stockFact}>
+                <View style={[styles.productFacts, isGrid && styles.gridFacts]}>
+                  <View style={[styles.stockFact, isGrid && styles.gridFact]}>
                     <Text style={[styles.stockValue, low && styles.stockLow]}>{quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
                     <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text>
                   </View>
-                  <View style={styles.priceFact}>
+                  <View style={[styles.priceFact, isGrid && styles.gridFact]}>
                     <Text style={styles.factLabel}>SELL / {formatUnitLabel(product.unit)}</Text>
                     <Text style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
                   </View>
@@ -276,7 +282,7 @@ export default function ProductsScreen() {
               </Pressable>
             </View>
           );
-        }) : null}
+        })}</ListingLayout> : null}
       </ScrollView>
     </AppScreen>
   );
@@ -287,6 +293,15 @@ function formatMoney(value: number) {
 }
 
 const styles = StyleSheet.create({
+  gridCard: { flex: 1, padding: 10, borderRadius: 12, marginBottom: 8 },
+  gridMain: { flexDirection: 'column', alignItems: 'stretch' },
+  gridIcon: { width: 48, height: 48, borderRadius: 10, alignSelf: 'center' },
+  gridTitle: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%', marginLeft: 0, marginTop: 6 },
+  gridName: { fontSize: 13, lineHeight: 17 },
+  gridFavorite: { position: 'absolute', top: -8, right: -8 },
+  gridFacts: { flexDirection: 'column', gap: 4, marginTop: 8 },
+  gridFact: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%' },
+
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 90, marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 16, backgroundColor: '#FFFFFF' },
   eyebrow: { color: '#557267', fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },

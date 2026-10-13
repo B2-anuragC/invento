@@ -1,3 +1,4 @@
+import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -59,6 +60,8 @@ export default function ProductDetailsScreen() {
   const [product, setProduct] = useState<ProductRecord | null>(null);
   const [inventory, setInventory] = useState<InventoryRecord | null>(null);
   const [transactions, setTransactions] = useState<InventoryTransactionRecord[]>([]);
+  const [photo, setPhoto] = useState<ProductPhotoValue>({ imageThumbnail: null, imageOriginal: null });
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
@@ -123,6 +126,7 @@ export default function ProductDetailsScreen() {
       .then(([productData, stockData, transactionData]) => {
         if (!active) return;
         setProduct(productData);
+        setPhoto({ imageThumbnail: productData.imageThumbnail ?? null, imageOriginal: productData.imageOriginal ?? null });
         setInventory(stockData);
         setTransactions(transactionData);
         setEditing(false);
@@ -151,7 +155,7 @@ export default function ProductDetailsScreen() {
 
   const saveProduct = async () => {
     const session = appSession.current;
-    if (!session || saving) return;
+    if (!session || saving || photoBusy) return;
     const cleanName = name.trim();
     const cleanSku = sku.trim();
     if (cleanName.length < 1 || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(cleanSku)) {
@@ -178,6 +182,7 @@ export default function ProductDetailsScreen() {
     }
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
     const input: ProductInput = {
+      ...photo,
       gstRate,
       name: cleanName,
       sku: cleanSku,
@@ -293,7 +298,7 @@ export default function ProductDetailsScreen() {
             <Text style={styles.subtitle}>{isNew ? 'CATALOG · OWNER VIEW' : `${product?.category ? `${product.category} · ` : ''}${product?.sku} · ${product?.status.toLowerCase()}`}</Text>
           </View>
           {!isNew && !editing ? (
-            <Pressable onPress={() => setEditing(true)} style={styles.smallAction}>
+            <Pressable onPress={() => { setPhoto({ imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); }} style={styles.smallAction}>
               <Text style={styles.smallActionText}>Edit</Text>
             </Pressable>
           ) : null}
@@ -301,6 +306,8 @@ export default function ProductDetailsScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+
+        <ProductPhoto value={editing ? photo : { imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onBusy={setPhotoBusy} disabled={saving} />
 
         {editing ? (
           <>
@@ -467,7 +474,7 @@ export default function ProductDetailsScreen() {
             />
 
             </View>
-            <Pressable disabled={saving} onPress={() => void saveProduct()} style={[styles.primaryButton, saving && styles.disabled]}>
+            <Pressable disabled={saving || photoBusy} onPress={() => void saveProduct()} style={[styles.primaryButton, (saving || photoBusy) && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}</Text>
             </Pressable>
             {!isNew ? <Pressable onPress={() => setEditing(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel editing</Text></Pressable> : null}

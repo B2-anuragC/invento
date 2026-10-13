@@ -4,6 +4,9 @@ import { IsEmail, IsIn, ValidateIf, IsString, MaxLength, MinLength, Matches } fr
 export const customerStatuses = ['ACTIVE', 'INACTIVE'] as const;
 
 export class CreateCustomerDto {
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/original$/) imageOriginal?: string | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/thumbnail$/) imageThumbnail?: string | null;
+
   @ApiProperty() @IsString() @MinLength(1) @Matches(/\S/, { message: 'name must contain a non-whitespace character' }) @MaxLength(160) name!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(160) contactName?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(30) phone?: string;
@@ -12,6 +15,9 @@ export class CreateCustomerDto {
 }
 
 export class UpdateCustomerDto {
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/original$/) imageOriginal?: string | null;
+  @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/thumbnail$/) imageThumbnail?: string | null;
+
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MinLength(1) @Matches(/\S/, { message: 'name must contain a non-whitespace character' }) @MaxLength(160) name?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(160) contactName?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(30) phone?: string;

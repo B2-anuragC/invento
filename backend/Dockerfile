@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS deps
 
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl poppler-utils && rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./backend/
 COPY packages/shared/package*.json ./packages/shared/
@@ -15,7 +15,7 @@ RUN npm install --include=dev
 FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl poppler-utils && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/backend ./backend
 COPY --from=deps /app/packages/shared ./packages/shared
 COPY backend ./backend
@@ -30,7 +30,7 @@ RUN npx prisma generate --schema=./prisma/schema.prisma && npm run build
 FROM node:24-bookworm-slim AS runner
 
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl poppler-utils && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV APP_API_PREFIX=api

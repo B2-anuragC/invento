@@ -1,9 +1,13 @@
+import { FilesService } from '../files/files.service.js';
+import { BadRequestException } from '@nestjs/common';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { customerStatuses } from './dto/customer.dto.js';
 
 type CustomerInput = {
+  imageOriginal?: string | null;
+  imageThumbnail?: string | null;
   name?: string;
   contactName?: string;
   phone?: string;
@@ -14,12 +18,14 @@ type CustomerInput = {
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: Required<Pick<CustomerInput, 'name'>> & Omit<CustomerInput, 'name' | 'status'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
+    const images = await this.images(businessId, input);
     return this.prisma.customer.create({
       data: {
+        ...images,
         id: clientId,
         businessId,
         name: input.name.trim(),
@@ -61,9 +67,11 @@ export class CustomersService {
   async update(userId: string, businessId: string, customerId: string, input: CustomerInput) {
     await this.requireManagerMembership(userId, businessId);
     await this.requireCustomer(businessId, customerId);
+    const images = await this.images(businessId, input);
     return this.prisma.customer.update({
       where: { id: customerId },
       data: {
+        ...images,
         revision: { increment: 1 },
         name: input.name?.trim(),
         contactName: input.contactName === undefined ? undefined : input.contactName.trim() || null,
@@ -93,6 +101,14 @@ export class CustomersService {
       throw new ConflictException('Customer is not active.');
     }
     return customer;
+  }
+
+  private async images(businessId: string, input: CustomerInput) {
+    if (input.imageOriginal === undefined && input.imageThumbnail === undefined) return {};
+    if (input.imageOriginal === null && input.imageThumbnail === null) return { imageOriginal: null, imageThumbnail: null };
+    if (!input.imageOriginal || !this.files) throw new BadRequestException('Upload a customer photo or remove both versions.');
+    const file = await this.files.reference(businessId, input.imageOriginal, 'customer');
+    return { imageOriginal: file.url, imageThumbnail: file.thumbnailUrl };
   }
 
   private async requireCustomer(businessId: string, customerId: string) {

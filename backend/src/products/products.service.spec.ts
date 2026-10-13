@@ -70,4 +70,34 @@ describe('ProductsService', () => {
     await expect(new ProductsService(prisma as never, {} as never).get('user-a', 'business-a', 'product-a'))
       .resolves.toEqual({ id: 'product-a', businessId: 'business-a' });
   });
+  it('stores file references and excludes full-size references from product lists', async () => {
+    const original = `/files/${'a'.repeat(64)}/original`;
+    const thumbnail = `/files/${'a'.repeat(64)}/thumbnail`;
+    const product = { id: 'product-a', businessId: 'business-a', ...productInput, imageThumbnail: thumbnail, imageOriginal: original };
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      product: { create: vi.fn().mockResolvedValue(product), findMany: vi.fn().mockResolvedValue([product]) },
+    };
+    const files = { image: vi.fn().mockResolvedValue({ url: original, thumbnailUrl: thumbnail }) };
+    const service = new ProductsService(prisma as never, {} as never, files as never);
+    await service.create('user-a', 'business-a', { ...productInput, imageThumbnail: thumbnail, imageOriginal: original });
+    expect(prisma.product.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ imageThumbnail: thumbnail, imageOriginal: original }) }));
+    const list = await service.list('user-a', 'business-a', {});
+    expect(list[0]).not.toHaveProperty('imageOriginal');
+    expect(list[0].imageThumbnail).toBe(thumbnail);
+    await expect(service.create('user-a', 'business-a', { ...productInput, imageThumbnail: thumbnail, imageOriginal: null })).rejects.toThrow('uploaded product image');
+  });
+
+  it('removes both images on update and preserves them when omitted', async () => {
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      product: { findFirst: vi.fn().mockResolvedValue({ ...productInput, piecesPerUnit: null }), update: vi.fn().mockResolvedValue({}) },
+    };
+    const service = new ProductsService(prisma as never, {} as never);
+    await service.update('user-a', 'business-a', 'product-a', { imageThumbnail: null, imageOriginal: null });
+    expect(prisma.product.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ imageThumbnail: null, imageOriginal: null }) }));
+    await service.update('user-a', 'business-a', 'product-a', { name: 'Updated rice' });
+    expect(prisma.product.update.mock.calls.at(-1)?.[0].data).not.toHaveProperty('imageOriginal');
+  });
+
 });

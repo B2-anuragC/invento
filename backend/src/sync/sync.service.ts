@@ -1,3 +1,4 @@
+import { FilesService } from '../files/files.service.js';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -22,7 +23,7 @@ function canonical(value: unknown): string {
 
 @Injectable()
 export class SyncService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly files?: FilesService) {}
 
   async snapshot(userId: string, businessId: string) {
     return this.prisma.$transaction(async (tx) => {
@@ -75,10 +76,10 @@ export class SyncService {
       const inventory = new InventoryService(scoped);
       let record: unknown;
       if (command.entity === 'products') {
-        const service = new ProductsService(scoped, inventory);
+        const service = new ProductsService(scoped, inventory, this.files);
         record = command.action === 'create' ? await service.create(userId, businessId, payload, command.entityId) : await service.update(userId, businessId, command.entityId, payload);
       } else if (command.entity === 'customers') {
-        const service = new CustomersService(scoped);
+        const service = new CustomersService(scoped, this.files);
         record = command.action === 'create' ? await service.create(userId, businessId, payload, command.entityId) : await service.update(userId, businessId, command.entityId, payload);
       } else if (command.entity === 'suppliers') {
         const service = new SuppliersService(scoped);

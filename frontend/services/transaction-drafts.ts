@@ -1,3 +1,4 @@
+import { localizeLegacyUploads } from './file-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppSession, FileAttachment } from './api';
 export type TransactionDraft = {
@@ -27,8 +28,9 @@ export async function readDraft(session: AppSession, kind: TransactionDraft['kin
     if (value.version !== 1 || value.kind !== kind || typeof value.requestId !== 'string' || !stringRecord(value.quantities) || !stringRecord(value.prices) || ![1, 2, 3].includes(value.step)) return null;
     if (!['full', 'partial', 'credit'].includes(value.paymentMode) || !['updatedAt', 'contactId', 'contactName', 'paidInput', 'dueDate', 'paymentMethod'].every((field) => typeof value[field] === 'string')) return null;
     if (![null, 'rejected', 'unknown'].includes(value.outcome) || (value.sellingUnits !== undefined && !stringRecord(value.sellingUnits)) || (value.selectedOptions !== undefined && !stringRecord(value.selectedOptions))) return null;
-    if (value.referenceImage !== undefined && (typeof value.referenceImage !== 'string' || value.referenceImage.length > 2800000 || !value.referenceImage.startsWith('data:image/jpeg;base64,'))) return null;
-    if (value.attachment !== undefined && (value.attachment === null || typeof value.attachment !== 'object' || !['name', 'mimeType', 'base64'].every((field) => typeof value.attachment[field] === 'string') || value.attachment.base64.length > 2796204)) return null;
+    if (value.referenceImage !== undefined && (typeof value.referenceImage !== 'string' || value.referenceImage.length > 2800000 || !(/^(?:data:image\/jpeg;base64,|\/files\/[a-f0-9]{64}\/original$|file:\/\/)/.test(value.referenceImage)))) return null;
+    if (value.attachment !== undefined && (value.attachment === null || typeof value.attachment !== 'object' || !['name', 'mimeType'].every((field) => typeof value.attachment[field] === 'string') || (typeof value.attachment.url !== 'string' && typeof value.attachment.base64 !== 'string') || (value.attachment.base64?.length ?? 0) > 13981016)) return null;
+    if (raw.includes('base64')) { const migrated = await localizeLegacyUploads(value, session) as TransactionDraft; await saveDraft(session, migrated); return migrated; }
     return value;
   } catch { return null; }
 }

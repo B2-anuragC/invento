@@ -15,6 +15,7 @@ services:
       - sh
       - -c
       - >-
+        npm install --include=dev &&
         npx prisma generate --schema=./prisma/schema.prisma &&
         npx prisma migrate deploy --schema=./prisma/schema.prisma &&
         npm --prefix /app/packages/shared run build &&

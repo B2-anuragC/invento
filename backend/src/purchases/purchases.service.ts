@@ -1,3 +1,4 @@
+import { FilesService, type StoredAttachment } from '../files/files.service.js';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -12,7 +13,7 @@ type PurchaseItemInput = {
 };
 
 type CreatePurchaseInput = {
-  attachment?: { name: string; mimeType: string; base64: string };
+  attachment?: { name: string; mimeType: string; base64?: string; url?: string; thumbnailUrl?: string };
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;
@@ -54,7 +55,7 @@ function withoutPurchaseCost<T extends { purchasePrice: unknown; lineTotal: unkn
 
 @Injectable()
 export class PurchasesService {
-  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService) {}
+  constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: CreatePurchaseInput) {
     await this.requireManagerMembership(userId, businessId);
@@ -63,9 +64,12 @@ export class PurchasesService {
       if (existing) return existing;
     }
 
+    let attachment: StoredAttachment | undefined;
     if (input.attachment) {
       const file = input.attachment;
-      if (!file.name?.trim() || file.name.length > 160 || typeof file.mimeType !== 'string' || !file.mimeType || file.mimeType.length > 120 || typeof file.base64 !== 'string' || file.base64.length > 2796204 || !/^[A-Za-z0-9+/]+={0,2}$/.test(file.base64) || (Buffer.from(file.base64, 'base64').length === 0 || Buffer.from(file.base64, 'base64').length > 2 * 1024 * 1024)) throw new BadRequestException('Attach a valid file up to 2 MB.');
+      if (file.base64) attachment = await this.files!.store(businessId, { name: file.name, mimeType: file.mimeType, base64: file.base64 }, 'purchase');
+      else if (file.url) attachment = await this.files!.reference(businessId, file.url, 'purchase');
+      else throw new BadRequestException('Upload the purchase attachment before saving.');
     }
     const supplier = await this.prisma.supplier.findFirst({ where: { id: input.supplierId, businessId } });
     if (!supplier) throw new NotFoundException('Supplier not found.');
@@ -121,7 +125,7 @@ export class PurchasesService {
           purchaseDate,
           total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
-          attachment: input.attachment,
+          attachment: attachment ? { ...attachment } : undefined,
           createdByUserId: userId,
         },
       });

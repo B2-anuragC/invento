@@ -5,6 +5,7 @@ import type { AppSession, InventoryRecord, ProductRecord, SaleRecord, PurchaseRe
 
 type Transport = <T>(path: string, options: RequestInit, session: AppSession) => Promise<T>;
 let transport: Transport;
+let migrateUploads: (value: unknown, session: AppSession) => Promise<unknown> = async (value) => value;
 let currentSession: () => AppSession | null;
 const cache = new Map<string, OfflineState>();
 const bootstraps = new Map<string, Promise<OfflineState>>();
@@ -21,7 +22,7 @@ function publish(session?: AppSession, updates: Partial<SyncStatus> = {}) {
   status = { ...status, ...(state ? { pending: state.commands.length, conflicts: state.commands.filter((command) => command.state === 'conflict').length, lastSync: state.snapshot.downloadedAt } : {}), ...updates };
   listeners.forEach((listener) => listener());
 }
-export function configureOffline(transportFn: Transport, sessionFn: () => AppSession | null) { transport = transportFn; currentSession = sessionFn; }
+export function configureOffline(transportFn: Transport, sessionFn: () => AppSession | null, migrate?: typeof migrateUploads) { transport = transportFn; currentSession = sessionFn; if (migrate) migrateUploads = migrate; }
 function stillActive(session: AppSession) { const active = currentSession?.(); return active && offlineScope(active) === offlineScope(session); }
 function serialized<T>(work: () => Promise<T>): Promise<T> {
   const result = writes.catch(() => {}).then(work); writes = result; return result;
@@ -31,7 +32,8 @@ async function load(session: AppSession): Promise<OfflineState | null> {
   if (cache.has(scope)) return cache.get(scope)!;
   const raw = await readOfflineState(scope);
   if (!raw) return null;
-  const state = JSON.parse(raw) as OfflineState;
+  const state = (raw.includes('base64') ? await migrateUploads(JSON.parse(raw), session) : JSON.parse(raw)) as OfflineState;
+  if (raw.includes('base64')) await writeOfflineState(scope, JSON.stringify(state));
   if (state.version !== 1 || state.snapshot.schemaVersion !== 1 || !Array.isArray(state.commands)) throw new Error('Unsupported offline database version. Your saved work has been retained.');
   cache.set(scope, state); return state;
 }

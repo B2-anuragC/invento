@@ -1,3 +1,4 @@
+import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -57,6 +58,8 @@ export type DashboardSummary = {
 };
 
 export type ProductRecord = {
+  imageThumbnail?: string | null;
+  imageOriginal?: string | null;
   revision?: number;
   syncState?: string;
   id: string;
@@ -78,6 +81,8 @@ export type ProductRecord = {
 };
 
 export type ProductInput = {
+  imageThumbnail?: string | null;
+  imageOriginal?: string | null;
   name: string;
   sku: string;
   barcode?: string;
@@ -92,6 +97,8 @@ export type ProductInput = {
 };
 
 export type CustomerRecord = {
+  imageOriginal?: string | null;
+  imageThumbnail?: string | null;
   revision?: number;
   updatedAt?: string;
   syncState?: string;
@@ -167,7 +174,7 @@ export type SupplierRecord = {
   status: string;
 };
 
-export type FileAttachment = { name: string; mimeType: string; base64: string };
+export type FileAttachment = { name: string; mimeType: string; url?: string; thumbnailUrl?: string; base64?: string };
 
 export type PurchaseRecord = {
   attachment?: FileAttachment | null;
@@ -363,6 +370,7 @@ async function request<T>(
   canRefresh = true,
 ): Promise<T> {
   if (session) session = latestSession(session);
+  if (session && path !== '/files' && typeof options.body === 'string') options = { ...options, body: JSON.stringify(await resolveUploadPayload(JSON.parse(options.body), session)) };
   const headers = new Headers(options.headers ?? {});
   headers.set('Accept', 'application/json');
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
@@ -567,7 +575,7 @@ export async function fetchCustomers(session: AppSession): Promise<CustomerRecor
 
 export async function createCustomer(
   session: AppSession,
-  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string },
+  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string },
 ): Promise<CustomerRecord> {
   if (nativeOffline) return await saveOfflineCatalog(session, 'customers', typeof input === 'string' ? { name: input } : { ...input }) as CustomerRecord;
   const body = typeof input === 'string' ? { name: input } : input;
@@ -586,7 +594,7 @@ export async function fetchCustomer(session: AppSession, customerId: string): Pr
 export async function updateCustomer(
   session: AppSession,
   customerId: string,
-  input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status'>>,
+  input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'imageOriginal' | 'imageThumbnail'>>,
 ): Promise<CustomerRecord> {
   if (nativeOffline) return await saveOfflineCatalog(session, 'customers', { ...input }, customerId) as CustomerRecord;
   return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, {
@@ -635,7 +643,7 @@ export async function fetchSuppliers(session: AppSession): Promise<SupplierRecor
 
 export async function createSupplier(
   session: AppSession,
-  input: string | { name: string; contactName?: string; phone?: string; email?: string; address?: string; categories?: string[]; productIds?: string[] },
+  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string; categories?: string[]; productIds?: string[] },
 ): Promise<SupplierRecord> {
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', typeof input === 'string' ? { name: input } : { ...input }) as SupplierRecord;
   const body = typeof input === 'string' ? { name: input } : input;
@@ -741,4 +749,6 @@ configureOffline(async <T>(path: string, options: RequestInit, session: AppSessi
   const timeout = setTimeout(() => controller.abort(), 15000);
   try { return await request<T>(path, { ...options, signal: controller.signal }, session); }
   finally { clearTimeout(timeout); }
-}, () => appSession.current);
+}, () => appSession.current, localizeLegacyUploads);
+
+configureFileStorage(request, () => appSession.current, API_BASE_URL, async () => { const session = appSession.current; if (session) await renewSession(session); });

@@ -1,3 +1,5 @@
+import { ListingLayout, ListingViewToggle, type ListingView } from '@/components/listing-layout';
+import { ProductPhoto, ProductThumbnail, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -19,12 +21,14 @@ import {
 type PersonFilter = 'All' | 'Customers' | 'Suppliers';
 type ContactKind = 'customer' | 'supplier';
 type ContactFields = { name: string; contactName: string; phone: string; email: string; address: string };
-type PersonItem = { id: string; name: string; phone?: string | null; contactName?: string | null; kind: ContactKind };
+type PersonItem = { imageThumbnail?: string | null; id: string; name: string; phone?: string | null; contactName?: string | null; kind: ContactKind };
 const emptyContact: ContactFields = { name: '', contactName: '', phone: '', email: '', address: '' };
 
 export default function PeopleDirectoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [listingView, setListingView] = useState<ListingView>('list');
+  const isGrid = listingView === 'grid';
   const [filter, setFilter] = useState<PersonFilter>('All');
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
@@ -34,6 +38,8 @@ export default function PeopleDirectoryScreen() {
   const [search, setSearch] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [contactKind, setContactKind] = useState<ContactKind>('customer');
+  const [photo, setPhoto] = useState<ProductPhotoValue>({ imageOriginal: null, imageThumbnail: null });
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [contact, setContact] = useState<ContactFields>(emptyContact);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,7 +73,7 @@ export default function PeopleDirectoryScreen() {
 
   const saveContact = async () => {
     const session = appSession.current;
-    if (!session || !contact.name.trim() || saving) return;
+    if (!session || !contact.name.trim() || saving || photoBusy) return;
     setSaving(true);
     setError('');
     try {
@@ -78,7 +84,7 @@ export default function PeopleDirectoryScreen() {
         email: contact.email.trim(),
         address: contact.address.trim(),
       };
-      if (contactKind === 'customer') await createCustomer(session, input);
+      if (contactKind === 'customer') await createCustomer(session, { ...input, ...photo });
       else await createSupplier(session, { ...input, categories: supplierCategories, productIds: supplierProductIds });
       setContact(emptyContact);
       setModalVisible(false);
@@ -92,6 +98,7 @@ export default function PeopleDirectoryScreen() {
 
   const openCreate = (kind?: ContactKind) => {
     setSupplierCategories([]); setSupplierProductIds([]);
+    setPhoto({ imageOriginal: null, imageThumbnail: null });
     setContact(emptyContact);
     setError('');
     setContactKind(kind ?? (filter === 'Suppliers' ? 'supplier' : 'customer'));
@@ -121,6 +128,7 @@ export default function PeopleDirectoryScreen() {
             </Pressable>
           ))}
         </View>
+        <View style={{ marginTop: 14 }}><ListingViewToggle value={listingView} onChange={setListingView} /></View>
         <Text style={styles.balanceNote}>Your business contacts · Tap a person to view history</Text>
         {filter !== 'Suppliers' ? (
           <View style={styles.group}>
@@ -131,16 +139,16 @@ export default function PeopleDirectoryScreen() {
             {!loading && filter === 'Customers' && people.filter((item) => item.kind === 'customer').length === 0 ? (
               <Text style={styles.emptyGroup}>No customers match your search.</Text>
             ) : null}
-            {people.filter((item) => item.kind === 'customer').map((item) => (
-              <Pressable key={`customer-${item.id}`} onPress={() => router.push(`/people/customers/${item.id}`)} style={styles.personCard}>
-                <View style={styles.avatar}><Text style={styles.avatarText}>♙</Text></View>
-                <View style={styles.personCopy}>
-                  <Text numberOfLines={1} style={styles.personName}>{item.name}</Text>
+            <ListingLayout view={listingView}>{people.filter((item) => item.kind === 'customer').map((item) => (
+              <Pressable key={`customer-${item.id}`} onPress={() => router.push(`/people/customers/${item.id}`)} style={[styles.personCard, isGrid && styles.gridCard]}>
+                <View style={[styles.avatar, isGrid && styles.gridAvatar]}>{item.imageThumbnail ? <ProductThumbnail uri={item.imageThumbnail} size={44} /> : <Text style={styles.avatarText}>♙</Text>}</View>
+                <View style={[styles.personCopy, isGrid && styles.gridCopy]}>
+                  <Text numberOfLines={isGrid ? 2 : 1} style={[styles.personName, isGrid && styles.gridName]}>{item.name}</Text>
                   <Text numberOfLines={1} style={styles.personMeta}>{item.phone || item.contactName || 'Customer contact'}</Text>
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                {!isGrid ? <Text style={styles.chevron}>›</Text> : null}
               </Pressable>
-            ))}
+            ))}</ListingLayout>
           </View>
         ) : null}
         {filter !== 'Customers' ? (
@@ -152,16 +160,16 @@ export default function PeopleDirectoryScreen() {
             {!loading && filter === 'Suppliers' && people.filter((item) => item.kind === 'supplier').length === 0 ? (
               <Text style={styles.emptyGroup}>No suppliers match your search.</Text>
             ) : null}
-            {people.filter((item) => item.kind === 'supplier').map((item) => (
-              <Pressable key={`supplier-${item.id}`} onPress={() => router.push(`/people/suppliers/${item.id}`)} style={styles.personCard}>
-                <View style={[styles.avatar, styles.supplierAvatar]}><Text style={[styles.avatarText, styles.supplierAvatarText]}>▰</Text></View>
-                <View style={styles.personCopy}>
-                  <Text numberOfLines={1} style={styles.personName}>{item.name}</Text>
+            <ListingLayout view={listingView}>{people.filter((item) => item.kind === 'supplier').map((item) => (
+              <Pressable key={`supplier-${item.id}`} onPress={() => router.push(`/people/suppliers/${item.id}`)} style={[styles.personCard, isGrid && styles.gridCard]}>
+                <View style={[styles.avatar, styles.supplierAvatar, isGrid && styles.gridAvatar]}><Text style={[styles.avatarText, styles.supplierAvatarText]}>▰</Text></View>
+                <View style={[styles.personCopy, isGrid && styles.gridCopy]}>
+                  <Text numberOfLines={isGrid ? 2 : 1} style={[styles.personName, isGrid && styles.gridName]}>{item.name}</Text>
                   <Text numberOfLines={1} style={styles.personMeta}>{item.phone || item.contactName || 'Supplier contact'}</Text>
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                {!isGrid ? <Text style={styles.chevron}>›</Text> : null}
               </Pressable>
-            ))}
+            ))}</ListingLayout>
           </View>
         ) : null}
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.loading} /> : null}
@@ -184,6 +192,7 @@ export default function PeopleDirectoryScreen() {
                 </Pressable>
               ))}
             </View>
+            {contactKind === 'customer' ? <ProductPhoto kind="customer" value={photo} onChange={setPhoto} onBusy={setPhotoBusy} disabled={saving} /> : null}
             {([
               ['name', 'Business name *'],
               ['contactName', 'Contact person'],
@@ -204,7 +213,7 @@ export default function PeopleDirectoryScreen() {
             ))}
             {contactKind === 'supplier' ? <SupplierCatalogFields products={catalogProducts} categories={supplierCategories} productIds={supplierProductIds} onChange={(categories, productIds) => { setSupplierCategories(categories); setSupplierProductIds(productIds); }} /> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable disabled={!contact.name.trim() || saving} onPress={() => void saveContact()} style={[styles.saveButton, (!contact.name.trim() || saving) && styles.disabled]}>
+            <Pressable disabled={!contact.name.trim() || saving || photoBusy} onPress={() => void saveContact()} style={[styles.saveButton, (!contact.name.trim() || saving) && styles.disabled]}>
               <Text style={styles.saveButtonText}>{saving ? 'Saving…' : `Add ${contactKind}`}</Text>
             </Pressable>
           </ScrollView>
@@ -215,6 +224,11 @@ export default function PeopleDirectoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  gridCard: { flex: 1, flexDirection: 'column', alignItems: 'center', padding: 10, borderRadius: 12 },
+  gridAvatar: { width: 44, height: 44 },
+  gridCopy: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%' },
+  gridName: { fontSize: 13, lineHeight: 17 },
+
   content: { paddingHorizontal: 20, paddingBottom: 34, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   header: { minHeight: 92, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: '#1D2B25', fontSize: 29, fontWeight: '800' },
