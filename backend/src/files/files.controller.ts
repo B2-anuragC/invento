@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { FileJobsService } from './file-jobs.service.js';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import type { Request, Response } from 'express';
 import { AccessTokenGuard } from '../auth/auth.guard.js';
@@ -13,7 +14,7 @@ class UploadFileDto {
 @Controller('files')
 @UseGuards(AccessTokenGuard)
 export class FilesController {
-  constructor(private readonly files: FilesService, private readonly prisma: PrismaService) {}
+  constructor(private readonly files: FilesService, private readonly prisma: PrismaService, private readonly jobs: FileJobsService) {}
   private async membership(req: Request) {
     const businessId = req.header('X-Business-Id');
     if (!businessId) throw new BadRequestException('Select a business.');
@@ -25,7 +26,20 @@ export class FilesController {
   async upload(@Req() req: Request, @Body() dto: UploadFileDto) {
     const membership = await this.membership(req);
     if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can upload files.');
-    return this.files.store(membership.businessId, dto, dto.kind);
+    return this.jobs.upload(membership.businessId, dto, dto.kind);
+  }
+  @Post('jobs')
+  @HttpCode(202)
+  async enqueue(@Req() req: Request, @Body() dto: UploadFileDto) {
+    const membership = await this.membership(req);
+    if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can upload files.');
+    return this.jobs.enqueue(membership.businessId, dto, dto.kind);
+  }
+  @Get('jobs/:jobId')
+  async jobStatus(@Req() req: Request, @Param('jobId') jobId: string) {
+    const membership = await this.membership(req);
+    if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can view upload jobs.');
+    return this.jobs.status(membership.businessId, jobId);
   }
   @Get(':id/:variant')
   async download(@Req() req: Request, @Param('id') id: string, @Param('variant') variant: string, @Res() res: Response) {

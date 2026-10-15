@@ -7,6 +7,7 @@ import { InventoryService } from '../inventory/inventory.service.js';
 import { type SellingOptionDto, productStatuses } from './dto/product.dto.js';
 
 type ProductInput = {
+  images?: { imageOriginal: string; imageThumbnail?: string }[];
   imageThumbnail?: string | null;
   imageOriginal?: string | null;
   gstRate?: string;
@@ -27,7 +28,7 @@ type ProductInput = {
 export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'imageThumbnail' | 'imageOriginal'>, clientId?: string) {
+  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'imageThumbnail' | 'imageOriginal' | 'images'>, clientId?: string) {
     await this.requireManagerMembership(userId, businessId);
     const images = await this.normalizeImages(businessId, input);
     const piecesPerUnit = this.groupSize(input.unit, input.piecesPerUnit);
@@ -71,7 +72,7 @@ export class ProductsService {
       },
       orderBy: { name: 'asc' },
     });
-    return this.applyPurchasePriceVisibility(businessId, membership, products.map(({ imageOriginal: _original, ...product }) => product));
+    return this.applyPurchasePriceVisibility(businessId, membership, products.map(({ imageOriginal: _original, images: _images, ...product }) => product));
   }
 
   async search(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number] }) {
@@ -147,12 +148,24 @@ export class ProductsService {
     return this.inventory.history(userId, businessId, productId);
   }
 
-  private async normalizeImages(businessId: string, input: Pick<ProductInput, 'imageThumbnail' | 'imageOriginal'>) {
+  private async normalizeImages(businessId: string, input: Pick<ProductInput, 'imageThumbnail' | 'imageOriginal' | 'images'>) {
+    if (input.images !== undefined) {
+      if (!Array.isArray(input.images) || input.images.length > 6) throw new BadRequestException('Use at most six product photos.');
+      if (input.images.length && !this.files) throw new BadRequestException('Upload product photos before saving.');
+      const images: { imageOriginal: string; imageThumbnail: string }[] = [];
+      for (const image of input.images) {
+        if (!image?.imageOriginal || !/^\/files\/[a-f0-9]{64}\/original$/.test(image.imageOriginal)) throw new BadRequestException('Provide an uploaded product image.');
+        if (images.some((existing) => existing.imageOriginal === image.imageOriginal)) throw new BadRequestException('Product photos must be unique.');
+        const file = await this.files!.image(businessId, image.imageOriginal, 'product');
+        images.push({ imageOriginal: file.url, imageThumbnail: file.thumbnailUrl });
+      }
+      return { images, imageOriginal: images[0]?.imageOriginal ?? null, imageThumbnail: images[0]?.imageThumbnail ?? null };
+    }
     if (input.imageThumbnail === undefined && input.imageOriginal === undefined) return {};
-    if (input.imageThumbnail === null && input.imageOriginal === null) return { imageThumbnail: null, imageOriginal: null };
+    if (input.imageThumbnail === null && input.imageOriginal === null) return { images: [], imageThumbnail: null, imageOriginal: null };
     if (!input.imageOriginal || !this.files) throw new BadRequestException('Provide an uploaded product image or remove both versions.');
     const file = await this.files.image(businessId, input.imageOriginal, 'product');
-    return { imageOriginal: file.url, imageThumbnail: file.thumbnailUrl };
+    return { images: [{ imageOriginal: file.url, imageThumbnail: file.thumbnailUrl }], imageOriginal: file.url, imageThumbnail: file.thumbnailUrl };
   }
 
   private validateOptions(options: SellingOptionDto[], unit: string, size: number | null): Prisma.InputJsonArray {

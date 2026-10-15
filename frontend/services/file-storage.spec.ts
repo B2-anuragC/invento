@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSession } from './api';
+const imageOps = vi.hoisted(() => ({ events: [] as string[], saveFailure: false }));
 const disk = vi.hoisted(() => new Map<string, string>());
-vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, Image: { getSize: (_uri: string, success: (width: number, height: number) => void) => success(1200, 600) } }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'local-asset' }));
 vi.mock('expo-file-system/legacy', () => ({
   documentDirectory: 'file:///app/', EncodingType: { Base64: 'base64' },
@@ -14,7 +15,20 @@ vi.mock('expo-file-system/legacy', () => ({
 }));
 vi.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
-  ImageManipulator: { manipulate: () => ({ resize: () => {}, renderAsync: async () => ({ width: 1200, height: 600, saveAsync: async () => ({ uri: 'file:///cache/compressed.jpg' }) }) }) },
+  ImageManipulator: { manipulate: () => {
+    imageOps.events.push('context');
+    return {
+      resize: () => { imageOps.events.push('resize'); },
+      release: () => { imageOps.events.push('release-context'); },
+      renderAsync: async () => {
+        imageOps.events.push('render');
+        return { width: 1200, height: 600, release: () => { imageOps.events.push('release-image'); }, saveAsync: async () => {
+          if (imageOps.saveFailure) throw new Error('Cannot save');
+          return { uri: 'file:///cache/compressed.jpg', width: 1200, height: 600 };
+        } };
+      },
+    };
+  } },
 }));
 import { configureFileStorage, storePickedFile, resolveLocalFile, resolveUploadPayload } from './file-storage';
 
@@ -23,7 +37,7 @@ describe('Native physical uploads', () => {
   const remote = { name: 'photo.webp', mimeType: 'image/webp', url: `/files/${'a'.repeat(64)}/original`, thumbnailUrl: `/files/${'a'.repeat(64)}/thumbnail` };
   const transport = vi.fn();
   beforeEach(() => {
-    disk.clear(); transport.mockReset(); transport.mockResolvedValue(remote);
+    disk.clear(); imageOps.events = []; imageOps.saveFailure = false; transport.mockReset(); transport.mockResolvedValue(remote);
     configureFileStorage(transport, () => session, 'http://localhost:3000/api');
   });
   it('stores image files and reference metadata offline, then reuses upload references on retry', async () => {
@@ -50,4 +64,24 @@ describe('Native physical uploads', () => {
     expect(transport).not.toHaveBeenCalled();
     expect(await resolveUploadPayload({ attachment: file }, session)).toEqual({ attachment: remote });
   });
+  it('resizes before rendering and releases the original before building its preview', async () => {
+    await storePickedFile({ uri: 'file:///picked/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', width: 4000, height: 3000 }, 'product');
+    expect(imageOps.events).toEqual(['context', 'resize', 'render', 'release-image', 'release-context', 'context', 'resize', 'render', 'release-image', 'release-context']);
+  });
+  it('rejects oversized dimensions before manipulation and releases images on save failure', async () => {
+    await expect(storePickedFile({ uri: 'file:///picked/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', width: 10000, height: 5000 }, 'product')).rejects.toThrow('40 megapixels');
+    expect(imageOps.events).toEqual([]);
+    imageOps.saveFailure = true;
+    await expect(storePickedFile({ uri: 'file:///picked/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', width: 4000, height: 3000 }, 'product')).rejects.toThrow('Cannot save');
+    expect(imageOps.events.slice(-2)).toEqual(['release-image', 'release-context']);
+  });
+
+  it('resolves every offline gallery photo before syncing without keeping file bytes in the payload', async () => {
+    const photo = await storePickedFile({ uri: 'file:///picked/photo.png', name: 'photo.png', mimeType: 'image/png', width: 1200, height: 600 }, 'product');
+    const result = await resolveUploadPayload({ images: [{ imageOriginal: photo.url, imageThumbnail: photo.thumbnailUrl }] }, session);
+    expect(result).toEqual({ images: [{ imageOriginal: remote.url, imageThumbnail: remote.thumbnailUrl }] });
+    expect(JSON.stringify(result)).not.toContain('base64');
+    expect(transport).toHaveBeenCalledOnce();
+  });
+
 });

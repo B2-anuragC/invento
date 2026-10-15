@@ -17,7 +17,13 @@ export class SellingOptionDto {
   @IsDecimal(decimalOptions) @Matches(/^\d{1,10}(?:\.\d{1,2})?$/) sellingPrice!: string;
 }
 
+export class ProductImageDto {
+  @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/original$/) imageOriginal!: string;
+  @ValidateIf((_o, v) => v !== undefined) @IsString() @Matches(/^\/files\/[a-f0-9]{64}\/thumbnail$/) imageThumbnail?: string;
+}
+
 export class CreateProductDto {
+  @ApiPropertyOptional({ type: [ProductImageDto], maxItems: 6 }) @ValidateIf((_o, v) => v !== undefined) @IsArray() @ArrayMaxSize(6) @ValidateNested({ each: true }) @Type(() => ProductImageDto) images?: ProductImageDto[];
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(140000) @Matches(/^(?:data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/thumbnail)$/) imageThumbnail?: string | null;
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
 
@@ -37,6 +43,7 @@ export class CreateProductDto {
 }
 
 export class UpdateProductDto {
+  @ApiPropertyOptional({ type: [ProductImageDto], maxItems: 6 }) @ValidateIf((_o, v) => v !== undefined) @IsArray() @ArrayMaxSize(6) @ValidateNested({ each: true }) @Type(() => ProductImageDto) images?: ProductImageDto[];
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(140000) @Matches(/^(?:data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/thumbnail)$/) imageThumbnail?: string | null;
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
 

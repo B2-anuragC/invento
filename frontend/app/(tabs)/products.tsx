@@ -1,3 +1,5 @@
+import { StoredImage } from '@/components/stored-image';
+import { fileSource } from '@/services/file-storage';
 import { ListingLayout, ListingViewToggle, type ListingView } from '@/components/listing-layout';
 import { ProductThumbnail } from '@/components/product-photo';
 import { useCallback, useMemo, useState } from 'react';
@@ -253,12 +255,12 @@ export default function ProductsScreen() {
           const low = quantity < Number(product.minimumStock);
           return (
             <View key={product.id} style={[styles.productCard, isGrid && styles.gridCard]}>
-              <View style={styles.cardTop}>
+              <View style={[styles.cardTop, isGrid && styles.gridTop]}>
                 <Pressable style={[styles.productMain, isGrid && styles.gridMain]} onPress={() => router.push(`/product/${product.id}`)}>
-                  <View style={[styles.productIcon, isGrid && styles.gridIcon]}>{product.imageThumbnail ? <ProductThumbnail uri={product.imageThumbnail} size={isGrid ? 48 : 44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
+                  <View style={isGrid ? styles.gridIcon : styles.productIcon}>{product.imageThumbnail ? isGrid ? <StoredImage accessibilityLabel={product.name} source={fileSource(product.imageThumbnail)} style={styles.gridPhoto} resizeMode="cover" /> : <ProductThumbnail uri={product.imageThumbnail} size={44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
                   <View style={[styles.productTitleWrap, isGrid && styles.gridTitle]}>
-                    <Text numberOfLines={isGrid ? 2 : 1} style={[styles.productName, isGrid && styles.gridName]}>{product.name}</Text>
-                    <Text numberOfLines={isGrid ? 2 : 1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text>
+                    <Text numberOfLines={1} style={[styles.productName, isGrid && styles.gridName]}>{product.name}</Text>
+                    {!isGrid ? <Text numberOfLines={1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text> : null}
                   </View>
                 </Pressable>
                 <Pressable
@@ -271,12 +273,13 @@ export default function ProductsScreen() {
               <Pressable onPress={() => router.push(`/product/${product.id}`)}>
                 <View style={[styles.productFacts, isGrid && styles.gridFacts]}>
                   <View style={[styles.stockFact, isGrid && styles.gridFact]}>
-                    <Text style={[styles.stockValue, low && styles.stockLow]}>{quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
-                    <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text>
+                    {isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
+                    <Text numberOfLines={isGrid ? 1 : undefined} style={[styles.stockValue, low && styles.stockLow]}>{quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
+                    {!isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
                   </View>
                   <View style={[styles.priceFact, isGrid && styles.gridFact]}>
                     <Text style={styles.factLabel}>SELL / {formatUnitLabel(product.unit)}</Text>
-                    <Text style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
+                    <Text numberOfLines={isGrid ? 1 : undefined} style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
                   </View>
                 </View>
               </Pressable>
@@ -293,14 +296,16 @@ function formatMoney(value: number) {
 }
 
 const styles = StyleSheet.create({
-  gridCard: { flex: 1, padding: 10, borderRadius: 12, marginBottom: 8 },
-  gridMain: { flexDirection: 'column', alignItems: 'stretch' },
-  gridIcon: { width: 48, height: 48, borderRadius: 10, alignSelf: 'center' },
-  gridTitle: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%', marginLeft: 0, marginTop: 6 },
+  gridCard: { flex: 0, width: '100%', aspectRatio: 1, padding: 0, borderRadius: 12, marginBottom: 8, overflow: 'hidden' },
+  gridTop: { flex: 1, minHeight: 0 },
+  gridMain: { flexDirection: 'column', alignItems: 'stretch', height: '100%' },
+  gridIcon: { width: '100%', height: '100%', backgroundColor: '#F1F4F1', alignItems: 'center', justifyContent: 'center' },
+  gridPhoto: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
+  gridTitle: { position: 'absolute', bottom: 0, left: 0, right: 0, marginLeft: 0, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: 'rgba(255,255,255,0.92)' },
   gridName: { fontSize: 13, lineHeight: 17 },
-  gridFavorite: { position: 'absolute', top: -8, right: -8 },
-  gridFacts: { flexDirection: 'column', gap: 4, marginTop: 8 },
-  gridFact: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%' },
+  gridFavorite: { position: 'absolute', top: 8, right: 8, borderRadius: 18, backgroundColor: '#FFFFFF' },
+  gridFacts: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 0, paddingHorizontal: 8, paddingVertical: 6 },
+  gridFact: { flex: 1, minWidth: 0 },
 
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 90, marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 16, backgroundColor: '#FFFFFF' },

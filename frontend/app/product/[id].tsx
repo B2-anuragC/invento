@@ -126,7 +126,7 @@ export default function ProductDetailsScreen() {
       .then(([productData, stockData, transactionData]) => {
         if (!active) return;
         setProduct(productData);
-        setPhoto({ imageThumbnail: productData.imageThumbnail ?? null, imageOriginal: productData.imageOriginal ?? null });
+        setPhoto({ images: productData.images, imageThumbnail: productData.imageThumbnail ?? null, imageOriginal: productData.imageOriginal ?? null });
         setInventory(stockData);
         setTransactions(transactionData);
         setEditing(false);
@@ -298,7 +298,7 @@ export default function ProductDetailsScreen() {
             <Text style={styles.subtitle}>{isNew ? 'CATALOG · OWNER VIEW' : `${product?.category ? `${product.category} · ` : ''}${product?.sku} · ${product?.status.toLowerCase()}`}</Text>
           </View>
           {!isNew && !editing ? (
-            <Pressable onPress={() => { setPhoto({ imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); }} style={styles.smallAction}>
+            <Pressable onPress={() => { setPhoto({ images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); }} style={styles.smallAction}>
               <Text style={styles.smallActionText}>Edit</Text>
             </Pressable>
           ) : null}
@@ -307,7 +307,7 @@ export default function ProductDetailsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        <ProductPhoto value={editing ? photo : { imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onBusy={setPhotoBusy} disabled={saving} />
+        <ProductPhoto value={editing ? photo : { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onEdit={!editing ? (next) => { setPhoto(next ?? { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); } : undefined} onBusy={setPhotoBusy} disabled={saving} />
 
         {editing ? (
           <>

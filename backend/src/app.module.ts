@@ -1,4 +1,8 @@
 import { FilesModule } from './files/files.module.js';
+import { BullModule } from '@nestjs/bullmq';
+import { createIORedisClient, RedisConnection } from 'bullmq';
+import { Redis } from 'ioredis';
+import { ConfigService } from '@nestjs/config';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
@@ -24,6 +28,23 @@ import { SyncModule } from './sync/sync.module.js';
       envFilePath: ['.env', '.env.local'],
       validationSchema: envValidationSchema,
       load: [appConfig],
+    }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        // Explicit driver loading also works when BullMQ runs as native ESM.
+        // Factory-created connections remain owned and closed by BullMQ.
+        RedisConnection.clientFactory = (options) => createIORedisClient(new Redis(options));
+        return {
+          connection: {
+            host: config.get<string>('REDIS_HOST', 'localhost'),
+            port: config.get<number>('REDIS_PORT', 6379),
+            password: config.get<string>('REDIS_PASSWORD') || undefined,
+            db: config.get<number>('REDIS_DB', 0),
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
     }),
     PrismaModule,
     FilesModule,

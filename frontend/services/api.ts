@@ -57,7 +57,10 @@ export type DashboardSummary = {
   }>;
 };
 
+export type ProductImage = { imageOriginal: string; imageThumbnail: string };
+
 export type ProductRecord = {
+  images?: ProductImage[];
   imageThumbnail?: string | null;
   imageOriginal?: string | null;
   revision?: number;
@@ -81,6 +84,7 @@ export type ProductRecord = {
 };
 
 export type ProductInput = {
+  images?: ProductImage[];
   imageThumbnail?: string | null;
   imageOriginal?: string | null;
   name: string;

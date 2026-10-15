@@ -1,3 +1,4 @@
+import { CameraPhoto } from '@/components/camera-photo';
 import { StoredImage as Image } from '@/components/stored-image';
 import { fileSource, thumbnailFor, storePickedFile } from '@/services/file-storage';
 import { useState } from 'react';
@@ -8,16 +9,15 @@ export function SaleReferencePhoto({ value, onChange, disabled = false, onBusy }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(false);
-  const pick = async (camera: boolean) => {
+  const pick = async () => {
     if (!onChange || busy || disabled) return;
     setBusy(true); onBusy?.(true); setError('');
     try {
-      if (camera && !(await ImagePicker.requestCameraPermissionsAsync()).granted) { setError('Allow camera access in your device settings to take a photo.'); return; }
       const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1, allowsEditing: false };
-      const result = camera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+      const result = await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled || !result.assets[0]) return;
       const asset = result.assets[0];
-      const file = await storePickedFile({ uri: asset.uri, name: asset.fileName ?? 'sale-photo.jpg', mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize, file: asset.file }, 'sale');
+      const file = await storePickedFile({ uri: asset.uri, name: asset.fileName ?? 'sale-photo.jpg', mimeType: asset.mimeType ?? 'image/jpeg', size: asset.fileSize, width: asset.width, height: asset.height, file: asset.file }, 'sale');
       onChange(file.url);
     } catch { setError('Could not attach the photo. Please try again.'); }
     finally { setBusy(false); onBusy?.(false); }
@@ -28,8 +28,8 @@ export function SaleReferencePhoto({ value, onChange, disabled = false, onBusy }
     {onChange ? <Text style={styles.hint}>Attach a physical bill or another reference to this sale.</Text> : null}
     {value ? <Pressable accessibilityRole="button" accessibilityLabel="Open bill/reference photo" onPress={() => setPreview(true)}><Image source={fileSource(thumbnailFor(value))} style={styles.thumbnail} resizeMode="contain" /><Text style={styles.link}>Tap to view photo</Text></Pressable> : null}
     {onChange ? <View style={styles.actions}>
-      <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => void pick(true)} style={styles.button}><Text style={styles.link}>{busy ? 'Preparing photo…' : 'Take photo'}</Text></Pressable>
-      <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => void pick(false)} style={styles.button}><Text style={styles.link}>Choose photo</Text></Pressable>
+      <CameraPhoto kind="sale" disabled={busy || disabled} onBusy={(next) => { setBusy(next); onBusy?.(next); }} onChange={(file) => onChange(file.url)} />
+      <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => void pick()} style={styles.button}><Text style={styles.link}>Choose photo</Text></Pressable>
       {value ? <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => { onChange(undefined); setError(''); }} style={styles.button}><Text style={styles.link}>Remove</Text></Pressable> : null}
     </View> : null}
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}

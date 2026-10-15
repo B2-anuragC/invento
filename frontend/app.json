@@ -43,12 +43,29 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow Invento to photograph a bill or sale reference.",
-          "photosPermission": "Allow Invento to attach a bill or reference photo.",
+          "cameraPermission": "Allow Invento to take product, customer, bill, and reference photos.",
+          "photosPermission": "Allow Invento to attach product, customer, bill, and reference photos.",
           "microphonePermission": false
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Invento to take product, customer, bill, and reference photos.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Invento to browse photos and albums when you attach product images.",
+          "granularPermissions": [
+            "photo"
+          ],
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

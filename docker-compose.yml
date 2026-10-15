@@ -18,6 +18,20 @@ services:
       retries: 5
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: .
@@ -25,12 +39,16 @@ services:
     container_name: invento-backend
     restart: unless-stopped
     depends_on:
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
       NODE_ENV: development
       PORT: 3000
       APP_API_PREFIX: api
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       UPLOAD_STORAGE_PATH: /app/uploads
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-us-east-1}
@@ -51,6 +69,7 @@ services:
     command: sh -c "npm install --include=dev && npx prisma generate --schema=./prisma/schema.prisma && npx prisma migrate deploy --schema=./prisma/schema.prisma && npm run build && node dist/main"
 
 volumes:
+  redis_data:
   upload_data:
   postgres_data:
   backend_node_modules:

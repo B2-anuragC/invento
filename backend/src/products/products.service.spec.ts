@@ -100,4 +100,25 @@ describe('ProductsService', () => {
     expect(prisma.product.update.mock.calls.at(-1)?.[0].data).not.toHaveProperty('imageOriginal');
   });
 
+  it('validates every gallery reference, derives thumbnails, and uses the first photo as cover', async () => {
+    const originals = ['a', 'b'].map((char) => `/files/${char.repeat(64)}/original`);
+    const files = { image: vi.fn().mockImplementation(async (_business, url) => ({ url, thumbnailUrl: url.replace('/original', '/thumbnail') })) };
+    const prisma = {
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      product: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue({ ...productInput, piecesPerUnit: null }), update: vi.fn().mockResolvedValue({}) },
+    };
+    const service = new ProductsService(prisma as never, {} as never, files as never);
+    await service.create('user-a', 'business-a', { ...productInput, images: originals.map((imageOriginal) => ({ imageOriginal })) });
+    expect(prisma.product.create.mock.calls[0][0].data).toMatchObject({ imageOriginal: originals[0], images: originals.map((imageOriginal) => ({ imageOriginal, imageThumbnail: imageOriginal.replace('/original', '/thumbnail') })) });
+    expect(files.image).toHaveBeenCalledWith('business-a', originals[1], 'product');
+    await service.update('user-a', 'business-a', 'product-a', { images: [{ imageOriginal: originals[1] }, { imageOriginal: originals[0] }] });
+    expect(prisma.product.update.mock.calls.at(-1)?.[0].data.imageOriginal).toBe(originals[1]);
+    await service.update('user-a', 'business-a', 'product-a', { images: [] });
+    expect(prisma.product.update.mock.calls.at(-1)?.[0].data).toMatchObject({ images: [], imageOriginal: null, imageThumbnail: null });
+    await expect(service.create('user-a', 'business-a', { ...productInput, images: Array(7).fill({ imageOriginal: originals[0] }) })).rejects.toThrow('six');
+    await expect(service.create('user-a', 'business-a', { ...productInput, images: [{ imageOriginal: originals[0] }, { imageOriginal: originals[0] }] })).rejects.toThrow('unique');
+    files.image.mockRejectedValue(new Error('File not found in this business.'));
+    await expect(service.create('user-a', 'business-b', { ...productInput, images: [{ imageOriginal: originals[0] }] })).rejects.toThrow('this business');
+  });
+
 });

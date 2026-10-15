@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Image as NativeImage, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { randomUUID } from 'expo-crypto';
@@ -6,7 +6,7 @@ import type { AppSession } from './api';
 
 export type UploadKind = 'product' | 'customer' | 'sale' | 'purchase';
 export type StoredFile = { name: string; mimeType: string; url: string; thumbnailUrl?: string };
-type PickedFile = { uri: string; name: string; mimeType: string; file?: Blob; size?: number };
+type PickedFile = { uri: string; name: string; mimeType: string; file?: Blob; size?: number; width?: number; height?: number };
 type LocalMetadata = StoredFile & { kind: UploadKind; businessId: string; userId: string };
 type Transport = <T>(path: string, options: RequestInit, session: AppSession) => Promise<T>;
 let uploadTransport: Transport;
@@ -30,6 +30,19 @@ async function upload(file: PickedFile, kind: UploadKind, session: AppSession): 
   const result = await uploadTransport<StoredFile>('/files', { method: 'POST', body: JSON.stringify({ name: file.name, mimeType: file.mimeType, base64: await readBase64(file), kind }) }, session);
   return { name: result.name, mimeType: result.mimeType, url: result.url, thumbnailUrl: result.thumbnailUrl };
 }
+async function resizeImage(uri: string, size: { width: number; height: number }, limit: number, quality: number) {
+  const context = ImageManipulator.ImageManipulator.manipulate(uri);
+  let image: ImageManipulator.ImageRef | undefined;
+  try {
+    context.resize(size.width >= size.height ? { width: Math.min(size.width, limit) } : { height: Math.min(size.height, limit) });
+    image = await context.renderAsync();
+    return await image.saveAsync({ format: ImageManipulator.SaveFormat.JPEG, compress: quality });
+  } finally {
+    image?.release();
+    context.release();
+  }
+}
+
 export async function storePickedFile(file: PickedFile, kind: UploadKind): Promise<StoredFile> {
   const session = current();
   if (file.size && file.size > 10 * 1024 * 1024) throw new Error('Choose a file up to 10 MB.');
@@ -42,16 +55,16 @@ export async function storePickedFile(file: PickedFile, kind: UploadKind): Promi
   let original = file.uri;
   let thumbnailUrl: string | undefined;
   if (mimeType.startsWith('image/')) {
-    const context = ImageManipulator.ImageManipulator.manipulate(file.uri);
-    const source = await context.renderAsync();
-    if (source.width * source.height > 40000000) throw new Error('Choose an image under 40 megapixels.');
-    context.resize(source.width >= source.height ? { width: Math.min(source.width, 1600) } : { height: Math.min(source.height, 1600) });
-    const large = await context.renderAsync();
-    const compressed = await large.saveAsync({ format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 });
+    // Picker metadata avoids rendering a full-size bitmap just to inspect dimensions.
+    const dimensions = file.width && file.height ? { width: file.width, height: file.height }
+      : await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        NativeImage.getSize(file.uri, (width, height) => resolve({ width, height }), reject);
+      });
+    if (!Number.isFinite(dimensions.width) || !Number.isFinite(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0 || dimensions.width * dimensions.height > 40000000) throw new Error('Choose an image under 40 megapixels.');
+    const compressed = await resizeImage(file.uri, dimensions, 1600, 0.8);
     original = compressed.uri; mimeType = 'image/jpeg';
-    context.resize(source.width >= source.height ? { width: Math.min(source.width, 320) } : { height: Math.min(source.height, 320) });
-    const small = await context.renderAsync();
-    const preview = await small.saveAsync({ format: ImageManipulator.SaveFormat.JPEG, compress: 0.65 });
+    // Build the preview from the compressed file, after releasing the original context.
+    const preview = await resizeImage(compressed.uri, compressed, 320, 0.65);
     thumbnailUrl = `${dir}thumbnail.jpg`;
     await FileSystem.copyAsync({ from: preview.uri, to: thumbnailUrl });
   }

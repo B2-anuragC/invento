@@ -112,3 +112,61 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+### Background file processing (BullMQ)
+
+Start Redis with `docker compose up -d redis` before running the backend locally.
+The backend explicitly depends on `ioredis` and configures BullMQ’s client
+factory so Redis connections work in native ESM and close with BullMQ. After
+dependency changes, restart the Docker backend to rerun its startup install:
+`docker compose up -d --build --force-recreate backend`.
+
+Configure `REDIS_HOST`, `REDIS_PORT`, optional `REDIS_PASSWORD`, and `REDIS_DB`
+using `.env.example`. Docker configures Redis automatically and persists its
+queue with AOF; eviction is disabled.
+
+`POST /api/files/jobs` accepts the same `{ name, mimeType, base64, kind }` body
+as the existing upload endpoint and returns HTTP 202 with `{ jobId, statusUrl }`.
+Poll `GET /api/files/jobs/:jobId` using the same access token and business header.
+When `state` is `completed`, `result` contains the stored attachment URLs, ready
+for use in product, customer, sale, or purchase requests. When `state` is `failed`,
+show `error` and let the user submit a corrected file. The global API response
+wrapper applies to these endpoints as usual. Only active owners/admins can
+submit or inspect jobs; job lookups are scoped to their business.
+
+`POST /api/files` remains compatible: it queues processing and waits up to two
+minutes for the existing attachment response. A timeout returns HTTP 503 with
+the job ID and status URL so clients can check progress. Internal legacy data-URL
+conversion and migration still use `FilesService` directly.
+
+The Nest worker runs alongside the API with concurrency 2, three attempts, and
+exponential retry delays. Invalid files fail without retries. Image resizing,
+PDF previews (requiring Poppler), and the initial S3 mirror run in the worker;
+existing S3 recovery behavior remains in place. Sources are staged under
+`UPLOAD_STORAGE_PATH/.jobs`; Redis stores only metadata and file references.
+All API/worker replicas must share that persistent upload directory. Successful
+jobs remove their source; failed sources remain for diagnosis/retry. Periodically
+remove staging files for expired jobs and orphaned submissions (after checking
+Redis and allowing for active uploads). Completed job status is retained up to
+24 hours/1,000 jobs; failed status up to seven days/1,000 jobs. File attachments
+remain available independently of job retention.
+
+Additional long-running tasks can register their own queues using the root
+BullMQ connection and a Nest `WorkerHost` processor.
+
+### Product photo galleries
+
+Products accept an optional `images` array of up to six objects containing an
+uploaded `imageOriginal` reference (and optional `imageThumbnail`). Every original
+must belong to the same business and be a product upload. The server derives
+thumbnail references and rejects duplicate originals. Array order determines the
+cover: the first photo also populates the existing `imageOriginal` and
+`imageThumbnail` fields used by product grids. An empty array removes all photos;
+omitting image fields preserves them on update. Legacy single-photo requests
+remain supported, and older products display their existing photo as a gallery
+fallback. Product detail and offline snapshots include the gallery; list responses
+retain the compact cover fields.
+
+Apply the `20261015000000_product_gallery` migration before running this version:
+`npm --prefix backend run prisma:migrate:deploy` followed by
+`npm --prefix backend run prisma:generate`. Docker startup performs these steps.

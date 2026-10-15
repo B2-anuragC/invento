@@ -86,6 +86,7 @@ model BusinessUser {
 }
 
 model Product {
+  images Json @default("[]")
   imageThumbnail String?
   imageOriginal String?
   revision Int @default(1)
