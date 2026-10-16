@@ -138,6 +138,8 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   buttonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginBottom: 20,
   },

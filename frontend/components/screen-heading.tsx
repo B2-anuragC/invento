@@ -14,7 +14,7 @@ export function ScreenHeading({ title, subtitle, onBack }: { title: string; subt
 }
 
 export const screenStyles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center' },
+  content: { padding: 20, paddingTop: 16, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center' },
   search: { minHeight: 48, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 14, paddingHorizontal: 14, color: '#24332A', fontSize: 14, marginBottom: 16 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
   chip: { borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#FFFFFF' },
@@ -28,6 +28,6 @@ const styles = StyleSheet.create({
   back: { flexShrink: 0, width: 42, height: 42, borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 13, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   arrow: { color: '#24332A', fontSize: 29, lineHeight: 32 },
   copy: { flex: 1, minWidth: 0 },
-  title: { color: '#1D2B25', fontSize: 25, fontWeight: '800' },
+  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 12, lineHeight: 18, marginTop: 4 },
 });

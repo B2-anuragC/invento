@@ -176,7 +176,7 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 28, backgroundColor: '#F5F5F5' },
-  header: { minHeight: 82, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   greeting: { color: '#737B77', fontSize: 13 },
   storeName: { marginTop: 3, fontSize: 22, fontWeight: '800', color: '#1D2B25' },
   avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   salesValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', flexShrink: 1 },
   salesCount: { color: '#D7E5DD', fontSize: 12 },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  primaryAction: { flex: 1, minHeight: 54, borderRadius: 13, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  primaryAction: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, borderRadius: 10, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionPlus: { color: '#FFFFFF', fontSize: 21, fontWeight: '500' },
   primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   stockAlert: { minHeight: 66, marginTop: 14, paddingHorizontal: 15, borderRadius: 14, backgroundColor: '#FFF5D8', flexDirection: 'row', alignItems: 'center', gap: 12 },

@@ -19,7 +19,8 @@ export function OfflineSyncStatus() {
     const timer = setInterval(() => { if (AppState.currentState === 'active') run(); }, 30000);
     return () => { unsubscribe(); foreground.remove(); clearInterval(timer); };
   }, []);
-  if (Platform.OS === 'web' || !appSession.current?.businessId || (status.online && !status.pending && !status.syncing && !status.message)) return null;
+  // Routine background refreshes must not insert a banner and move every screen down.
+  if (Platform.OS === 'web' || !appSession.current?.businessId || (status.online && !status.pending && !status.message)) return null;
   return <View style={styles.banner}><Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={styles.button}><Text style={styles.text}>{status.syncing ? 'Syncing…' : status.online ? 'Saved on device' : 'Offline'}{status.pending ? ` · ${status.pending} pending` : ''}{status.conflicts ? ` · ${status.conflicts} need attention` : ''} · View sync</Text></Pressable></View>;
 }
 const styles = StyleSheet.create({ banner: { backgroundColor: '#FFF3DB' }, button: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 16 }, text: { color: '#6E4D16', fontSize: 12, fontWeight: '600' } });

@@ -386,6 +386,33 @@ describe("Durable offline transactions", () => {
     const view = projectOffline({ version: 2, snapshot: { ...snapshot, access: { role: 'MEMBER', membersCanViewPurchasePrice: false } }, commands: [{ operationId: 'op', entityId: built.record.id, entity: 'purchase', action: 'create', payload: {}, localRecord: built.record, movements: built.movements, state: 'pending', attempts: 0, retryAt: 0 }] });
     expect(view.purchases[0].total).toBeUndefined(); expect(view.purchases[0].amountPaid).toBeUndefined(); expect(view.purchases[0].items[0].purchasePrice).toBeUndefined();
   });
+  it('Sync now recovers an old persisted backend-version rejection with the original bill identity', async () => {
+    await api.saveOfflineTransaction(session, 'sale', sale()); await api.syncOffline(session);
+    for (const [key, value] of disk.entries()) {
+      const saved = JSON.parse(value); saved.commands[0].state = 'conflict'; saved.commands[0].error = 'property expectedTotal should not exist'; disk.set(key, JSON.stringify(saved));
+    }
+    vi.resetModules(); api = await import('./offline-catalog'); api.configureOffline(transport, () => session);
+    expect((await api.offlineCommands(session))[0].error).toContain('Backend update required');
+    online = true; await api.syncOffline(session, true);
+    expect(await api.offlineCommands(session)).toHaveLength(0);
+    expect(sent.filter((request) => request.path === '/sales').map((request) => request.input.requestId)).toEqual(['request_sale_1']);
+    expect(sent[0].input.expectedTotal).toBe('23.60');
+  });
+  it('keeps backend-version failures retryable without dropping total validation or duplicating a bill', async () => {
+    await api.saveOfflineTransaction(session, 'sale', sale()); await api.syncOffline(session);
+    let legacyServer = true;
+    api.configureOffline(async <T>(path: string, options: RequestInit): Promise<T> => {
+      if (path === '/sales' && legacyServer) throw Object.assign(new Error('property expectedTotal should not exist'), { status: 422 });
+      return transport<T>(path, options);
+    }, () => session);
+    online = true; await api.syncOffline(session, true);
+    expect((await api.offlineCommands(session))[0]).toMatchObject({ state: 'pending', payload: { expectedTotal: '23.60', requestId: 'request_sale_1' } });
+    expect(api.getSyncStatus().message).toContain('Backend update required');
+    expect(api.getSyncStatus().online).toBe(true);
+    legacyServer = false; await api.syncOffline(session, true);
+    expect(await api.offlineCommands(session)).toHaveLength(0);
+    expect(snapshot.sales).toHaveLength(1); expect(snapshot.inventory[0].quantity).toBe(8);
+  });
   it("uses exact half-up cents for fractional quantities and rejects fractional pieces", () => {
     snapshot.products[0] = {
       ...snapshot.products[0],

@@ -107,7 +107,7 @@ export default function BusinessSetupScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.brand}>Invento</Text>
         <Text style={styles.title}>Choose your shop</Text>

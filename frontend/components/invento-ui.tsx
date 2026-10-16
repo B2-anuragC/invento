@@ -24,11 +24,11 @@ export function formatUnitLabel(unit: string) {
 }
 
 export function AppScreen({ children, style }: { children: ReactNode; style?: any }) {
-  // Tab screens get their bottom inset from the tab bar; stack screens need their own.
+  // Top/side insets belong to the root. Tabs own their bottom inset; stack pages own theirs.
   const segments = useSegments();
   const isTabScreen = segments[0] === '(tabs)';
   return (
-    <SafeAreaView edges={isTabScreen ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
+    <SafeAreaView edges={isTabScreen ? [] : ['bottom']} style={styles.safeArea}>
       <View style={[styles.screen, style]}>{children}</View>
     </SafeAreaView>
   );
@@ -89,20 +89,24 @@ export function ActionButton({
   onPress,
   variant = 'primary',
   disabled = false,
+  fullWidth = false,
 }: {
   title: string;
   onPress?: () => void;
   variant?: 'primary' | 'secondary';
   disabled?: boolean;
+  fullWidth?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      hitSlop={2}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.actionButton,
+        fullWidth && styles.fullWidthAction,
         variant === 'primary' ? styles.primaryAction : styles.secondaryAction,
         pressed && { opacity: 0.9 },
         disabled && { opacity: 0.5 },
@@ -291,12 +295,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
     maxWidth: '100%',
     flexShrink: 1,
-    borderRadius: 14,
+    alignSelf: 'flex-start',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    minHeight: 52,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minHeight: 44,
+  },
+  fullWidthAction: {
+    alignSelf: 'stretch',
+    width: '100%',
+    minHeight: 48,
   },
   primaryAction: {
     backgroundColor: '#0C7253',

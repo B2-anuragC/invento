@@ -36,7 +36,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.brand}>Invento</Text>
         <Text style={styles.title}>Create your account</Text>
@@ -85,7 +85,7 @@ export default function RegisterScreen() {
           <Text style={styles.passwordHint}>
             At least 8 characters, with uppercase and lowercase letters, a number, and a symbol.
           </Text>
-          <ActionButton title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading || name.trim().length < 2 || !email.trim() || !password} />
+          <ActionButton fullWidth title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading || name.trim().length < 2 || !email.trim() || !password} />
         </View>
 
         <Text style={styles.footer} onPress={() => router.replace('/auth/login')}>

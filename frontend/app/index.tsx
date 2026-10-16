@@ -74,14 +74,14 @@ export default function LoginScreen() {
 
   if (checkingSession) {
     return (
-      <SafeAreaView style={[styles.safeArea, styles.loading]}>
+      <SafeAreaView edges={['bottom']} style={[styles.safeArea, styles.loading]}>
         <ActivityIndicator size="large" color="#176B50" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['bottom']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <View style={styles.hero}>
           <Text style={styles.badge}>Invento</Text>
@@ -114,7 +114,7 @@ Your day, simplified.</Text>
             secureTextEntry
           />
 
-          <ActionButton title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} disabled={loading || !email.trim() || !password} />
+          <ActionButton fullWidth title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} disabled={loading || !email.trim() || !password} />
 
           <View style={styles.secondaryRow}>
             <ActionButton title="Create account" variant="secondary" onPress={() => router.push('/auth/register')} />

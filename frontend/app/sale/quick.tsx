@@ -823,7 +823,7 @@ export default function QuickBillScreen() {
           </View>
         </ScrollView>
         <View style={styles.footer}>
-          <ActionButton
+          <ActionButton fullWidth
             title={
               saving
                 ? "Saving bill…"
@@ -1051,12 +1051,14 @@ const styles = StyleSheet.create({
   itemControls: { flex: 1.2, minWidth: 0, gap: 10 },
   header: {
     backgroundColor: "#FFFFFF",
-    padding: 16,
+    minHeight: 64,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  title: { fontSize: 22, fontWeight: "800", color: "#24332A" },
+  title: { fontSize: 24, fontWeight: "800", color: "#24332A" },
   content: {
     padding: 20,
     width: "100%",

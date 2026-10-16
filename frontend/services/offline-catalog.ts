@@ -16,6 +16,8 @@ const listeners = new Set<() => void>();
 export type SyncStatus = { online: boolean; syncing: boolean; pending: number; conflicts: number; lastSync: string | null; message: string };
 let status: SyncStatus = { online: true, syncing: false, pending: 0, conflicts: 0, lastSync: null, message: '' };
 export const getSyncStatus = () => status;
+const incompatibleBackend = (message?: string) => !!message && /expectedTotal.*should not exist|Backend update required:/i.test(message);
+const backendUpdateMessage = 'Backend update required: this server does not support offline bill total validation. Update/restart the backend, then tap Sync now. Your bill is saved on this device.';
 export function subscribeSyncStatus(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
 function publish(session?: AppSession, updates: Partial<SyncStatus> = {}) {
   if (session && currentSession && offlineScope(currentSession() ?? session) !== offlineScope(session)) return;
@@ -82,7 +84,10 @@ export async function syncOffline(session: AppSession, force = false): Promise<v
       if (!stillActive(session)) return;
       // Full replacement avoids timestamp/cursor gaps in this initial milestone.
       const snapshot = await transport<OfflineSnapshot>('/sync/snapshot', { method: 'GET' }, session);
-      await mutate(session, (state) => { state.snapshot = snapshot; state.accessBlocked = false; reconcileTransactions(state); });
+      await mutate(session, (state) => { state.snapshot = snapshot; state.accessBlocked = false; reconcileTransactions(state);
+        // Older apps classified API-version mismatches as permanent bill conflicts.
+        // An explicit Sync now can retry these after the server is updated.
+        if (force) for (const entry of state.commands) if (isTransactionCommand(entry) && incompatibleBackend(entry.error)) { entry.state = 'pending'; entry.retryAt = 0; entry.error = undefined; } });
       publish(session, { online: true, message: '' });
       for (;;) {
         if (!stillActive(session)) return;
@@ -112,16 +117,19 @@ export async function syncOffline(session: AppSession, force = false): Promise<v
         } catch (error) {
           const code = (error as { status?: number }).status;
           if (code === 401 || code === 403) throw error;
-          const retryable = code === undefined || code === 408 || code === 429 || code >= 500;
+          const compatibilityError = isTransactionCommand(command) && error instanceof Error && incompatibleBackend(error.message);
+          const retryable = compatibilityError || code === undefined || code === 408 || code === 429 || code >= 500;
           await mutate(session, (draft) => {
             const entry = draft.commands.find((item) => item.operationId === operationId);
             if (!entry) return;
-            entry.error = error instanceof Error ? error.message : 'Sync failed.';
+            entry.error = compatibilityError
+              ? backendUpdateMessage
+              : error instanceof Error ? error.message : 'Sync failed.';
             entry.attempts += 1;
             entry.retryAt = Date.now() + Math.min(300000, 2000 * 2 ** Math.min(entry.attempts, 7));
             if (!retryable) entry.state = 'conflict';
           });
-          if (retryable) { publish(session, { online: false, message: 'Changes are saved on this device. Sync will retry.' }); break; }
+          if (retryable) { publish(session, { online: compatibilityError, message: compatibilityError ? backendUpdateMessage : 'Changes are saved on this device. Sync will retry.' }); break; }
         }
       }
     } catch (error) {
@@ -192,11 +200,11 @@ export async function retryOfflineConflict(session: AppSession, operationId: str
     const entry = state.commands.find((command) => command.operationId === operationId);
     if (!entry) return;
     // Retries retain their exact identity and payload; revision conflicts need editing tools in a later milestone.
-    entry.state = 'pending'; entry.retryAt = 0;
+    entry.state = 'pending'; entry.retryAt = 0; entry.error = undefined;
   });
   void syncOffline(session, true);
 }
-export async function offlineCommands(session: AppSession): Promise<OfflineCommand[]> { return (await ensure(session)).commands; }
+export async function offlineCommands(session: AppSession): Promise<OfflineCommand[]> { return (await ensure(session)).commands.map((entry) => incompatibleBackend(entry.error) ? { ...entry, error: backendUpdateMessage } : entry); }
 
 export async function saveOfflineTransaction(session: AppSession, kind: TransactionKind, input: CreateSaleInput | CreatePurchaseInput): Promise<TransactionRecord> {
   await ensure(session);

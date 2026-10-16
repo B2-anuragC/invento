@@ -230,8 +230,8 @@ const styles = StyleSheet.create({
   gridName: { fontSize: 13, lineHeight: 17 },
 
   content: { paddingHorizontal: 20, paddingBottom: 34, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
-  header: { minHeight: 92, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: '#1D2B25', fontSize: 29, fontWeight: '800' },
+  header: { minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 12, marginTop: 4 },
   addButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: '#24332A', fontSize: 28, fontWeight: '400' },

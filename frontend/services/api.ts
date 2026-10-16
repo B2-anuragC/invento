@@ -299,6 +299,7 @@ export async function clearPersistedSession(): Promise<void> {
 const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
 const apiHost = Platform.OS === 'android' ? expoHost || '10.0.2.2' : 'localhost';
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${apiHost}:3000/api`;
+export const getApiServerUrl = () => API_BASE_URL;
 
 let refreshRequest: Promise<AppSession> | null = null;
 

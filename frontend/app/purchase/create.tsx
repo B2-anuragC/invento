@@ -511,8 +511,8 @@ export default function CreatePurchaseScreen() {
             </Pressable>
           )}
         </View>
-        <Modal visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+        <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
+          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
       </View>
     </AppScreen>
@@ -523,11 +523,11 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center', alignItems: 'center', gap: 12 },
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
   header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },
-  headerTop: { minHeight: 76, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  backButton: { width: 43, alignItems: 'flex-start', justifyContent: 'center' },
+  headerTop: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  backButton: { width: 44, minHeight: 44, alignItems: 'flex-start', justifyContent: 'center' },
   backText: { color: '#24332A', fontSize: 32, lineHeight: 36 },
   headerCopy: { flex: 1 },
-  title: { color: '#1D2B25', fontSize: 25, fontWeight: '800' },
+  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },
   moreText: { color: '#24332A', fontSize: 17, fontWeight: '800' },
   steps: { minHeight: 59, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
   totalLabel: { color: '#24332A', fontSize: 15, fontWeight: '700' },
   totalValue: { color: '#176B50', fontSize: 22, fontWeight: '800' },
   footer: { paddingHorizontal: 17, paddingTop: 10, paddingBottom: 13, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E1E1E1' },
-  submitButton: { minHeight: 52, paddingHorizontal: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#176B50', borderRadius: 12 },
+  submitButton: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#176B50', borderRadius: 12 },
   submitText: { textAlign: 'center', flexShrink: 1, color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   disabled: { opacity: 0.5 },
   receiptBackdrop: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: 'rgba(20, 31, 25, 0.4)' },
