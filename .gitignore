@@ -12,3 +12,6 @@ backend/.env.*
 !backend/.env.example
 
 backend/uploads/
+
+# Local Android build artifacts
+/builds/

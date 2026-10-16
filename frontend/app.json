@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Invento",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,8 +18,15 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
+      "package": "com.invento.app"
     },
     "web": {
       "output": "static",
@@ -65,7 +72,8 @@
           ],
           "isAccessMediaLocationEnabled": false
         }
-      ]
+      ],
+      "./plugins/with-local-only-android"
     ],
     "experiments": {
       "typedRoutes": true,

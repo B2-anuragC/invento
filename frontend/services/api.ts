@@ -1,7 +1,8 @@
+import { LOCAL_ONLY } from './runtime-mode';
+import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { configureOffline, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
@@ -252,7 +253,7 @@ export const appSession: { current: AppSession | null } = {
   current: null,
 };
 
-const SESSION_STORAGE_KEY = 'invento.session.v1';
+const SESSION_STORAGE_KEY = LOCAL_ONLY ? 'invento.session.local.v1' : 'invento.session.v1';
 
 export async function persistSession(session: AppSession): Promise<void> {
   const serialized = JSON.stringify(session);
@@ -268,7 +269,7 @@ export async function restoreSession(): Promise<AppSession | null> {
     const serialized = Platform.OS === 'web'
       ? typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEY) : null
       : await SecureStore.getItemAsync(SESSION_STORAGE_KEY);
-    if (!serialized) return null;
+    if (!serialized) return LOCAL_ONLY ? localSession() : null;
 
     const session: unknown = JSON.parse(serialized);
     if (
@@ -296,9 +297,7 @@ export async function clearPersistedSession(): Promise<void> {
   await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
 }
 
-const expoHost = Constants.expoConfig?.hostUri?.split(':')[0];
-const apiHost = Platform.OS === 'android' ? expoHost || '10.0.2.2' : 'localhost';
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${apiHost}:3000/api`;
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? '';
 export const getApiServerUrl = () => API_BASE_URL;
 
 let refreshRequest: Promise<AppSession> | null = null;
@@ -380,6 +379,8 @@ async function request<T>(
   session?: AppSession | null,
   canRefresh = true,
 ): Promise<T> {
+  if (LOCAL_ONLY) return localRequest<T>(path, options, session);
+  if (!API_BASE_URL) throw new Error('Set EXPO_PUBLIC_API_URL to the API address before using server mode.');
   if (session) session = latestSession(session);
   if (session && path !== '/files' && typeof options.body === 'string') options = { ...options, body: JSON.stringify(await resolveUploadPayload(JSON.parse(options.body), session)) };
   const headers = new Headers(options.headers ?? {});
