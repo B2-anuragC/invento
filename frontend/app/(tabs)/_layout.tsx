@@ -43,6 +43,8 @@ export default function TabLayout() {
       initialRouteName="index"
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
+        tabBarLabelPosition: 'below-icon',
         tabBarButton: Platform.OS === 'web' ? undefined : HapticTab,
         tabBarActiveTintColor: appColors.primary,
         tabBarInactiveTintColor: '#777E7B',
@@ -54,8 +56,8 @@ export default function TabLayout() {
           minWidth: 0,
         },
         tabBarStyle: {
-          height: 76 + insets.bottom,
-          paddingTop: 8,
+          height: 56 + insets.bottom,
+          paddingTop: 4,
           paddingBottom: insets.bottom,
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
@@ -79,25 +81,23 @@ export default function TabLayout() {
       <Tabs.Screen
         name="sales"
         options={{
-          href: null,
           title: 'Sales',
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="dollarsign.circle.fill" color={color} />,
         }}
       />
-      <Tabs.Screen name="activity" options={{ title: 'Activity', tabBarIcon: ({ color }) => <IconSymbol size={23} name="arrow.left.arrow.right" color={color} /> }} />
+      <Tabs.Screen name="activity" options={{ href: null, title: 'Activity' }} />
+      <Tabs.Screen
+        name="purchases"
+        options={{
+          title: 'Purchases',
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="cart.fill" color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="people"
         options={{
           title: 'People',
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="person.2.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="purchases"
-        options={{
-          href: null,
-          title: 'Purchases',
-          tabBarIcon: ({ color }) => <IconSymbol size={23} name="cart.fill" color={color} />,
         }}
       />
       <Tabs.Screen name="inventory" options={{ href: null }} />

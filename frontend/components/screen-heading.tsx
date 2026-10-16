@@ -25,9 +25,9 @@ export const screenStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   heading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
-  back: { width: 42, height: 42, borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 13, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  back: { flexShrink: 0, width: 42, height: 42, borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 13, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   arrow: { color: '#24332A', fontSize: 29, lineHeight: 32 },
-  copy: { flex: 1 },
+  copy: { flex: 1, minWidth: 0 },
   title: { color: '#1D2B25', fontSize: 25, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 12, lineHeight: 18, marginTop: 4 },
 });

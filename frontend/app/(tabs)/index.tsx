@@ -96,6 +96,11 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
+        <Pressable accessibilityRole="button" accessibilityLabel="View all activity, sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} style={styles.activityShortcut}>
+          <Text style={styles.activityLink}>All activity · sales, purchases & drafts</Text>
+          <Text style={styles.activityLink}>›</Text>
+        </Pressable>
+
         <View style={styles.salesCard}>
           <View style={styles.salesTop}>
             <Text style={styles.salesLabel}>TODAY’S SALES</Text>
@@ -174,6 +179,7 @@ const styles = StyleSheet.create({
   errorCard: { marginTop: 14, borderRadius: 12, padding: 13, backgroundColor: '#FBECEA', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   errorText: { flex: 1, color: '#A74737', fontSize: 12 },
   retry: { color: '#176B50', fontSize: 12, fontWeight: '800' },
+  activityShortcut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, minHeight: 44 },
   salesCard: { marginTop: 16, padding: 19, borderRadius: 20, backgroundColor: '#104C38' },
   salesTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   salesLabel: { color: '#D7E5DD', fontSize: 12, fontWeight: '700', letterSpacing: 0.6 },

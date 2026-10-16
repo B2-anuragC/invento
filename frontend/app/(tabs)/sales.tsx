@@ -74,7 +74,8 @@ export default function SalesScreen() {
         </View>
 
         <View style={styles.buttonRow}>
-          <ActionButton title="New sale" onPress={() => router.push('/sale/create')} />
+          <ActionButton title="Quick bill" onPress={() => router.push('/sale/quick')} />
+          <ActionButton title="New sale" variant="secondary" onPress={() => router.push('/sale/create')} />
         </View>
 
         <TextInput accessibilityLabel="Search sales" value={search} onChangeText={setSearch} placeholder="Search invoice or customer" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
@@ -134,6 +135,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   buttonRow: {
+    gap: 10,
     marginBottom: 20,
   },
   row: {

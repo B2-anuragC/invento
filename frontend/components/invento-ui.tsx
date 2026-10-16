@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useSegments } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,8 +24,11 @@ export function formatUnitLabel(unit: string) {
 }
 
 export function AppScreen({ children, style }: { children: ReactNode; style?: any }) {
+  // Tab screens get their bottom inset from the tab bar; stack screens need their own.
+  const segments = useSegments();
+  const isTabScreen = segments[0] === '(tabs)';
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+    <SafeAreaView edges={isTabScreen ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']} style={styles.safeArea}>
       <View style={[styles.screen, style]}>{children}</View>
     </SafeAreaView>
   );
@@ -230,6 +234,7 @@ const styles = StyleSheet.create({
   },
   dialogActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'flex-end',
     gap: 10,
     marginTop: 20,
@@ -259,9 +264,8 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   summaryCard: {
-    width: '48%',
-    flexGrow: 0,
-    flexShrink: 0,
+    flex: 1,
+    minWidth: 0,
     borderRadius: 18,
     padding: 16,
     minHeight: 120,
@@ -284,6 +288,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   actionButton: {
+    minWidth: 0,
+    maxWidth: '100%',
+    flexShrink: 1,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -298,6 +305,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   actionText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
   },

@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   categoryChipSelected: { borderColor: '#176B50', backgroundColor: '#176B50' },
   categoryText: { color: '#737B77', fontSize: 12, fontWeight: '600' },
   categoryTextSelected: { color: '#FFFFFF' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 },
   filterButton: { backgroundColor: '#FFFFFF', borderColor: '#DDE4DE', borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, minHeight: 46, justifyContent: 'center' },
   filterButtonText: { color: '#283830', fontSize: 11, fontWeight: '700' },
   sortButton: { paddingHorizontal: 3 },

@@ -3,7 +3,6 @@ import { TransactionReceipt } from '@/components/transaction-receipt';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton, AppScreen, ListCard, formatUnitLabel } from '@/components/invento-ui';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
@@ -14,7 +13,6 @@ const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'curren
 export default function PurchaseDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [purchase, setPurchase] = useState<PurchaseRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,7 +53,7 @@ export default function PurchaseDetailsScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={[screenStyles.content, { paddingBottom: 36 + insets.bottom }]}>
+      <ScrollView contentContainerStyle={screenStyles.content}>
         <ScreenHeading title="Purchase details" subtitle={purchase?.invoiceNumber || (purchase ? `Purchase ${purchase.id.slice(-8).toUpperCase()}` : 'Invoice and items sold')} />
         {loading ? <ActivityIndicator color="#176B50" /> : error ? (
           <View style={styles.section}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><ActionButton title="Try again" onPress={() => setRetry((value) => value + 1)} /></View>

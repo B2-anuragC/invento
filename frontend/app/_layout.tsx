@@ -26,6 +26,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth/register" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="business/setup" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="sale/[id]" options={{ headerShown: false, animation: 'slide_from_right' }} />
+        <Stack.Screen name="sale/quick" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="sale/create" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="purchase/[id]" options={{ headerShown: false, animation: 'slide_from_right' }} />
         <Stack.Screen name="purchase/create" options={{ headerShown: false, animation: 'slide_from_right' }} />

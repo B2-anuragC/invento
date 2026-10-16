@@ -8,7 +8,6 @@ import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet
 
 import { Ionicons } from '@expo/vector-icons';
 
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton, AppScreen, appColors } from '@/components/invento-ui';
 import {
@@ -30,7 +29,6 @@ type Contact = CustomerRecord | SupplierRecord;
 
 export default function ContactDetailsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
   const contactKind = kind === 'suppliers' ? 'suppliers' : 'customers';
   const [contact, setContact] = useState<Contact | null>(null);
@@ -208,7 +206,7 @@ export default function ContactDetailsScreen() {
             </View>
           ))}
         </ScrollView>
-        {canEdit ? <View style={[customerStyles.footer, { paddingBottom: 16 + insets.bottom }]}>
+        {canEdit ? <View style={customerStyles.footer}>
           <View style={customerStyles.actions}>
             <Pressable accessibilityRole="button" onPress={() => router.push(`/sale/create?customerId=${encodeURIComponent(contact.id)}`)} style={[customerStyles.button, customerStyles.primary]}><Ionicons name="add" size={24} color="white" /><Text style={customerStyles.primaryText}>New sale</Text></Pressable>
             <Pressable accessibilityRole="button" accessibilityState={{ disabled: !latestSale }} disabled={!latestSale} onPress={() => latestSale && router.push(`/sale/create?saleId=${encodeURIComponent(latestSale.id)}`)} style={[customerStyles.button, !latestSale && customerStyles.disabled]}><Ionicons name="refresh" size={18} color="#176344" /><Text style={customerStyles.buttonText}>Repeat sale</Text></Pressable>
@@ -269,7 +267,7 @@ export default function ContactDetailsScreen() {
             </Pressable>
           ))}
         </ScrollView>
-        {canEdit ? <View style={[customerStyles.footer, { paddingBottom: 16 + insets.bottom }]}>
+        {canEdit ? <View style={customerStyles.footer}>
           <View style={customerStyles.actions}>
             <Pressable accessibilityRole="button" onPress={() => router.push(`/purchase/create?supplierId=${encodeURIComponent(contact.id)}`)} style={[customerStyles.button, customerStyles.primary]}><Ionicons name="add" size={24} color="white" /><Text style={customerStyles.primaryText}>New purchase</Text></Pressable>
 
@@ -283,7 +281,7 @@ export default function ContactDetailsScreen() {
 
   return (
     <AppScreen>
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingBottom: 36 + insets.bottom }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')} style={styles.back}><Text style={styles.backText}>‹  People</Text></Pressable>
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.state} /> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
