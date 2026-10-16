@@ -1,6 +1,6 @@
 # Offline operation and synchronization plan
 
-Status: implementation started; first native milestone implemented. Prepared 10 October 2026 against the current Expo frontend and NestJS/Prisma backend. Final milestone checks resumed on 11 October 2026; the running backend health endpoint returns HTTP 200.
+Status: native catalog and transaction milestones implemented (transaction update: 16 October 2026). Prepared 10 October 2026 against the current Expo frontend and NestJS/Prisma backend. Final milestone checks resumed on 11 October 2026; the running backend health endpoint returns HTTP 200.
 
 ## Implementation progress
 
@@ -18,11 +18,15 @@ First use still requires an online business download. The local development migr
 
 This milestone deliberately uses a complete repeatable-read snapshot and one atomic SQLite state document per account/business. It does not yet implement the planned paginated change feed or normalized indexed local tables; those remain necessary for larger datasets. The downloaded inventory activity contains the latest 100 movements, rather than all historical movements.
 
-Sales, purchases, additional payments and adjustments are still online writes. Selected pending catalog/contact/stock records must synchronize before an online sale or purchase references them. New online transaction records are remembered locally and server inventory refresh remains explicit on the post-save receipt.
+Sales (including Quick bill) and purchases now save locally with their initial payment details. The SQLite outbox and stock reservation commit atomically. Related catalog, contact and opening-stock commands synchronize first. Each transaction uses a stable request ID against the existing idempotent REST endpoint. A fresh server snapshot replaces provisional stock and receipts atomically; it also reconciles a lost acknowledgement without posting or projecting the transaction twice. Outbox storage version 1 upgrades to version 2; older clients refuse version 2 rather than misreading transaction commands.
 
-Still to implement: local sales/purchase/payment/adjustment commands, immutable offline financial configuration validation, complete conflict-resolution actions, background worker leasing, offline authorization validity policy, recovery/export tools, large-data paging, reactive screen refresh and offline web storage/asset caching. Web continues using the existing online APIs.
+Receipts/history distinguish pending synchronization and conflicts from confirmed invoices. GST, stock units and selling-option settings are checked before upload, and the server rejects a changed expected total before recording the transaction. Device sync offers an explicit recalculation preview and approval before retrying changed settings, retaining the original request identity. A partial payment above a revised total needs manual reconciliation. Additional payments on existing receipts and stock adjustments remain online operations.
 
-Checks pass: 135 unit tests, 21 PostgreSQL integration tests, backend/frontend type checks and lint, web export and Android/iOS JavaScript bundle exports. These bundle exports are not native app binary builds.
+Unfinished Quick bills have a separate per-account/business draft slot and resume after reopening. Activity links to that draft without replacing the original sales workflow draft. Locally saved pending bills are excluded from unsaved drafts. Sharing a pending receipt and recording additional payments against its provisional ID are disabled until confirmation.
+
+Still to implement: additional payment/adjustment commands, complete conflict-resolution actions (including correcting quantities or partial payments), background worker leasing, offline authorization validity policy, recovery/export tools, large-data paging, offline web storage/asset caching. Web continues using the existing online APIs.
+
+The original milestone verified 135 unit tests, 21 PostgreSQL integration tests and Android/iOS JavaScript exports. The 16 October transaction update passes 189 unit tests, backend/frontend type checks, frontend lint and backend compilation; Android and web exports are checked separately. JavaScript bundle exports are not native app binary builds.
 
 Verification covers restart recovery from persisted state, stable retry IDs after lost responses, local storage failure, dependency blocking, tenant isolation, duplicate server uploads, revisions and restricted-price snapshots. Native airplane-mode visual/end-to-end verification remains outstanding.
 

@@ -39,4 +39,21 @@ describe('Persistent transaction drafts', () => {
     expect([...storage.values()].join('')).not.toContain('base64');
   });
 
+
+  it('keeps a Quick bill in its own durable slot without replacing an existing sale draft', async () => {
+    await saveDraft(session, draft);
+    await saveDraft(session, { ...draft, source: 'quick', requestId: 'quick_request', quantities: { product: '3' } }, 'quick');
+    vi.resetModules();
+    const reopened = await import('./transaction-drafts');
+    expect((await reopened.readDraft(session, 'sale'))?.requestId).toBe(draft.requestId);
+    expect(await reopened.readDraft(session, 'sale', 'quick')).toMatchObject({ requestId: 'quick_request', source: 'quick', quantities: { product: '3' } });
+    expect(await reopened.readDraft({ ...session, businessId: 'other' }, 'sale', 'quick')).toBeNull();
+  });
+  it('clears in-flight Quick bill writes without clearing the original workflow draft', async () => {
+    await saveDraft(session, draft);
+    const pending = saveDraft(session, draft, 'quick');
+    await clearDraft(session, 'sale', 'quick'); await pending;
+    expect(await readDraft(session, 'sale', 'quick')).toBeNull();
+    expect(await readDraft(session, 'sale')).toEqual(draft);
+  });
 });

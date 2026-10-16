@@ -16,6 +16,7 @@ type SaleItemInput = {
 };
 
 type CreateSaleInput = {
+  expectedTotal?: string;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
@@ -100,6 +101,7 @@ export class SalesService {
     const subtotal = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
     const taxTotal = lines.reduce((sum, line) => sum.plus(line.taxAmount), new Prisma.Decimal(0));
     const total = lines.reduce((sum, line) => sum.plus(line.lineTotal).plus(line.taxAmount), new Prisma.Decimal(0));
+    if (input.expectedTotal !== undefined && (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) || !total.equals(input.expectedTotal))) throw new ConflictException('Item rates changed the bill total. Review this pending transaction before syncing.');
     if (total.greaterThan('999999999999.99')) throw new BadRequestException('Sale total exceeds the supported range.');
     const saleDate = new Date(input.saleDate);
     if (Number.isNaN(saleDate.getTime())) throw new BadRequestException('Invalid sale date.');

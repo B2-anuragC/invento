@@ -13,6 +13,7 @@ type PurchaseItemInput = {
 };
 
 type CreatePurchaseInput = {
+  expectedTotal?: string;
   attachment?: { name: string; mimeType: string; base64?: string; url?: string; thumbnailUrl?: string };
   amountPaid?: string;
   dueDate?: string;
@@ -109,6 +110,7 @@ export class PurchasesService {
     const subtotal = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
     const taxTotal = lines.reduce((sum, line) => sum.plus(line.taxAmount), new Prisma.Decimal(0));
     const total = lines.reduce((sum, line) => sum.plus(line.lineTotal).plus(line.taxAmount), new Prisma.Decimal(0));
+    if (input.expectedTotal !== undefined && (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) || !total.equals(input.expectedTotal))) throw new ConflictException('Item rates changed the bill total. Review this pending transaction before syncing.');
     if (total.greaterThan('999999999999.99')) throw new BadRequestException('Purchase total exceeds the supported amount.');
     const purchaseDate = new Date(input.purchaseDate);
     if (Number.isNaN(purchaseDate.getTime())) throw new BadRequestException('Invalid purchase date.');

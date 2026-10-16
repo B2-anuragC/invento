@@ -2,25 +2,26 @@ import { localizeLegacyUploads } from './file-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppSession, FileAttachment } from './api';
 export type TransactionDraft = {
+  source?: 'quick';
   referenceImage?: string;
   attachment?: FileAttachment;
   version: 1; kind: 'sale' | 'purchase'; requestId: string; updatedAt: string; contactId: string; contactName: string; quantities: Record<string, string>; prices: Record<string, string>; sellingUnits?: Record<string, string>; selectedOptions?: Record<string, string>; invoiceNumber?: string; paymentMode: 'full' | 'partial' | 'credit'; paidInput: string; dueDate: string; paymentMethod: string; step: 1 | 2 | 3; outcome: 'rejected' | 'unknown' | null;
 };
-const key = (session: AppSession, kind: TransactionDraft['kind']) => `invento.draft.v1.${session.user.id}.${session.businessId}.${kind}`;
+const key = (session: AppSession, kind: TransactionDraft['kind'], slot = 'standard') => `invento.draft.v1.${session.user.id}.${session.businessId}.${kind}${slot === 'standard' ? '' : `.${slot}`}`;
 let writes = Promise.resolve();
-export function saveDraft(session: AppSession, draft: TransactionDraft) {
-  const result = writes.catch(() => {}).then(() => AsyncStorage.setItem(key(session, draft.kind), JSON.stringify(draft)));
+export function saveDraft(session: AppSession, draft: TransactionDraft, slot = 'standard') {
+  const result = writes.catch(() => {}).then(() => AsyncStorage.setItem(key(session, draft.kind, slot), JSON.stringify(draft)));
   writes = result;
   return result;
 }
-export function clearDraft(session: AppSession, kind: TransactionDraft['kind']) {
-  const result = writes.catch(() => {}).then(() => AsyncStorage.removeItem(key(session, kind)));
+export function clearDraft(session: AppSession, kind: TransactionDraft['kind'], slot = 'standard') {
+  const result = writes.catch(() => {}).then(() => AsyncStorage.removeItem(key(session, kind, slot)));
   writes = result;
   return result;
 }
-export async function readDraft(session: AppSession, kind: TransactionDraft['kind']): Promise<TransactionDraft | null> {
+export async function readDraft(session: AppSession, kind: TransactionDraft['kind'], slot = 'standard'): Promise<TransactionDraft | null> {
   await writes.catch(() => {});
-  const raw = await AsyncStorage.getItem(key(session, kind));
+  const raw = await AsyncStorage.getItem(key(session, kind, slot));
   if (!raw) return null;
   try {
     const value = JSON.parse(raw);
@@ -30,7 +31,7 @@ export async function readDraft(session: AppSession, kind: TransactionDraft['kin
     if (![null, 'rejected', 'unknown'].includes(value.outcome) || (value.sellingUnits !== undefined && !stringRecord(value.sellingUnits)) || (value.selectedOptions !== undefined && !stringRecord(value.selectedOptions))) return null;
     if (value.referenceImage !== undefined && (typeof value.referenceImage !== 'string' || value.referenceImage.length > 2800000 || !(/^(?:data:image\/jpeg;base64,|\/files\/[a-f0-9]{64}\/original$|file:\/\/)/.test(value.referenceImage)))) return null;
     if (value.attachment !== undefined && (value.attachment === null || typeof value.attachment !== 'object' || !['name', 'mimeType'].every((field) => typeof value.attachment[field] === 'string') || (typeof value.attachment.url !== 'string' && typeof value.attachment.base64 !== 'string') || (value.attachment.base64?.length ?? 0) > 13981016)) return null;
-    if (raw.includes('base64')) { const migrated = await localizeLegacyUploads(value, session) as TransactionDraft; await saveDraft(session, migrated); return migrated; }
+    if (raw.includes('base64')) { const migrated = await localizeLegacyUploads(value, session) as TransactionDraft; await saveDraft(session, migrated, slot); return migrated; }
     return value;
   } catch { return null; }
 }

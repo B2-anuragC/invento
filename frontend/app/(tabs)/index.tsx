@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -11,7 +12,7 @@ import {
   type SaleRecord,
 } from '@/services/api';
 
-type RecentTransaction = { id: string; kind: 'Sale'; name: string; date: string; itemCount: number; total: number; route: `/sale/${string}` };
+type RecentTransaction = { syncState?: SaleRecord['syncState']; id: string; kind: 'Sale'; name: string; date: string; itemCount: number; total: number; route: `/sale/${string}` };
 
 function formatMoney(value: string | number | undefined) {
   const numeric = typeof value === 'number' ? value : Number(value ?? 0);
@@ -21,6 +22,7 @@ function formatMoney(value: string | number | undefined) {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [transactions, setTransactions] = useState<RecentTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,7 @@ export default function DashboardScreen() {
       setTransactions([
         ...sales.map((sale: SaleRecord): RecentTransaction => ({
           id: sale.id,
+          syncState: sale.syncState,
           kind: 'Sale',
           name: sale.customer.name,
           date: sale.saleDate,
@@ -71,7 +74,9 @@ export default function DashboardScreen() {
     useCallback(() => {
       void loadDashboard();
       return () => { requestId.current += 1; };
-    }, [loadDashboard]),
+    // Reload the visible overview when a sync cycle completes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadDashboard, sync.syncing]),
   );
 
   const lowStockCount = summary?.lowStockCount ?? 0;
@@ -155,7 +160,7 @@ export default function DashboardScreen() {
               <View style={styles.activityCopy}>
                 <Text numberOfLines={1} style={styles.activityName}>{item.name}</Text>
                 <Text style={styles.activityMeta}>
-                  {item.kind} · {item.itemCount} item{item.itemCount === 1 ? '' : 's'} · {new Date(item.date).toLocaleString([], { hour: 'numeric', minute: '2-digit' })}
+                  {item.syncState === 'conflict' ? 'Needs attention' : item.syncState ? 'Pending sync' : item.kind} · {item.itemCount} item{item.itemCount === 1 ? '' : 's'} · {new Date(item.date).toLocaleString([], { hour: 'numeric', minute: '2-digit' })}
                 </Text>
               </View>
               <Text style={styles.activityAmount}>

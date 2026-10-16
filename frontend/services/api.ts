@@ -3,7 +3,7 @@ export type SellingOption = { id: string; name: string; unit: string; quantity: 
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
-import { configureOffline, offlineView, saveOfflineCatalog, saveOfflineOpening, requireSyncedCatalog, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+import { configureOffline, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
 
@@ -135,6 +135,8 @@ export type InventoryTransactionRecord = {
 
 export type PaymentRecord = { id: string; amount: string | number; method: string; kind: string; paidAt: string };
 export type SaleRecord = {
+  syncState?: 'pending' | 'conflict';
+  syncError?: string;
   referenceImage?: string | null;
   subtotal?: string | number;
   taxTotal?: string | number;
@@ -153,6 +155,7 @@ export type SaleRecord = {
 };
 
 export type CreateSaleInput = {
+  expectedTotal?: string;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
@@ -181,6 +184,8 @@ export type SupplierRecord = {
 export type FileAttachment = { name: string; mimeType: string; url?: string; thumbnailUrl?: string; base64?: string };
 
 export type PurchaseRecord = {
+  syncState?: 'pending' | 'conflict';
+  syncError?: string;
   attachment?: FileAttachment | null;
   subtotal?: string | number;
   taxTotal?: string | number;
@@ -221,6 +226,7 @@ export type InventoryActivityRecord = InventoryTransactionRecord & {
 };
 
 export type CreatePurchaseInput = {
+  expectedTotal?: string;
   attachment?: FileAttachment;
   amountPaid?: string;
   dueDate?: string;
@@ -608,7 +614,7 @@ export async function updateCustomer(
 }
 
 export async function fetchInventory(session: AppSession, requireFresh = false): Promise<InventoryRecord[]> {
-  if (nativeOffline && !requireFresh) return (await offlineView(session)).inventory;
+  if (nativeOffline) { if (requireFresh) void refreshOfflineSnapshot(session); return (await offlineView(session)).inventory; }
   return request<InventoryRecord[]>('/inventory', { method: 'GET' }, session);
 }
 
@@ -621,7 +627,7 @@ export async function fetchSales(session: AppSession, query: { customerId?: stri
 }
 
 export async function fetchSale(session: AppSession, saleId: string): Promise<SaleRecord> {
-  if (nativeOffline) { const sale = (await offlineView(session)).sales.find((record) => record.id === saleId); if (sale) return sale; }
+  if (nativeOffline) { const sale = (await offlineView(session)).sales.find((record) => record.id === saleId || (saleId.startsWith('local_') && record.requestId === saleId.slice(6))); if (sale) return sale; }
   return request<SaleRecord>(`/sales/${encodeURIComponent(saleId)}`, { method: 'GET' }, session);
 }
 
@@ -631,7 +637,7 @@ export async function fetchInventoryActivity(session: AppSession): Promise<Inven
 }
 
 export async function createSale(session: AppSession, input: CreateSaleInput): Promise<SaleRecord> {
-  if (nativeOffline) await requireSyncedCatalog(session, [input.customerId, ...input.items.map((item) => item.productId)]);
+  if (nativeOffline) { try { return await saveOfflineTransaction(session, 'sale', input) as SaleRecord; } catch (error) { throw new ApiError(error instanceof Error ? error.message : 'Could not save this bill on your device.', 422); } }
   const saved = await request<SaleRecord>('/sales', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -728,7 +734,7 @@ export async function updatePricingAccess(session: AppSession, membersCanViewPur
 }
 
 export async function createPurchase(session: AppSession, input: CreatePurchaseInput): Promise<PurchaseRecord> {
-  if (nativeOffline) await requireSyncedCatalog(session, [input.supplierId, ...input.items.map((item) => item.productId)]);
+  if (nativeOffline) { try { return await saveOfflineTransaction(session, 'purchase', input) as PurchaseRecord; } catch (error) { throw new ApiError(error instanceof Error ? error.message : 'Could not save this purchase on your device.', 422); } }
   const saved = await request<PurchaseRecord>('/purchases', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -738,11 +744,12 @@ export async function createPurchase(session: AppSession, input: CreatePurchaseI
 }
 
 export async function fetchPurchase(session: AppSession, purchaseId: string): Promise<PurchaseRecord> {
-  if (nativeOffline) { const purchase = (await offlineView(session)).purchases.find((record) => record.id === purchaseId); if (purchase) return purchase; }
+  if (nativeOffline) { const purchase = (await offlineView(session)).purchases.find((record) => record.id === purchaseId || (purchaseId.startsWith('local_') && record.requestId === purchaseId.slice(6))); if (purchase) return purchase; }
   return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
 }
 
 export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string }): Promise<SaleRecord | PurchaseRecord> {
+  if (id.startsWith('local_')) throw new Error('Synchronize this transaction before recording another payment.');
   const saved = await request<SaleRecord | PurchaseRecord>(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);
   if (nativeOffline) { await rememberConfirmedTransaction(session, kind, saved).catch(() => undefined); await refreshOfflineSnapshot(session); }
   return saved;

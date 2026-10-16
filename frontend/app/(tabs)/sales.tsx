@@ -1,5 +1,6 @@
+import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -16,6 +17,7 @@ function formatMoney(value: number) {
 
 export default function SalesScreen() {
   const router = useRouter();
+  const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [search, setSearch] = useState('');
   const [retry, setRetry] = useState(0);
@@ -53,7 +55,7 @@ export default function SalesScreen() {
       };
     // Retry intentionally recreates the focus effect to reload the current screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [retry]),
+    }, [retry, sync.syncing]),
   );
 
   const totalSales = sales.reduce((total, sale) => total + Number(sale.total), 0);
@@ -69,7 +71,7 @@ export default function SalesScreen() {
 
         <SectionHeader title="Summary" />
         <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={loading || error ? '—' : formatMoney(totalSales)} delta="All recorded sales" accent="green" />
+          <SummaryCard label="Total value" value={loading || error ? '—' : formatMoney(totalSales)} delta={sales.some((record) => record.syncState) ? "Includes device bills pending sync" : "All recorded sales"} accent="green" />
           <SummaryCard label="Sales" value={loading || error ? '—' : String(sales.length)} delta="Transactions" accent="blue" />
         </View>
 
@@ -90,6 +92,7 @@ export default function SalesScreen() {
                 <View style={styles.saleDetails}>
                   <Pressable accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)}><Text style={styles.saleId}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={styles.repeatText}>View details ›</Text></Pressable>
                   <Text style={styles.customer}>{sale.customer?.name ?? 'Customer'}</Text>
+                  {sale.syncState ? <Text style={styles.repeatText}>{sale.syncState === 'conflict' ? 'Needs attention · Saved on device' : 'Pending sync · Saved on device'}</Text> : null}
                   <Text style={styles.time}>
                     {new Date(sale.saleDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     {' · '}{sale.items.length} item{sale.items.length === 1 ? '' : 's'}

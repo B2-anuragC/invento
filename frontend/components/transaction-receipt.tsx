@@ -2,13 +2,18 @@ import { PurchaseAttachment } from './purchase-attachment';
 import { SaleReferencePhoto } from './sale-reference-photo';
 import type { PaymentRecord, FileAttachment } from '@/services/api';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
-import { useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useRouter } from 'expo-router';
+import { appSession, fetchSale, fetchPurchase } from '@/services/api';
+import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatUnitLabel } from './invento-ui';
 
 export type ReceiptData = {
+  syncState?: 'pending' | 'conflict';
+  syncError?: string;
   referenceImage?: string | null;
   attachment?: FileAttachment | null;
   contactPhone?: string | null;
@@ -17,11 +22,26 @@ export type ReceiptData = {
   items: { id: string; name: string; sku?: string; quantity: number; label: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
 };
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-export function TransactionReceipt({ data, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
+export function TransactionReceipt({ data: initialData, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const [data, setData] = useState(initialData);
+  const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
+  useEffect(() => { setData(initialData); }, [initialData]);
+  useEffect(() => {
+    const session = appSession.current;
+    if (!session || !initialData.syncState) return;
+    let active = true;
+    const load = initialData.kind === 'sale' ? fetchSale(session, initialData.id) : fetchPurchase(session, initialData.id);
+    void load.then((record) => {
+      if (!active) return;
+      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...initialData.items[index], id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal })) });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [initialData, sync.syncing, sync.pending, sync.conflicts]);
   const [error, setError] = useState('');
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
-  const identifier = data.kind === 'sale' ? data.invoice || data.id : data.id;
+  const identifier = data.syncState ? `Device bill · ${data.id.slice(-8).toUpperCase()}` : data.kind === 'sale' ? data.invoice || data.id : data.id;
   const balance = paymentBalance(data);
   const overdue = isOverdue(data);
   const total = data.total == null ? 'Restricted price' : money(Number(data.total));
@@ -48,21 +68,21 @@ export function TransactionReceipt({ data, onBack, onNew, onRepeat, onPayment }:
     <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close receipt" onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View><Text style={styles.title}>{title} receipt</Text><Text style={styles.meta}>Invento · {new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</Text></View></View>
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>Saved · {title} recorded</Text><Text style={styles.greenCopy}>This is a saved transaction. Inventory has been updated.</Text></View></View>
-      <View style={styles.card}><Text style={styles.caption}>{data.kind === 'sale' ? 'INVOICE / TRANSACTION IDENTIFIER' : 'INTERNAL PURCHASE IDENTIFIER'}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{data.kind === 'purchase' && data.invoice ? <View style={styles.row}><Text style={styles.meta}>Supplier invoice</Text><Text style={styles.bold}>{data.invoice}</Text></View> : null}<Text style={styles.meta}>{new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })} · Saved {data.kind}</Text></View>
+      <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>{data.syncState === 'conflict' ? 'Needs attention · Saved on device' : data.syncState ? 'Saved on device · Pending sync' : `Saved · ${title} recorded`}</Text><Text style={styles.greenCopy}>{data.syncState ? 'Provisional receipt. Stock is adjusted on this device; the server has not confirmed this transaction.' : 'This is a saved transaction. Inventory has been updated.'}</Text>{data.syncError ? <Text style={styles.error}>{data.syncError}</Text> : null}{data.syncState ? <Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.greenTitle}>View sync status →</Text></Pressable> : null}</View></View>
+      <View style={styles.card}><Text style={styles.caption}>{data.syncState ? 'PROVISIONAL DEVICE REFERENCE' : data.kind === 'sale' ? 'INVOICE / TRANSACTION IDENTIFIER' : 'INTERNAL PURCHASE IDENTIFIER'}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{data.kind === 'purchase' && data.invoice ? <View style={styles.row}><Text style={styles.meta}>Supplier invoice</Text><Text style={styles.bold}>{data.invoice}</Text></View> : null}<Text style={styles.meta}>{new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text></View>
       <View style={[styles.card, styles.contact]}><View style={styles.contactIcon}><Ionicons name={data.kind === 'sale' ? 'person-outline' : 'cube-outline'} size={22} color="#176B50" /></View><View style={{ flex: 1 }}><Text style={styles.meta}>{data.kind === 'sale' ? 'Customer' : 'Supplier'}</Text><Text style={styles.bold}>{data.contact}</Text></View></View>
       <Text style={styles.section}>{data.kind === 'sale' ? 'Items' : 'Received items'} · {data.items.length}</Text>
       {data.items.map((item) => <View key={item.id} style={styles.card}><Text style={styles.bold}>{item.name}</Text>{item.sku ? <Text style={styles.meta}>{item.sku}</Text> : null}<View style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.quantity} {item.label}{item.price == null ? '' : ` × ${money(item.price)}`}</Text><Text style={styles.bold}>{item.price == null ? 'Restricted' : money(Number(item.lineTotal ?? (item.quantity * item.price).toFixed(2)))}</Text></View>{item.taxAmount != null ? <View style={styles.row}><Text style={styles.meta}>GST · {Number(item.gstRate ?? 0)}%</Text><Text style={styles.bold}>{money(Number(item.taxAmount))}</Text></View> : null}{item.stockAfter !== undefined ? <Text style={styles.greenCopy}>{data.kind === 'sale' ? 'Stock remaining' : 'Stock after receipt'}: {Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text> : null}</View>)}
       <View style={styles.card}>{data.subtotal != null ? <View style={styles.row}><Text style={styles.meta}>Subtotal · excluding GST</Text><Text style={styles.bold}>{money(Number(data.subtotal))}</Text></View> : null}{data.taxTotal != null ? <View style={styles.row}><Text style={styles.meta}>GST · saved item rates</Text><Text style={styles.bold}>{money(Number(data.taxTotal))}</Text></View> : null}<View style={styles.row}><Text style={styles.meta}>Total amount</Text><Text style={styles.total}>{total}</Text></View></View>
-      <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{balance == null ? 'Payment history not confirmed' : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={onPayment} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
+      <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{balance == null ? 'Payment history not confirmed' : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{!data.syncState && onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={onPayment} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
       {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : payment.method.replaceAll('_', ' ')}</Text><Text style={styles.meta}>{new Date(payment.paidAt).toLocaleDateString('en-IN')}</Text></View><Text style={styles.bold}>{money(Number(payment.amount))}</Text></View>)}</View> : null}
       {data.paymentMethod ? <View style={styles.card}><Text style={styles.meta}>Payment method</Text><Text style={styles.bold}>{data.paymentMethod.replaceAll('_', ' ')}</Text></View> : null}
       {data.note ? <View style={styles.card}><Text style={styles.meta}>Note</Text><Text style={styles.bold}>{data.note}</Text></View> : null}
-      {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>Stock updated for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
+      {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
     <SaleReferencePhoto value={data.referenceImage} />
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>
-    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}><View style={styles.actions}><Pressable accessibilityRole="button" onPress={() => void share()} style={styles.secondary}><Text style={styles.buttonText}>{data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{onRepeat ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
+    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}><View style={styles.actions}><Pressable accessibilityRole="button" disabled={!!data.syncState} accessibilityState={{ disabled: !!data.syncState }} onPress={() => void share()} style={[styles.secondary, data.syncState && { opacity: 0.45 }]}><Text style={styles.buttonText}>{data.syncState ? 'Share after sync' : data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{onRepeat && !data.syncState ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
   </View>;
 }
 const styles = StyleSheet.create({

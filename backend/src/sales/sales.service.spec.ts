@@ -367,3 +367,13 @@ describe('Retail sales of grouped products', () => {
     await expect(service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', unit, quantity, sellingPrice: '10.00' }] })).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+
+describe('Offline total confirmation', () => {
+  it('rejects a changed total before creating any transaction or stock movement', async () => {
+    const { service, store } = createFakeEnvironment();
+    await expect(service.create('user-a', 'business-a', { ...saleInput, expectedTotal: '0.01' })).rejects.toBeInstanceOf(ConflictException);
+    expect(Object.keys(store.sales)).toHaveLength(0);
+    expect(store.inventoryTransactions).toHaveLength(0);
+  });
+});

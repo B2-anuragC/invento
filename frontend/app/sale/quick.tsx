@@ -1,3 +1,9 @@
+import {
+  readDraft,
+  saveDraft,
+  clearDraft,
+  type TransactionDraft,
+} from "@/services/transaction-drafts";
 import { Ionicons } from "@expo/vector-icons";
 import { sellingUnitConversion } from "@invento/shared";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -38,6 +44,7 @@ import {
   fetchCustomers,
   fetchInventory,
   fetchProducts,
+  fetchSales,
   type CreateSaleInput,
   type CustomerRecord,
   type ProductRecord,
@@ -78,6 +85,9 @@ export default function QuickBillScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
+  const savedOnDevice = useRef(false);
   const [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false);
   const [addingCustomer, setAddingCustomer] = useState(false);
@@ -116,9 +126,43 @@ export default function QuickBillScreen() {
       fetchProducts(session),
       fetchCustomers(session),
       fetchInventory(session),
+      readDraft(session, "sale", "quick"),
+      fetchSales(session),
     ])
-      .then(([p, c, i]) => {
+      .then(async ([p, c, i, draft, sales]) => {
         if (!active) return;
+        if (draft && !draftReady && !savedOnDevice.current) {
+          if (sales.some((record) => record.requestId === draft.requestId)) {
+            await clearDraft(session, "sale", "quick");
+          } else {
+            setLines(
+              Object.entries(draft.quantities)
+                .filter(([id]) => p.some((product) => product.id === id))
+                .map(([id, quantity]) => ({
+                  productId: id,
+                  quantity,
+                  price:
+                    draft.prices[id] ??
+                    p.find((product) => product.id === id)!.sellingPrice,
+                  optionId: draft.selectedOptions?.[id],
+                })),
+            );
+            setCustomerId(
+              c.some((customer) => customer.id === draft.contactId)
+                ? draft.contactId
+                : "",
+            );
+            setMode(draft.paymentMode);
+            setPaid(draft.paidInput);
+            setDueDate(draft.dueDate);
+            setMethod(draft.paymentMethod as CreateSaleInput["paymentMethod"]);
+            requestId.current = draft.requestId;
+            setDraftMessage(
+              "Restored your unfinished Quick bill. Check current stock and item settings before saving.",
+            );
+          }
+        }
+        setDraftReady(true);
         setProducts(p);
         setCustomers(c);
         setStock(
@@ -141,6 +185,8 @@ export default function QuickBillScreen() {
     return () => {
       active = false;
     };
+    // Draft restoration only runs when this screen loads or explicitly retries.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retry]);
 
   useEffect(() => {
@@ -178,6 +224,8 @@ export default function QuickBillScreen() {
       item.quantity >= 1e9
     )
       return "Enter a quantity greater than zero.";
+    if (item.optionId && !item.option)
+      return "This selling option is no longer available. Remove and add the product again.";
     if (!Number.isFinite(item.price) || item.price <= 0)
       return "Enter a price greater than zero.";
     if (item.option && !Number.isInteger(item.quantity))
@@ -235,6 +283,55 @@ export default function QuickBillScreen() {
         value?.toLowerCase().includes(query),
       ),
   );
+  useEffect(() => {
+    const session = appSession.current;
+    if (!session || !draftReady || savedOnDevice.current || receipt || loading)
+      return;
+    if (!lines.length && !customerId) return;
+    const draft: TransactionDraft = {
+      version: 1,
+      source: "quick",
+      kind: "sale",
+      requestId: requestId.current,
+      updatedAt: new Date().toISOString(),
+      contactId: customerId,
+      contactName: customer?.name ?? "",
+      quantities: Object.fromEntries(
+        lines.map((line) => [line.productId, line.quantity]),
+      ),
+      prices: Object.fromEntries(
+        lines.map((line) => [line.productId, line.price]),
+      ),
+      selectedOptions: Object.fromEntries(
+        lines
+          .filter((line) => line.optionId)
+          .map((line) => [line.productId, line.optionId!]),
+      ),
+      paymentMode: mode,
+      paidInput: paid,
+      dueDate,
+      paymentMethod: method,
+      step: 1,
+      outcome,
+    };
+    void saveDraft(session, draft, "quick").catch(() =>
+      setDraftMessage(
+        "Could not save this draft on your device. Keep this screen open.",
+      ),
+    );
+  }, [
+    draftReady,
+    lines,
+    customerId,
+    customer?.name,
+    mode,
+    paid,
+    dueDate,
+    method,
+    outcome,
+    receipt,
+    loading,
+  ]);
   const edit = (index: number, patch: Partial<Line>) => {
     if (locked) return;
     setLines((current) =>
@@ -328,7 +425,13 @@ export default function QuickBillScreen() {
     pendingInput.current = input;
     try {
       const saved = await createSale(session, input);
+      savedOnDevice.current = true;
+      await clearDraft(session, "sale", "quick").catch(() =>
+        setDraftMessage("Bill saved, but its draft could not be cleared."),
+      );
       setReceipt({
+        syncState: saved.syncState,
+        syncError: saved.syncError,
         id: saved.id,
         kind: "sale",
         date: saved.saleDate,
@@ -402,6 +505,8 @@ export default function QuickBillScreen() {
         data={receipt}
         onBack={() => router.back()}
         onNew={() => {
+          savedOnDevice.current = false;
+          setDraftMessage("");
           setReceipt(null);
           setLines([]);
           setCustomerId("");
@@ -438,6 +543,9 @@ export default function QuickBillScreen() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
         >
+          {draftMessage ? (
+            <Text style={styles.meta}>{draftMessage}</Text>
+          ) : null}
           {loading ? (
             <ActivityIndicator
               accessibilityLabel="Loading bill details"
@@ -916,7 +1024,7 @@ export default function QuickBillScreen() {
           message={
             outcome === "unknown"
               ? "Check Sales history before creating another bill. This bill may already have been saved."
-              : "Your unsaved bill will be discarded."
+              : "Your unfinished bill is saved on this device. You can resume it from Quick bill."
           }
           confirmLabel="Leave bill"
           cancelLabel="Keep editing"

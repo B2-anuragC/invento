@@ -276,3 +276,13 @@ describe('PurchasesService', () => {
     expect(store.inventoryTransactions).toHaveLength(0);
   });
 });
+
+
+describe('Offline total confirmation', () => {
+  it('rejects a changed total before creating any transaction or stock movement', async () => {
+    const { service, store } = createFakeEnvironment();
+    await expect(service.create('user-a', 'business-a', { ...purchaseInput, expectedTotal: '0.01' })).rejects.toBeInstanceOf(ConflictException);
+    expect(Object.keys(store.purchases)).toHaveLength(0);
+    expect(store.inventoryTransactions).toHaveLength(0);
+  });
+});

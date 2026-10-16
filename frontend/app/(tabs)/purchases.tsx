@@ -1,5 +1,6 @@
+import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -16,6 +17,7 @@ function formatMoney(value: number) {
 
 export default function PurchasesScreen() {
   const router = useRouter();
+  const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
   const [search, setSearch] = useState('');
   const [retry, setRetry] = useState(0);
@@ -53,7 +55,7 @@ export default function PurchasesScreen() {
       };
     // Retry intentionally recreates the focus effect to reload the current screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [retry]),
+    }, [retry, sync.syncing]),
   );
 
   const restrictedPrice = purchases.some((purchase) => purchase.total == null);
@@ -71,7 +73,7 @@ export default function PurchasesScreen() {
 
         <SectionHeader title="Overview" />
         <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={loading || error ? '—' : restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : 'All recorded purchases'} accent="amber" />
+          <SummaryCard label="Total value" value={loading || error ? '—' : restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : purchases.some((record) => record.syncState) ? 'Includes pending device bills' : 'All recorded purchases'} accent="amber" />
           <SummaryCard label="Suppliers" value={loading || error ? '—' : String(supplierCount)} delta="In purchase history" accent="blue" />
         </View>
 
@@ -94,7 +96,7 @@ export default function PurchasesScreen() {
                   </Text>
                   <Text style={styles.supplier}>{purchase.supplier?.name ?? 'Supplier'}</Text>
                   <Text style={styles.date}>
-                    {new Date(purchase.purchaseDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {purchase.syncState ? `${purchase.syncState === 'conflict' ? 'Needs attention' : 'Pending sync'} · ` : ''}{new Date(purchase.purchaseDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
                   </Text>
                 </View>
