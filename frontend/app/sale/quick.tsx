@@ -1,3 +1,5 @@
+import { readProductFavorites } from '@/services/product-favorites';
+import { ProductThumbnail } from '@/components/product-photo';
 import {
   readDraft,
   saveDraft,
@@ -21,7 +23,6 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -70,13 +71,19 @@ export default function QuickBillScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { width, fontScale } = useWindowDimensions();
-  const compact = width / fontScale < 480;
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
   const [lines, setLines] = useState<Line[]>([]);
+  const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [productGroup, setProductGroup] = useState<'recent' | 'favorites'>('recent');
+  const [removedLine, setRemovedLine] = useState<{ line: Line; index: number } | null>(null);
   const [search, setSearch] = useState("");
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const billScroll = useRef<ScrollView>(null);
+  const scrollToReview = useRef(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [panel, setPanel] = useState<"customer" | "payment" | "scanner" | null>(
@@ -128,9 +135,12 @@ export default function QuickBillScreen() {
       fetchInventory(session),
       readDraft(session, "sale", "quick"),
       fetchSales(session),
+      readProductFavorites(session).catch(() => ({})),
     ])
-      .then(async ([p, c, i, draft, sales]) => {
+      .then(async ([p, c, i, draft, sales, savedFavorites]) => {
         if (!active) return;
+        setFavorites(savedFavorites);
+        setRecentIds([...new Set([...sales].sort((a, b) => b.saleDate.localeCompare(a.saleDate)).flatMap((sale) => sale.items.map((item) => item.productId)))]);
         if (draft && !draftReady && !savedOnDevice.current) {
           if (sales.some((record) => record.requestId === draft.requestId)) {
             await clearDraft(session, "sale", "quick");
@@ -157,9 +167,6 @@ export default function QuickBillScreen() {
             setDueDate(draft.dueDate);
             setMethod(draft.paymentMethod as CreateSaleInput["paymentMethod"]);
             requestId.current = draft.requestId;
-            setDraftMessage(
-              "Restored your unfinished Quick bill. Check current stock and item settings before saving.",
-            );
           }
         }
         setDraftReady(true);
@@ -283,6 +290,12 @@ export default function QuickBillScreen() {
         value?.toLowerCase().includes(query),
       ),
   );
+  const suggested = productGroup === 'favorites'
+    ? products.filter((product) => favorites[product.id]).slice(0, 8)
+    : [...products].sort((a, b) => {
+        const left = recentIds.indexOf(a.id), right = recentIds.indexOf(b.id);
+        return (left < 0 ? Infinity : left) - (right < 0 ? Infinity : right) || b.updatedAt.localeCompare(a.updatedAt);
+      }).slice(0, 8);
   useEffect(() => {
     const session = appSession.current;
     if (!session || !draftReady || savedOnDevice.current || receipt || loading)
@@ -368,6 +381,7 @@ export default function QuickBillScreen() {
         },
       ]);
     setSearch("");
+    setRemovedLine(null);
     setError("");
   };
   const addCustomer = async () => {
@@ -509,6 +523,9 @@ export default function QuickBillScreen() {
           setDraftMessage("");
           setReceipt(null);
           setLines([]);
+          setRemovedLine(null);
+          setReviewing(false);
+          setShowBreakdown(false);
           setCustomerId("");
           setSearch("");
           setPaid("");
@@ -538,6 +555,13 @@ export default function QuickBillScreen() {
           </View>
         </View>
         <ScrollView
+          ref={billScroll}
+          onContentSizeChange={() => {
+            if (scrollToReview.current) {
+              scrollToReview.current = false;
+              billScroll.current?.scrollToEnd({ animated: true });
+            }
+          }}
           style={styles.fill}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -585,6 +609,27 @@ export default function QuickBillScreen() {
                   locked,
                 )}
               </View>
+              {!query && !reviewing ? (
+                <View style={styles.card}>
+                  <View style={styles.row}>
+                    {(['recent', 'favorites'] as const).map((group) => (
+                      <Pressable key={group} accessibilityRole="button" accessibilityState={{ selected: productGroup === group }} onPress={() => setProductGroup(group)} style={[styles.suggestionTab, productGroup === group && styles.selectedTab]}>
+                        <Text style={styles.green}>{group === 'recent' ? 'Recent products' : 'Favorites'}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+                    {suggested.map((product) => (
+                      <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Add ${product.name}`} disabled={locked} onPress={() => add(product)} style={styles.suggestion}>
+                        <ProductThumbnail uri={product.imageThumbnail ?? product.images?.[0]?.imageThumbnail} size={32} />
+                        <Text numberOfLines={2} style={styles.bold}>{product.name}</Text>
+                        <Text style={styles.meta}>{money(Number(product.sellingPrice))} / {formatUnitLabel(product.unit)}</Text>
+                      </Pressable>
+                    ))}
+                    {!suggested.length ? <Text style={styles.meta}>Save favorites using the hearts on the Products screen.</Text> : null}
+                  </ScrollView>
+                </View>
+              ) : null}
               {query ? (
                 <View style={styles.card}>
                   <Text style={styles.bold}>Products · {matches.length}</Text>
@@ -602,7 +647,10 @@ export default function QuickBillScreen() {
                             disabled={locked}
                             onPress={() => add(p)}
                           >
-                            <Text style={styles.bold}>{p.name}　＋</Text>
+                            <View style={styles.row}>
+                              <ProductThumbnail uri={p.imageThumbnail ?? p.images?.[0]?.imageThumbnail} size={32} />
+                              <Text style={[styles.bold, styles.fill]}>{p.name}　＋</Text>
+                            </View>
                             <Text style={styles.meta}>
                               {p.sku} · {stock[p.id] ?? 0}{" "}
                               {formatUnitLabel(p.unit)} available ·{" "}
@@ -632,20 +680,6 @@ export default function QuickBillScreen() {
                   </ScrollView>
                 </View>
               ) : null}
-              <Pressable
-                accessibilityRole="button"
-                disabled={locked}
-                style={[styles.customer, styles.row]}
-                onPress={() => setPanel("customer")}
-              >
-                <Ionicons name="person-outline" size={21} color="#176B50" />
-                <Text style={[styles.body, styles.fill]}>
-                  {customer ? `Customer · ${customer.name}` : "Choose customer"}
-                </Text>
-                <Text style={styles.green}>
-                  {customer ? "Change" : "Select"}
-                </Text>
-              </Pressable>
               <Text style={styles.section}>Bill items</Text>
               {!items.length ? (
                 <View style={styles.card}>
@@ -660,29 +694,28 @@ export default function QuickBillScreen() {
               {items.map((item, index) => (
                 <View
                   key={`${item.productId}:${item.optionId ?? ""}`}
-                  style={styles.card}
+                  style={[styles.card, styles.productCard]}
                 >
-                  <View
-                    style={[
-                      styles.row,
-                      styles.itemRow,
-                      compact && styles.itemRowCompact,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.itemDetails,
-                        compact && styles.itemDetailsCompact,
-                      ]}
-                    >
+                  <View style={styles.row}>
+                    <ProductThumbnail uri={item.product.imageThumbnail ?? item.product.images?.[0]?.imageThumbnail} size={32} />
+                    <View style={styles.fill}>
                       <Text style={styles.bold}>
                         {item.product.name}
                         {item.option ? ` · ${item.option.name}` : ""}
                       </Text>
                       <Text style={styles.meta}>
-                        {item.product.sku}
-                        {item.option ? " · Fixed option price" : ""}
+                        {item.product.sku}{item.option ? " · Fixed option price" : ""}
                       </Text>
+                    </View>
+                    <Text accessibilityLabel="Line total" style={styles.bold}>
+                      {money(item.quantity * item.price)}
+                    </Text>
+                    {icon("close", `Remove ${item.product.name}`, () => {
+                      setRemovedLine({ line: { ...lines[index] }, index });
+                      setLines((current) => current.filter((_, i) => i !== index));
+                    }, locked)}
+                  </View>
+                  <View style={styles.itemRow}>
                       <View style={styles.row}>
                         <Text style={styles.meta}>
                           Sell / {formatUnitLabel(item.unit)}
@@ -699,7 +732,6 @@ export default function QuickBillScreen() {
                           style={styles.price}
                         />
                       </View>
-                    </View>
                     <View style={styles.itemControls}>
                       <View style={styles.row}>
                         {icon(
@@ -739,23 +771,9 @@ export default function QuickBillScreen() {
                           locked,
                         )}
                       </View>
-                      <View style={styles.row}>
-                        <Text style={styles.meta}>Line total</Text>
-                        <Text style={styles.bold}>
-                          {money(item.quantity * item.price)}
-                        </Text>
-                      </View>
                     </View>
-                    {icon(
-                      "close",
-                      `Remove ${item.product.name}`,
-                      () =>
-                        setLines((current) =>
-                          current.filter((_, i) => i !== index),
-                        ),
-                      locked,
-                    )}
                   </View>
+                  {!lineErrors[index] ? <Text style={styles.meta}>Available: {stock[item.productId] ?? 0} {formatUnitLabel(item.product.unit)}</Text> : null}
                   {lineErrors[index] ? (
                     <Text accessibilityRole="alert" style={styles.error}>
                       {lineErrors[index]}
@@ -763,6 +781,25 @@ export default function QuickBillScreen() {
                   ) : null}
                 </View>
               ))}
+              {removedLine ? (
+                <View style={[styles.row, styles.card]}>
+                  <Text style={styles.meta}>Item removed</Text>
+                  <Pressable accessibilityRole="button" disabled={locked} style={styles.breakdownToggle} onPress={() => {
+                    const removed = removedLine;
+                    setLines((current) => {
+                      if (current.some((line) => line.productId === removed.line.productId)) return current;
+                      const next = [...current];
+                      next.splice(Math.min(removed.index, next.length), 0, removed.line);
+                      return next;
+                    });
+                    setRemovedLine(null);
+                  }}><Text style={styles.green}>Undo</Text></Pressable>
+                </View>
+              ) : null}
+              {reviewing ? (
+                <>
+                  <Text style={styles.section}>Review bill</Text>
+
               <Pressable
                 accessibilityRole="button"
                 disabled={locked}
@@ -785,6 +822,8 @@ export default function QuickBillScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={22} color="#737B77" />
               </Pressable>
+                </>
+              ) : null}
             </>
           )}
           <TransactionSaveNotice
@@ -800,39 +839,82 @@ export default function QuickBillScreen() {
               {error}
             </Text>
           ) : null}
-          <View style={styles.summary}>
-            <Text style={styles.body}>
-              {items.length} item{items.length === 1 ? "" : "s"} selected
-            </Text>
-            <Text style={styles.meta}>Before GST</Text>
+          {reviewing ? <View style={styles.summary}>
             <View style={styles.row}>
-              <Text style={styles.meta}>Subtotal (excl. GST)</Text>
-              <Text style={styles.body}>{money(totals.subtotal)}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.meta}>GST · Item rates</Text>
-              <Text style={styles.body}>{money(totals.tax)}</Text>
-            </View>
-            <View style={[styles.row, styles.total]}>
               <Text style={styles.bold}>Total amount</Text>
               <Text style={styles.amount}>{money(totals.total)}</Text>
             </View>
-            <Text style={styles.meta}>
-              Tax-inclusive total · GST configured per item
-            </Text>
-          </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Bill breakdown"
+              accessibilityState={{ expanded: showBreakdown }}
+              onPress={() => setShowBreakdown((current) => !current)}
+              style={[styles.row, styles.breakdownToggle]}
+            >
+              <Text style={styles.meta}>
+                {items.length} item{items.length === 1 ? "" : "s"} · {showBreakdown ? "Hide breakdown" : "View breakdown"}
+              </Text>
+              <Ionicons name={showBreakdown ? "chevron-up" : "chevron-down"} size={18} color="#176B50" />
+            </Pressable>
+            {showBreakdown ? (
+              <View style={styles.breakdown}>
+                <View style={styles.row}>
+                  <Text style={styles.meta}>Subtotal (before GST)</Text>
+                  <Text style={styles.body}>{money(totals.subtotal)}</Text>
+                </View>
+                <View style={styles.row}>
+                  <Text style={styles.meta}>GST</Text>
+                  <Text style={styles.body}>{money(totals.tax)}</Text>
+                </View>
+                <Text style={styles.meta}>Total includes GST at each product’s rate.</Text>
+              </View>
+            ) : null}
+          </View> : null}
+          {reviewing ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={locked}
+                style={[styles.customer, styles.row]}
+                onPress={() => setPanel("customer")}
+              >
+                <Ionicons name="person-outline" size={21} color="#176B50" />
+                <Text style={[styles.body, styles.fill]}>
+                  {customer ? `Customer · ${customer.name}` : "Choose customer"}
+                </Text>
+                <Text style={styles.green}>
+                  {customer ? "Change" : "Select"}
+                </Text>
+              </Pressable>
+          ) : null}
         </ScrollView>
         <View style={styles.footer}>
+          {reviewing ? (
+            <Pressable accessibilityRole="button" disabled={locked} style={styles.breakdownToggle} onPress={() => {
+              setReviewing(false);
+              billScroll.current?.scrollTo({ y: 0, animated: true });
+            }}>
+              <Text style={styles.green}>← Back to products</Text>
+            </Pressable>
+          ) : null}
           <ActionButton fullWidth
             title={
-              saving
+              !reviewing
+                ? `Review bill · ${items.length} item${items.length === 1 ? "" : "s"}`
+                : saving
                 ? "Saving bill…"
                 : outcome === "unknown"
                   ? "Retry same bill safely"
                   : `✓  Save bill · ${money(totals.total)}`
             }
-            disabled={saving || (!valid && outcome !== "unknown")}
-            onPress={() => void save()}
+            disabled={reviewing ? saving || (!valid && outcome !== "unknown") : loading || !!loadError || !items.length || lineErrors.some(Boolean)}
+            onPress={() => {
+              if (!reviewing) {
+                scrollToReview.current = true;
+                setReviewing(true);
+              } else {
+                void save();
+              }
+            }}
           />
         </View>
         <Modal
@@ -1043,12 +1125,12 @@ export default function QuickBillScreen() {
 }
 
 const styles = StyleSheet.create({
+  suggestionTab: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 8 },
+  selectedTab: { backgroundColor: '#E7F2ED' },
+  suggestion: { width: 142, padding: 10, gap: 4, borderWidth: 1, borderColor: '#DEE5E1', borderRadius: 10 },
   fill: { flex: 1, minWidth: 0, minHeight: 0 },
-  itemRow: { alignItems: "flex-start" },
-  itemRowCompact: { flexWrap: "wrap" },
-  itemDetails: { flex: 1, minWidth: 0, gap: 8 },
-  itemDetailsCompact: { flexBasis: "100%", flexGrow: 0, flexShrink: 0 },
-  itemControls: { flex: 1.2, minWidth: 0, gap: 10 },
+  itemRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  itemControls: { flex: 1, minWidth: 148 },
   header: {
     backgroundColor: "#FFFFFF",
     minHeight: 64,
@@ -1080,6 +1162,7 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
+  productCard: { backgroundColor: "#EDF5F0", borderColor: "#CFDFD5" },
   meta: { color: "#737B77", fontSize: 12, lineHeight: 18, flexShrink: 1 },
   body: { color: "#24332A", fontSize: 14, flexShrink: 1 },
   bold: { color: "#24332A", fontSize: 14, fontWeight: "700", flexShrink: 1 },
@@ -1158,13 +1241,8 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     gap: 6,
   },
-  total: {
-    flexWrap: "wrap",
-    borderTopWidth: 1,
-    borderColor: "#DEE5E1",
-    marginTop: 3,
-    paddingTop: 8,
-  },
+  breakdownToggle: { minHeight: 44 },
+  breakdown: { borderTopWidth: 1, borderColor: "#DEE5E1", paddingTop: 10, gap: 8 },
   amount: { color: "#176B50", fontSize: 26, fontWeight: "800", flexShrink: 1 },
   error: { color: "#A74737", fontSize: 12, lineHeight: 18 },
   disabled: { opacity: 0.4 },

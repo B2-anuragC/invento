@@ -1,10 +1,9 @@
-import { DevicePhotoBrowser, type GalleryPhoto } from '@/components/device-photo-browser';
 import { ProductPhotoViewer } from '@/components/product-photo-viewer';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraPhoto } from '@/components/camera-photo';
 import { StoredImage as Image } from '@/components/stored-image';
 import { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { fileSource, storePickedFile, type UploadKind } from '@/services/file-storage';
 
@@ -22,7 +21,6 @@ function ProductGallery({ value, onChange, disabled, onBusy, onEdit }: Parameter
   const photos = value.images?.length ? value.images : value.imageOriginal ? [{ imageOriginal: value.imageOriginal, imageThumbnail: value.imageThumbnail ?? value.imageOriginal }] : [];
   const [selected, setSelected] = useState(0);
   const [viewing, setViewing] = useState(false);
-  const [browsing, setBrowsing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const editable = Boolean(onChange || onEdit);
@@ -55,19 +53,6 @@ function ProductGallery({ value, onChange, disabled, onBusy, onEdit }: Parameter
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add these photos.'); }
     finally { if (images.length !== photos.length) { change(images); setSelected(photos.length); } setProcessing(false); setAdding(false); }
   };
-  const addGalleryPhotos = async (picked: GalleryPhoto[]) => {
-    if (!editable || disabled || busy) return;
-    setProcessing(true); setError('');
-    const images = [...photos];
-    try {
-      if (picked.length > 6 - photos.length) throw new Error(`Choose up to ${6 - photos.length} photos.`);
-      for (const asset of picked) {
-        const file = await storePickedFile(asset, 'product');
-        if (!images.some((photo) => photo.imageOriginal === file.url)) images.push({ imageOriginal: file.url, imageThumbnail: file.thumbnailUrl ?? file.url });
-      }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add these photos.'); }
-    finally { if (images.length !== photos.length) { change(images); setSelected(photos.length); } setProcessing(false); setBrowsing(false); setAdding(false); }
-  };
   if (!onChange && !onEdit && !photos.length) return null;
   return <View style={{ backgroundColor: '#FFFFFF', borderRadius: 12, padding: 10, marginBottom: 12, gap: 6 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -78,13 +63,13 @@ function ProductGallery({ value, onChange, disabled, onBusy, onEdit }: Parameter
     {photos.length ? <ScrollView horizontal contentContainerStyle={{ gap: 6 }} showsHorizontalScrollIndicator={false}>{photos.map((photo, position) => <Pressable key={photo.imageOriginal} accessibilityRole="button" accessibilityLabel={`View photo ${position + 1}${position === 0 ? ', cover' : ''}`} accessibilityState={{ selected: index === position }} onPress={() => setSelected(position)} style={{ padding: 3, borderWidth: 2, borderColor: index === position ? '#176B50' : '#E3EAE5', borderRadius: 10 }}><Image source={fileSource(photo.imageThumbnail)} style={{ width: 44, height: 44, borderRadius: 6 }} resizeMode="cover" />{position === 0 ? <Text style={{ fontSize: 10, textAlign: 'center', color: '#176B50' }}>Cover</Text> : null}</Pressable>)}</ScrollView> : null}
     {editable && current && index > 0 ? <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => { change([current, ...photos.filter((_, position) => position !== index)]); setSelected(0); }} style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}><Text style={styles.addPhotoText}>Make cover</Text></Pressable> : null}
     {viewing && photos.length ? <ProductPhotoViewer photos={photos} initialIndex={index} onSelect={setSelected} onClose={() => setViewing(false)} /> : null}
-    <Modal visible={adding} transparent={!browsing} animationType="fade" onRequestClose={() => { if (!busy) { if (browsing) setBrowsing(false); else setAdding(false); } }}>
-      {browsing ? <DevicePhotoBrowser embedded limit={6 - photos.length} onSelect={addGalleryPhotos} onClose={() => setBrowsing(false)} onSystemPicker={() => { setBrowsing(false); void choose(); }} /> : <View style={styles.dialogBackdrop}><View accessibilityViewIsModal style={styles.dialog}>
+    <Modal visible={adding} transparent animationType="fade" onRequestClose={() => { if (!busy) setAdding(false); }}>
+      <View style={styles.dialogBackdrop}><View accessibilityViewIsModal style={styles.dialog}>
         <Text style={styles.dialogTitle}>Add product photos</Text>
         <CameraPhoto kind="product" disabled={busy || disabled || photos.length >= 6} onBusy={setProcessing} onChange={append} />
-        <Pressable accessibilityRole="button" disabled={busy || disabled || photos.length >= 6} onPress={() => { if (Platform.OS === 'web') void choose(); else setBrowsing(true); }} style={styles.addPhotoButton}><Text style={styles.addPhotoText}>{busy ? 'Preparing photos…' : 'Gallery & albums'}</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={busy || disabled || photos.length >= 6} onPress={() => void choose()} style={styles.addPhotoButton}><Text style={styles.addPhotoText}>{busy ? 'Preparing photos…' : 'Choose photos'}</Text></Pressable>
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => setAdding(false)} style={styles.dialogAction}><Text>Cancel</Text></Pressable>
-      </View></View>}
+      </View></View>
     </Modal>
     <Modal visible={Boolean(removing)} transparent animationType="fade" onRequestClose={() => setRemoving(null)}>
       <View style={styles.dialogBackdrop}><View accessibilityViewIsModal style={styles.dialog}>

@@ -1,3 +1,4 @@
+import { readProductFavorites, saveProductFavorites } from '@/services/product-favorites';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StoredImage } from '@/components/stored-image';
@@ -55,6 +56,7 @@ export default function ProductsScreen() {
         return () => { active = false; };
       }
 
+      void readProductFavorites(session).then((value) => { if (active) setFavorites(value); }).catch(() => { if (active) setError('Could not load favorites.'); });
       setLoading(true);
       setError('');
       Promise.all([fetchProducts(session, { status }), fetchInventory(session)])
@@ -199,7 +201,13 @@ export default function ProductsScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityLabel={favorites[product.id] ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
-                  onPress={() => setFavorites((current) => ({ ...current, [product.id]: !current[product.id] }))}
+                  onPress={() => {
+                    const session = appSession.current;
+                    if (!session) return;
+                    const next = { ...favorites, [product.id]: !favorites[product.id] };
+                    setFavorites(next);
+                    void saveProductFavorites(session, next).catch(() => setError('Could not save favorites. Please try again.'));
+                  }}
                   style={[styles.favoriteButton, isGrid && styles.gridFavorite]}>
                   <Text style={[styles.favoriteText, favorites[product.id] && styles.favoriteSelected]}>{favorites[product.id] ? '♥' : '♡'}</Text>
                 </Pressable>

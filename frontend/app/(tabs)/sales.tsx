@@ -1,7 +1,8 @@
+import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
-import { useCallback, useState, useSyncExternalStore } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
@@ -17,6 +18,9 @@ function formatMoney(value: number) {
 
 export default function SalesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ payment?: string }>();
+  const [pendingOnly, setPendingOnly] = useState(params.payment === 'pending');
+  useEffect(() => { setPendingOnly(params.payment === 'pending'); }, [params.payment]);
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [search, setSearch] = useState('');
@@ -60,7 +64,9 @@ export default function SalesScreen() {
 
   const totalSales = sales.reduce((total, sale) => total + Number(sale.total), 0);
 
-  const filteredRecords = sales.filter((record) =>
+  const pendingSales = sales.filter((record) => (paymentBalance(record) ?? 0) > 0);
+  const pendingTotal = pendingSales.reduce((sum, record) => sum + (paymentBalance(record) ?? 0), 0);
+  const filteredRecords = sales.filter((record) => (!pendingOnly || (paymentBalance(record) ?? 0) > 0)).filter((record) =>
     [record.invoiceNumber, record.id, record.customer?.name].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase())),
   ).sort((left, right) => right.saleDate.localeCompare(left.saleDate));
 
@@ -77,11 +83,15 @@ export default function SalesScreen() {
 
         <View style={styles.buttonRow}>
           <ActionButton title="Quick bill" onPress={() => router.push('/sale/quick')} />
-          <ActionButton title="New sale" variant="secondary" onPress={() => router.push('/sale/create')} />
         </View>
 
+        <Pressable accessibilityRole="button" accessibilityState={{ selected: pendingOnly }} onPress={() => setPendingOnly((current) => !current)} style={styles.pendingCard}>
+          <Text style={styles.saleId}>Pending payments · {loading || error ? '—' : formatMoney(pendingTotal)}</Text>
+          <Text style={styles.customer}>{pendingOnly ? 'Showing unpaid bills · Tap to show all' : `${pendingSales.length} unpaid bills · Tap to view`}</Text>
+          {!loading && sales.some((sale) => paymentBalance(sale) == null) ? <Text style={styles.time}>Bills without confirmed payment balances are excluded.</Text> : null}
+        </Pressable>
         <TextInput accessibilityLabel="Search sales" value={search} onChangeText={setSearch} placeholder="Search invoice or customer" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
-        <ListCard title={search ? `Search results · ${filteredRecords.length}` : 'Sales history'}>
+        <ListCard title={search ? `Search results · ${filteredRecords.length}` : pendingOnly ? 'Pending payments' : 'Sales history'}>
           {loading ? (
             <ActivityIndicator color="#176B50" />
           ) : error ? (
@@ -93,6 +103,7 @@ export default function SalesScreen() {
                   <Pressable accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)}><Text style={styles.saleId}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={styles.repeatText}>View details ›</Text></Pressable>
                   <Text style={styles.customer}>{sale.customer?.name ?? 'Customer'}</Text>
                   {sale.syncState ? <Text style={styles.repeatText}>{sale.syncState === 'conflict' ? 'Needs attention · Saved on device' : 'Pending sync · Saved on device'}</Text> : null}
+                  {(paymentBalance(sale) ?? 0) > 0 ? <Text style={styles.pendingLabel}>To collect {formatMoney(paymentBalance(sale)!)}{isOverdue(sale) ? ' · Overdue' : ''}{sale.syncState ? ' · Pending confirmation' : ''}</Text> : null}
                   <Text style={styles.time}>
                     {new Date(sale.saleDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     {' · '}{sale.items.length} item{sale.items.length === 1 ? '' : 's'}
@@ -114,6 +125,8 @@ export default function SalesScreen() {
 }
 
 const styles = StyleSheet.create({
+  pendingCard: { padding: 12, borderRadius: 12, backgroundColor: '#FFF5D8', borderWidth: 1, borderColor: '#EBDDAB', marginBottom: 12, gap: 4, minHeight: 44 },
+  pendingLabel: { color: '#795A24', fontSize: 12, fontWeight: '700', marginTop: 4 },
   content: {
     padding: 20,
     paddingBottom: 32,

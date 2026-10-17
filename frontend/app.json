@@ -20,11 +20,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.CAMERA"
       ],
       "package": "com.invento.app"
     },
@@ -61,16 +57,6 @@
         {
           "cameraPermission": "Allow Invento to take product, customer, bill, and reference photos.",
           "recordAudioAndroid": false
-        }
-      ],
-      [
-        "expo-media-library",
-        {
-          "photosPermission": "Allow Invento to browse photos and albums when you attach product images.",
-          "granularPermissions": [
-            "photo"
-          ],
-          "isAccessMediaLocationEnabled": false
         }
       ],
       "./plugins/with-local-only-android"

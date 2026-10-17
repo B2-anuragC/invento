@@ -123,23 +123,26 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable onPress={() => router.push('/sale/create')} style={styles.primaryAction}>
+          <Pressable onPress={() => router.push('/sale/quick')} style={styles.primaryAction}>
             <Text style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
           </Pressable>
-        </View>
-
-        {lowStockCount > 0 ? (
-          <Pressable onPress={() => router.push('/(tabs)/inventory')} style={styles.stockAlert}>
+          {lowStockCount > 0 ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`${lowStockCount} ${lowStockCount === 1 ? 'product needs' : 'products need'} attention. Review low stock.`} onPress={() => router.push('/(tabs)/inventory')} style={styles.stockAlert}>
             <Text style={styles.alertIcon}>⚠</Text>
             <View style={styles.alertCopy}>
-              <Text style={styles.alertTitle}>{lowStockCount} products need attention</Text>
-              <Text style={styles.alertSub}>Low stock · review stock levels</Text>
+              <Text style={styles.alertTitle}>{lowStockCount} low stock</Text>
+              <Text style={styles.alertSub}>Review stock</Text>
             </View>
             <Text style={styles.alertArrow}>›</Text>
           </Pressable>
-        ) : null}
+          ) : null}
+        </View>
 
 
+        <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={styles.pendingShortcut}>
+          <Text style={styles.activityLink}>Pending customer payments</Text>
+          <Text style={styles.activityLink}>›</Text>
+        </Pressable>
         <View style={styles.activityHeading}>
           <Text style={styles.activityTitle}>Recent sales</Text>
           <Pressable onPress={() => router.push('/(tabs)/sales')}><Text style={styles.activityLink}>View all</Text></Pressable>
@@ -175,6 +178,7 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  pendingShortcut: { minHeight: 44, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   content: { paddingHorizontal: 20, paddingBottom: 28, backgroundColor: '#F5F5F5' },
   header: { minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   greeting: { color: '#737B77', fontSize: 13 },
@@ -184,19 +188,19 @@ const styles = StyleSheet.create({
   errorCard: { marginTop: 14, borderRadius: 12, padding: 13, backgroundColor: '#FBECEA', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   errorText: { flex: 1, color: '#A74737', fontSize: 12 },
   retry: { color: '#176B50', fontSize: 12, fontWeight: '800' },
-  activityShortcut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12, minHeight: 44 },
-  salesCard: { marginTop: 16, padding: 19, borderRadius: 20, backgroundColor: '#104C38' },
+  activityShortcut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 44 },
+  salesCard: { marginTop: 4, padding: 19, borderRadius: 20, backgroundColor: '#104C38' },
   salesTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   salesLabel: { color: '#D7E5DD', fontSize: 12, fontWeight: '700', letterSpacing: 0.6 },
   arrow: { color: '#D7E5DD', fontSize: 22, fontWeight: '700' },
   salesValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginTop: 17 },
   salesValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', flexShrink: 1 },
   salesCount: { color: '#D7E5DD', fontSize: 12 },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  primaryAction: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, borderRadius: 10, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 14 },
+  primaryAction: { paddingHorizontal: 16, paddingVertical: 10, minHeight: 52, borderRadius: 10, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionPlus: { color: '#FFFFFF', fontSize: 21, fontWeight: '500' },
   primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  stockAlert: { minHeight: 66, marginTop: 14, paddingHorizontal: 15, borderRadius: 14, backgroundColor: '#FFF5D8', flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stockAlert: { flex: 1, minWidth: 0, minHeight: 52, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFF5D8', flexDirection: 'row', alignItems: 'center', gap: 6 },
   alertIcon: { color: '#946316', fontSize: 20 },
   alertCopy: { flex: 1 },
   alertTitle: { color: '#795A24', fontSize: 14, fontWeight: '700' },

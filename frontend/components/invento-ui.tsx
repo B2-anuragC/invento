@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     borderRadius: 18,
     padding: 16,
-    minHeight: 120,
+    minHeight: 100,
     justifyContent: 'space-between',
   },
   summaryLabel: {
