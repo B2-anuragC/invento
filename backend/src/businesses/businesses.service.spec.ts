@@ -20,6 +20,7 @@ describe('BusinessesService authorization', () => {
 
   it('rejects users who are not active members', async () => {
     const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: false }) },
     } as never;
     const service = new BusinessesService(prisma);
@@ -28,7 +29,8 @@ describe('BusinessesService authorization', () => {
 
   it('rejects members without manager role from updating a business', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
     } as never;
     const service = new BusinessesService(prisma);
     await expect(service.update('user-a', 'business-a', { name: 'new' })).rejects.toBeInstanceOf(ForbiddenException);
@@ -36,7 +38,8 @@ describe('BusinessesService authorization', () => {
 
   it('only allows managers to update pricing access', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       business: { update: vi.fn() },
     } as never;
     const service = new BusinessesService(prisma);
@@ -46,7 +49,8 @@ describe('BusinessesService authorization', () => {
 
   it('returns pricing access only for active business members', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
     } as never;
     const service = new BusinessesService(prisma);

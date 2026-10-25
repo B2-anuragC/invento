@@ -11,6 +11,22 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class AuthController {
   constructor(private readonly auth: AuthService, private readonly prisma: PrismaService) {}
 
+  @ApiBearerAuth()
+  @UseGuards(AccessTokenGuard)
+  @Get('panel-access')
+  async panelAccess(@Req() req: Request) {
+    const account = await this.prisma.user.findUnique({
+      where: { id: req.user.id }, select: { isActive: true, isPlatformAdmin: true },
+    });
+    if (!account?.isActive) throw new UnauthorizedException('Account is inactive.');
+    const memberships = await this.prisma.businessUser.findMany({
+      where: { userId: req.user.id, role: 'OWNER', isActive: true, business: { isActive: true } },
+      select: { business: { select: { id: true, name: true, slug: true } } },
+      orderBy: { business: { name: 'asc' } },
+    });
+    return { isPlatformAdmin: account.isPlatformAdmin, shops: memberships.map((m) => m.business) };
+  }
+
   @Post('register') register(@Body() dto: RegisterDto) { return this.auth.register(dto); }
   @Post('login') login(@Body() dto: LoginDto) { return this.auth.login(dto); }
   @Post('refresh') refresh(@Body() dto: RefreshDto) { return this.auth.refresh(dto.refreshToken); }

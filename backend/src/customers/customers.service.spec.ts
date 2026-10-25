@@ -12,6 +12,7 @@ const customerInput = {
 describe('CustomersService', () => {
   it.each([null, { isActive: false, role: 'OWNER' }])('rejects missing or inactive membership', async (membership) => {
     const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
       businessUser: { findUnique: vi.fn().mockResolvedValue(membership) },
       customer: { findMany: vi.fn() },
     };
@@ -21,7 +22,8 @@ describe('CustomersService', () => {
 
   it('scopes updates and deactivation to the requested business', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       customer: { findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() },
     };
     const service = new CustomersService(prisma as never);
@@ -33,20 +35,22 @@ describe('CustomersService', () => {
 
   it('allows admins to reactivate customers and members to search inactive history', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'ADMIN' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'ADMIN' }) },
       customer: { findFirst: vi.fn().mockResolvedValue({ id: 'customer-a' }), update: vi.fn(), findMany: vi.fn() },
     };
     const service = new CustomersService(prisma as never);
     await service.update('user-a', 'business-a', 'customer-a', { status: 'ACTIVE' });
     expect(prisma.customer.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'ACTIVE' }) }));
-    prisma.businessUser.findUnique.mockResolvedValue({ isActive: true, role: 'MEMBER' });
+    prisma.businessUser.findUnique.mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' });
     await service.list('user-a', 'business-a', { search: ' Jane ', status: 'INACTIVE' });
     expect(prisma.customer.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ businessId: 'business-a', status: 'INACTIVE', OR: expect.arrayContaining([{ name: { contains: 'Jane', mode: 'insensitive' } }]) }) }));
   });
   it('creates a customer under an authorized business', async () => {
     const customer = { id: 'customer-a', businessId: 'business-a', ...customerInput };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       customer: { create: vi.fn().mockResolvedValue(customer) },
     };
 
@@ -60,7 +64,8 @@ describe('CustomersService', () => {
 
   it('lists active customers for the business by default', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       customer: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
@@ -74,7 +79,8 @@ describe('CustomersService', () => {
   it('gets a customer that belongs to the business', async () => {
     const customer = { id: 'customer-a', businessId: 'business-a', ...customerInput };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       customer: { findFirst: vi.fn().mockResolvedValue(customer) },
     };
 
@@ -85,7 +91,8 @@ describe('CustomersService', () => {
     const existing = { id: 'customer-a', businessId: 'business-a', ...customerInput };
     const updated = { ...existing, name: 'Acme Renamed' };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       customer: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(updated) },
     };
 
@@ -96,7 +103,8 @@ describe('CustomersService', () => {
 
   it('rejects a member without manager permissions from updating a customer', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       customer: { findFirst: vi.fn(), update: vi.fn() },
     };
 
@@ -107,7 +115,8 @@ describe('CustomersService', () => {
 
   it('prevents a user from reading a customer belonging to another business (tenant isolation)', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       customer: { findFirst: vi.fn().mockResolvedValue(null) },
     };
 
@@ -119,7 +128,8 @@ describe('CustomersService', () => {
     const existing = { id: 'customer-a', businessId: 'business-a', status: 'ACTIVE' };
     const deactivated = { ...existing, status: 'INACTIVE' };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER' }) },
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       customer: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(deactivated) },
     };
 

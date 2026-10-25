@@ -45,7 +45,7 @@ function createFakePrisma(options: { role?: string; isActive?: boolean; product?
   const txClient = buildClient();
 
   const prisma = {
-    businessUser: { findUnique: vi.fn(async () => (isActive ? { isActive, role } : { isActive: false, role })) },
+    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role } : { isActive: false, role })) },
     product: { findFirst: vi.fn(async () => product) },
     inventory: txClient.inventory,
     inventoryTransaction: txClient.inventoryTransaction,

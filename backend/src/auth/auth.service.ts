@@ -25,6 +25,7 @@ export class AuthService {
     if (!user || !user.isActive || !(await verifyPassword(input.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid email or password.');
     }
+    await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
     return this.issueSession(user);
   }
 
@@ -40,13 +41,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${record.user.id} FOR UPDATE`;
+      const current = await tx.user.findUnique({ where: { id: record.user.id } });
+      if (!current?.isActive || (current.sessionVersion ?? 0) !== (payload.sv ?? 0)) throw new UnauthorizedException('Account is inactive.');
       const now = new Date();
       const consumed = await tx.refreshToken.updateMany({
         where: { id: record.id, revokedAt: null, expiresAt: { gt: now } },
         data: { revokedAt: now },
       });
       if (consumed.count !== 1) throw new UnauthorizedException('Invalid or expired refresh token.');
-      return this.issueSession(record.user, tx);
+      return this.issueSession(current, tx);
     });
   }
 
@@ -68,14 +72,14 @@ export class AuthService {
   verifyAccessToken(token: string, secret: string): AuthenticatedUser {
     const payload = verifyToken<AccessTokenPayload>(token, secret);
     if (payload.type !== 'access' || !payload.sub) throw new Error('Invalid token');
-    return { id: payload.sub, name: '', email: '' };
+    return { id: payload.sub, name: '', email: '', sessionVersion: payload.sv ?? 0 };
   }
 
-  private async issueSession(user: { id: string; name: string; email: string; phone?: string | null; avatarUrl?: string | null }, tx: Prisma.TransactionClient = this.prisma) {
+  private async issueSession(user: { id: string; name: string; email: string; phone?: string | null; avatarUrl?: string | null; sessionVersion?: number }, tx: Prisma.TransactionClient = this.prisma) {
     const now = Math.floor(Date.now() / 1000);
-    const accessToken = signToken({ sub: user.id, type: 'access', exp: now + 900 }, this.config.getOrThrow('JWT_ACCESS_SECRET'));
+    const accessToken = signToken({ sub: user.id, type: 'access', sv: user.sessionVersion ?? 0, exp: now + 900 }, this.config.getOrThrow('JWT_ACCESS_SECRET'));
     const id = randomUUID();
-    const refreshToken = signToken({ sub: user.id, jti: id, type: 'refresh', exp: now + 2_592_000 }, this.config.getOrThrow('JWT_REFRESH_SECRET'));
+    const refreshToken = signToken({ sub: user.id, jti: id, type: 'refresh', sv: user.sessionVersion ?? 0, exp: now + 2_592_000 }, this.config.getOrThrow('JWT_REFRESH_SECRET'));
     await tx.refreshToken.create({ data: { id, tokenHash: hashToken(refreshToken), userId: user.id, expiresAt: new Date((now + 2_592_000) * 1000) } });
     return { accessToken, refreshToken, user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatarUrl: user.avatarUrl } };
   }

@@ -76,7 +76,7 @@ function createFakeEnvironment(
   const txClient = buildTxClient();
 
   const prisma = {
-    businessUser: { findUnique: vi.fn(async () => (isActive ? { isActive, role } : { isActive: false, role })) },
+    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role } : { isActive: false, role })) },
     supplier: { findFirst: vi.fn(async () => supplier) },
     product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     purchase: { findFirst: vi.fn(async () => null) },
@@ -126,7 +126,7 @@ describe('PurchasesService', () => {
       items: [{ id: 'item-a', purchasePrice: new Prisma.Decimal('12'), lineTotal: new Prisma.Decimal('120'), quantity: new Prisma.Decimal('10') }],
     };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
       purchase: { findMany: vi.fn().mockResolvedValue([purchase]) },
     };

@@ -2,6 +2,7 @@ import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import { requireBusinessMembership } from '../auth/business-access.js';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InventoryTransactionType, PaymentMethod, Prisma, ProductStatus, CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -214,9 +215,7 @@ export class SalesService {
   }
 
   private async requireMembership(userId: string, businessId: string) {
-    const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId } } });
-    if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
-    return membership;
+    return requireBusinessMembership(this.prisma, userId, businessId);
   }
 
   private async requireManagerMembership(userId: string, businessId: string) {

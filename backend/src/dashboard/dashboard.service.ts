@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { requireBusinessMembership } from '../auth/business-access.js';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DashboardPageDto, DashboardRangeDto, DashboardTopProductsDto } from './dto/dashboard.dto.js';
@@ -129,9 +130,7 @@ export class DashboardService {
   }
 
   private async requireMembership(userId: string, businessId: string) {
-    const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId } } });
-    if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
-    return membership;
+    return requireBusinessMembership(this.prisma, userId, businessId);
   }
 
   private async canViewPurchasePrice(businessId: string, membership: { role: string }) {

@@ -1,3 +1,4 @@
+import { requireBusinessMembership } from '../auth/business-access.js';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -83,7 +84,7 @@ export class BusinessesService {
 
   async updateUser(actorId: string, businessId: string, userId: string, role: Role) {
     const actor = await this.requireRole(actorId, businessId, managerRoles);
-    const target = await this.requireMembership(userId, businessId);
+    const target = await requireBusinessMembership(this.prisma, userId, businessId, false);
     if (target.role === 'OWNER' && role !== 'OWNER') throw new ForbiddenException('Owner memberships cannot be demoted.');
     if (target.role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can change an owner membership.');
     if (role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can assign owner membership.');
@@ -92,7 +93,7 @@ export class BusinessesService {
 
   async removeUser(actorId: string, businessId: string, userId: string) {
     const actor = await this.requireRole(actorId, businessId, managerRoles);
-    const target = await this.requireMembership(userId, businessId);
+    const target = await requireBusinessMembership(this.prisma, userId, businessId, false);
     if (target.role === 'OWNER') throw new ForbiddenException('An owner membership cannot be removed.');
     if (actor.role === 'ADMIN' && target.role === 'ADMIN') throw new ForbiddenException('Administrators cannot remove another administrator.');
     await this.prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { isActive: false } });
@@ -100,9 +101,7 @@ export class BusinessesService {
   }
 
   private async requireMembership(userId: string, businessId: string) {
-    const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId } } });
-    if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
-    return membership;
+    return requireBusinessMembership(this.prisma, userId, businessId);
   }
 
   private async requireRole(userId: string, businessId: string, roles: Role[]) {

@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [tsconfigPaths()],
   test: {
     globals: true,
+    // Database suites inspect global platform totals; isolate files from each other.
+    fileParallelism: false,
     root: './',
     include: ['**/*.e2e-spec.ts'],
   },

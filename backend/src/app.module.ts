@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { createIORedisClient, RedisConnection } from 'bullmq';
 import { Redis } from 'ioredis';
 import { ConfigService } from '@nestjs/config';
+import { PlatformAdminModule } from './platform-admin/platform-admin.module.js';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
@@ -48,6 +49,7 @@ import { SyncModule } from './sync/sync.module.js';
     }),
     PrismaModule,
     FilesModule,
+    PlatformAdminModule,
     HealthModule,
     AuthModule,
     BusinessesModule,

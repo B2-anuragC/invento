@@ -26,7 +26,7 @@ describe('Dashboard business dates', () => {
 
   it('fills missing days and sums decimal amounts without float arithmetic', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true }) },
       $queryRaw: vi.fn().mockResolvedValue([
         { date: '2026-09-19', total: new Prisma.Decimal('0.1'), count: 1 },
         { date: '2026-09-21', total: new Prisma.Decimal('0.2'), count: 2 },
@@ -41,14 +41,14 @@ describe('Dashboard business dates', () => {
   });
 
   it('checks membership before querying aggregates', async () => {
-    const prisma = { businessUser: { findUnique: vi.fn().mockResolvedValue(null) }, $queryRaw: vi.fn() };
+    const prisma = { user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) }, businessUser: { findUnique: vi.fn().mockResolvedValue(null) }, $queryRaw: vi.fn() };
     await expect(new DashboardService(prisma as never).sales('u', 'other', {})).rejects.toThrow(ForbiddenException);
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   it('hides purchase totals from members when purchase-price access is disabled', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
       $queryRaw: vi.fn().mockResolvedValue([
         { date: '2026-09-20', total: new Prisma.Decimal('520.00'), count: 2 },

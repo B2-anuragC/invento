@@ -14,8 +14,14 @@ export class AccessTokenGuard implements CanActivate {
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('Authentication required.');
     try {
       const payload = this.auth.verifyAccessToken(header.slice(7), this.config.getOrThrow<string>('JWT_ACCESS_SECRET'));
-      const user = await this.prisma.user.findUnique({ where: { id: payload.id }, select: { isActive: true } });
-      if (!user?.isActive) throw new UnauthorizedException('Account is inactive.');
+      const user = await this.prisma.user.findUnique({ where: { id: payload.id }, select: { isActive: true, sessionVersion: true } });
+      if (!user?.isActive || user.sessionVersion !== payload.sessionVersion) throw new UnauthorizedException('Account is inactive.');
+      // Conditional update throttles writes across instances without an in-memory cache.
+      const now = new Date();
+      await this.prisma.user.updateMany({
+        where: { id: payload.id, OR: [{ lastActivityAt: null }, { lastActivityAt: { lt: new Date(now.getTime() - 300_000) } }] },
+        data: { lastActivityAt: now },
+      });
       request.user = payload;
       return true;
     } catch {

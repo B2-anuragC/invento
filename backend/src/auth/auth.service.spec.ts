@@ -11,7 +11,7 @@ describe('AuthService', () => {
 
   it('rejects refresh when another request has already consumed the token', async () => {
     const token = signToken({ jti: 'refresh-1', exp: Math.floor(Date.now() / 1000) + 60 }, config.getOrThrow('JWT_REFRESH_SECRET'));
-    const tx = { refreshToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), create: vi.fn() } };
+    const tx = { $queryRaw: vi.fn(), user: { findUnique: vi.fn().mockResolvedValue({ id: 'user-1', isActive: true }) }, refreshToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), create: vi.fn() } };
     const prisma = {
       refreshToken: { findUnique: vi.fn().mockResolvedValue({ id: 'refresh-1', expiresAt: new Date(Date.now() + 60000), user: { isActive: true } }) },
       $transaction: vi.fn(async (callback) => callback(tx)),
@@ -24,7 +24,7 @@ describe('AuthService', () => {
   it('rolls back token consumption if creating the replacement session fails', async () => {
     const token = signToken({ jti: 'refresh-1', exp: Math.floor(Date.now() / 1000) + 60 }, config.getOrThrow('JWT_REFRESH_SECRET'));
     const record = { id: 'refresh-1', revokedAt: null as Date | null, expiresAt: new Date(Date.now() + 60000), user: { id: 'user-1', name: 'Owner', email: 'owner@test.local', isActive: true } };
-    const tx = { refreshToken: {
+    const tx = { $queryRaw: vi.fn(), user: { findUnique: vi.fn().mockResolvedValue({ id: 'user-1', isActive: true }) }, refreshToken: {
       updateMany: vi.fn(async ({ data }) => { record.revokedAt = data.revokedAt; return { count: 1 }; }),
       create: vi.fn().mockRejectedValue(new Error('Session write failed')),
     } };

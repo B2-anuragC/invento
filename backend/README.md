@@ -170,3 +170,9 @@ retain the compact cover fields.
 Apply the `20261015000000_product_gallery` migration before running this version:
 `npm --prefix backend run prisma:migrate:deploy` followed by
 `npm --prefix backend run prisma:generate`. Docker startup performs these steps.
+## Platform administration
+
+The separate `admin/` workspace uses this backend's `/api/platform-admin` module.
+See [admin setup, access policy, migrations, and verification](../admin/README.md).
+Platform and business permissions remain separate; restrictions are stored and checked
+in PostgreSQL. Redis and BullMQ are not required for this feature.
