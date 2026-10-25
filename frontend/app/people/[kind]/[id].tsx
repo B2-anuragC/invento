@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
@@ -29,6 +30,7 @@ type Contact = CustomerRecord | SupplierRecord;
 
 export default function ContactDetailsScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
   const contactKind = kind === 'suppliers' ? 'suppliers' : 'customers';
   const [contact, setContact] = useState<Contact | null>(null);
@@ -61,9 +63,9 @@ export default function ContactDetailsScreen() {
       : fetchSupplier(session, id);
     Promise.all([
       contactRequest,
-      contactKind === 'customers' ? fetchSales(session, { customerId: id }) : fetchPurchases(session, { supplierId: id }),
+      contactKind === 'customers' ? (can('sales.view') ? fetchSales(session, { customerId: id }) : []) : (can('purchases.view') ? fetchPurchases(session, { supplierId: id }) : []),
       fetchPricingAccess(session),
-      contactKind === 'suppliers' ? fetchProducts(session) : Promise.resolve([]),
+      contactKind === 'suppliers' && can('products.view') ? fetchProducts(session) : Promise.resolve([]),
     ])
       .then(([record, history, access, productData]) => {
         setCatalogProducts(productData);
@@ -81,11 +83,11 @@ export default function ContactDetailsScreen() {
         });
         if (contactKind === 'customers') setSales(history as SaleRecord[]);
         else setPurchases(history as PurchaseRecord[]);
-        setCanEdit(access.role === 'OWNER' || access.role === 'ADMIN');
+        setCanEdit(!!access.permissions?.includes(contactKind === 'suppliers' ? 'suppliers.update' : 'customers.update'));
       })
       .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : 'Could not load contact details.'))
       .finally(() => setLoading(false));
-  }, [contactKind, id]);
+  }, [contactKind, id, can]);
 
   useFocusEffect(useCallback(() => { loadDetails(); }, [loadDetails]));
 
@@ -200,7 +202,7 @@ export default function ContactDetailsScreen() {
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Payment method</Text><Text style={customerStyles.name}>{sale.paymentMethod.replaceAll('_', ' ')}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Invoice total</Text><Text style={customerStyles.link}>{formatMoney(Number(sale.total))}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>To collect</Text><Text style={customerStyles.link}>{paymentBalance(sale) == null ? 'Not confirmed' : formatMoney(paymentBalance(sale)!)}</Text></View>{sale.dueDate ? <Text style={[customerStyles.meta, isOverdue(sale) && { color: '#A74737' }]}>Due {sale.dueDate.slice(0, 10)} · {isOverdue(sale) ? 'Overdue' : 'Not overdue'}</Text> : null}
-              {canEdit && sale.total != null && paymentBalance(sale) !== 0 ? <Pressable accessibilityRole="button" onPress={() => setPaymentTarget(sale)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
+              {can('sales.payments') && sale.total != null && paymentBalance(sale) !== 0 ? <Pressable accessibilityRole="button" onPress={() => setPaymentTarget(sale)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
               <View style={customerStyles.divider} />
               <Pressable accessibilityRole="button" accessibilityLabel={`View invoice ${sale.invoiceNumber || sale.id}`} onPress={() => router.push(`/sale/${sale.id}`)} style={[customerStyles.row, { minHeight: 44 }]}><Ionicons name="receipt-outline" size={19} color="#176344" /><Text style={[customerStyles.link, customerStyles.copy]}>View invoice / receipt</Text><Ionicons name="chevron-forward" size={22} color="#176344" /></Pressable>
             </View>
@@ -261,7 +263,7 @@ export default function ContactDetailsScreen() {
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Supplier invoice</Text><Text style={customerStyles.name}>{purchase.invoiceNumber || 'Not provided'}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Purchase total</Text><Text style={customerStyles.link}>{purchase.total == null ? 'Restricted price' : formatMoney(Number(purchase.total))}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>To pay</Text><Text style={customerStyles.link}>{paymentBalance(purchase) == null ? 'Not confirmed' : formatMoney(paymentBalance(purchase)!)}</Text></View>{purchase.dueDate ? <Text style={[customerStyles.meta, isOverdue(purchase) && { color: '#A74737' }]}>Due {purchase.dueDate.slice(0, 10)} · {isOverdue(purchase) ? 'Overdue' : 'Not overdue'}</Text> : null}
-              {canEdit && purchase.total != null && paymentBalance(purchase) !== 0 ? <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); setPaymentTarget(purchase); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
+              {can('purchases.payments') && purchase.total != null && paymentBalance(purchase) !== 0 ? <Pressable accessibilityRole="button" onPress={(event) => { event.stopPropagation(); setPaymentTarget(purchase); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}
               <View style={customerStyles.divider} />
               <View style={customerStyles.row}><Ionicons name="receipt-outline" size={19} color="#176344" /><Text style={[customerStyles.link, customerStyles.copy]}>View purchase receipt</Text><Ionicons name="chevron-forward" size={22} color="#176344" /></View>
             </Pressable>

@@ -14,7 +14,7 @@ describe('Queued uploads', () => {
   it('stages bytes outside Redis and configures retries', async () => {
     const queue = { add: vi.fn().mockImplementation(async (_name, _data, options) => ({ id: options.jobId })) };
     const service = new FileJobsService(queue as never, { root } as never);
-    const result = await service.enqueue('business-a', file, 'product');
+    const result = await service.enqueue('business-a', file, 'product', 'actor');
     const [name, data, options] = queue.add.mock.calls[0];
     expect(name).toBe('process-upload');
     expect(data).not.toHaveProperty('base64');
@@ -35,9 +35,9 @@ describe('Queued uploads', () => {
     const queue = { add: vi.fn().mockImplementation(async (_name, data, options) => ({ id: options.jobId, data })) };
     const files = { root, store: vi.fn().mockResolvedValue({ url: '/files/asset/original' }) };
     const service = new FileJobsService(queue as never, files as never);
-    const { jobId } = await service.enqueue('business-a', file, 'product');
+    const { jobId } = await service.enqueue('business-a', file, 'product', 'actor');
     const job = { id: jobId, name: 'process-upload', data: queue.add.mock.calls[0][1] };
-    const processor = new FileProcessor(files as never);
+    const processor = new FileProcessor(files as never, { businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', business: { isActive: true } }) } } as never);
     expect(await processor.process(job as never)).toEqual({ url: '/files/asset/original' });
     expect(files.store).toHaveBeenCalledWith('business-a', file, 'product');
     files.store.mockRejectedValue(new BadRequestException('Invalid image'));
@@ -46,4 +46,12 @@ describe('Queued uploads', () => {
     await expect(readFile(join(root, '.jobs', jobId))).rejects.toThrow();
     await expect(processor.process({ ...job, data: { ...job.data, stagingId: '../escape' } } as never)).rejects.toBeInstanceOf(UnrecoverableError);
   });
+  it('reauthorizes queued uploads and stops a revoked actor before touching the file', async () => {
+    const files = { root, store: vi.fn() };
+    const db = { businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'CUSTOM', business: { isActive: true }, user: { isActive: true }, roleDefinition: { permissions: [] } }) } };
+    const processor = new FileProcessor(files as never, db as never);
+    await expect(processor.process({ name: 'process-upload', data: { businessId: 'business-a', userId: 'revoked', stagingId: crypto.randomUUID(), kind: 'product' } } as never)).rejects.toThrow('permission');
+    expect(files.store).not.toHaveBeenCalled();
+  });
+
 });

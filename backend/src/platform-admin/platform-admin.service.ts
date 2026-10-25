@@ -1,3 +1,4 @@
+import { lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -351,6 +352,8 @@ export class PlatformAdminService {
     revoke = false,
   ) {
     return this.prisma.$transaction(async (tx) => {
+      await lockAuthorizationChanges(tx);
+      if (targetType === 'business') await lockBusiness(tx, targetId);
       // Serialize administrator management, including last-admin checks. Shared with bootstrap CLI.
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(80241024)`;
       const actor = await tx.user.findUnique({
@@ -359,6 +362,17 @@ export class PlatformAdminService {
       });
       if (!actor?.isActive || !actor.isPlatformAdmin)
         throw new ForbiddenException('Platform administrator access required.');
+      if (targetType === 'user' && !revoke && input.isActive !== undefined) {
+        const memberships = await tx.businessUser.findMany({ where: { userId: targetId }, select: { businessId: true }, orderBy: { businessId: 'asc' } });
+        for (const membership of memberships) await lockBusiness(tx, membership.businessId);
+        if (input.isActive === false) {
+          const owned = await tx.businessUser.findMany({ where: { userId: targetId, role: 'OWNER', isActive: true, user: { isActive: true } }, select: { businessId: true } });
+          for (const membership of owned) {
+            if (await tx.businessUser.count({ where: { businessId: membership.businessId, role: 'OWNER', isActive: true, user: { isActive: true } } }) <= 1) throw new ForbiddenException('Assign another active owner before suspending this account.');
+          }
+        }
+        for (const membership of memberships) await tx.platformAuditLog.create({ data: { actorId, businessId: membership.businessId, action: 'ACCOUNT_STATUS_CHANGED', targetType: 'user', targetId, reason: input.reason, previous: {}, next: { isActive: input.isActive } } });
+      }
       if (targetType === 'user')
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${targetId} FOR UPDATE`;
       const previous =

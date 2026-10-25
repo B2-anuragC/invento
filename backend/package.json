@@ -28,7 +28,8 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down --volumes",
     "typecheck": "tsc --noEmit --incremental false",
-    "test:mvp": "node test/run-mvp-verification.mjs"
+    "test:mvp": "node test/run-mvp-verification.mjs",
+    "test:authorization:db": "node scripts/test-authorization.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",

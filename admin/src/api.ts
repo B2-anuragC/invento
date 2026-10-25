@@ -8,18 +8,21 @@ export function setSessionExpired(handler: () => void) {
   onSessionExpired = handler;
 }
 export function clearSession() {
+  platformSession = false;
   accessToken = "";
   refreshToken = "";
 }
+let platformSession = false;
 async function send(path: string, init: RequestInit = {}) {
-  return fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...init.headers,
-    },
-  });
+  const headers = new Headers(init.headers);
+  const business = path.startsWith("/businesses/")
+    ? decodeURIComponent(path.split("/")[2])
+    : headers.get("X-Business-Id");
+  headers.set("Content-Type", "application/json");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  if (platformSession && business)
+    headers.set("X-Platform-Access", "business-management");
+  return fetch(`${base}${path}`, { ...init, headers });
 }
 async function parse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
@@ -51,8 +54,9 @@ export async function login(
     const access = await api<PanelAccess>("/auth/panel-access");
     if (!access.isPlatformAdmin && !access.shops.length)
       throw new Error(
-        "This panel requires an active shop owner or platform administrator account.",
+        "This panel requires an active business member or platform administrator account.",
       );
+    platformSession = access.isPlatformAdmin;
     return access;
   } catch (error) {
     await logout();

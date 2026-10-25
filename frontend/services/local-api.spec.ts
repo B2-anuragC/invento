@@ -68,7 +68,7 @@ it("starts a fresh local business without a login, server or network and persist
     (await send<OfflineSnapshot>("/sync/snapshot")).inventory[0].quantity,
   ).toBe("10");
   expect(await send("/businesses")).toMatchObject([
-    { role: "OWNER", business: { name: "My shop" } },
+    { role: 'OWNER', business: { name: "My shop" } },
   ]);
 });
 it("records local sales and purchases once, updates stock, assigns a device invoice, and records later payments", async () => {

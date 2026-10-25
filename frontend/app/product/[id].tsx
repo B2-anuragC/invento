@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useState } from 'react';
@@ -55,6 +56,7 @@ function decimalValue(value: string, precision: number) {
 
 export default function ProductDetailsScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const { id, created } = useLocalSearchParams<{ id: string; created?: string }>();
   const isNew = id === 'new';
   const [product, setProduct] = useState<ProductRecord | null>(null);
@@ -297,7 +299,7 @@ export default function ProductDetailsScreen() {
             <Text style={styles.title}>{isNew ? 'Add product' : product?.name}</Text>
             <Text style={styles.subtitle}>{isNew ? 'CATALOG · OWNER VIEW' : `${product?.category ? `${product.category} · ` : ''}${product?.sku} · ${product?.status.toLowerCase()}`}</Text>
           </View>
-          {!isNew && !editing ? (
+          {!isNew && !editing && can('products.update') ? (
             <Pressable onPress={() => { setPhoto({ images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); }} style={styles.smallAction}>
               <Text style={styles.smallActionText}>Edit</Text>
             </Pressable>
@@ -307,9 +309,9 @@ export default function ProductDetailsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
-        <ProductPhoto value={editing ? photo : { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onEdit={!editing ? (next) => { setPhoto(next ?? { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); } : undefined} onBusy={setPhotoBusy} disabled={saving} />
+        <ProductPhoto value={editing ? photo : { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onEdit={!editing && can('products.update') ? (next) => { setPhoto(next ?? { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); } : undefined} onBusy={setPhotoBusy} disabled={saving} />
 
-        {editing ? (
+        {editing && can(isNew ? 'products.create' : 'products.update') ? (
           <>
             {isNew ? (
               <View style={styles.unsavedRow}>
@@ -491,7 +493,7 @@ export default function ProductDetailsScreen() {
               </Text>
             </View>
 
-            {needsOpeningStock ? (
+            {needsOpeningStock && can('inventory.adjust') ? (
               <View style={styles.openingCard}>
                 <Text style={styles.sectionTitle}>Record opening stock</Text>
                 <Text style={styles.helperText}>This creates the initial inventory ledger entry. It can only be recorded once.</Text>
@@ -533,7 +535,7 @@ export default function ProductDetailsScreen() {
               </View>
             )) : <Text style={styles.helperText}>No stock transactions recorded.</Text>}
 
-            <Pressable onPress={toggleActive} style={styles.deactivateButton}>
+            <Pressable disabled={!can(product?.status === 'INACTIVE' ? 'products.update' : 'products.delete')} onPress={toggleActive} style={[styles.deactivateButton, !can(product?.status === 'INACTIVE' ? 'products.update' : 'products.delete') && { display: 'none' }]}>
               <Text style={styles.deactivateText}>{product?.status === 'INACTIVE' ? 'Reactivate product' : 'Deactivate product'}</Text>
             </Pressable>
           </>

@@ -1,3 +1,5 @@
+import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
+import { UseInterceptors } from '@nestjs/common';
 import { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
@@ -9,7 +11,8 @@ import { SalesService } from './sales.service.js';
 @ApiTags('Sales')
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Business-Id', description: 'Business to access for this request.', required: true })
-@UseGuards(AccessTokenGuard)
+@UseInterceptors(BusinessAccessInterceptor)
+@UseGuards(AccessTokenGuard, BusinessPermissionGuard)
 @Controller('sales')
 export class SalesController {
   constructor(private readonly sales: SalesService) {}

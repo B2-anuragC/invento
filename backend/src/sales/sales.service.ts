@@ -2,8 +2,8 @@ import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
-import { requireBusinessMembership } from '../auth/business-access.js';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { requireBusinessPermission } from '../auth/business-access.js';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InventoryTransactionType, PaymentMethod, Prisma, ProductStatus, CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -41,7 +41,7 @@ export class SalesService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: CreateSaleInput) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.create');
     if (input.requestId) {
       const existing = await this.prisma.sale.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } }, include: { items: true, payments: true, customer: true } });
       if (existing) return existing;
@@ -159,13 +159,13 @@ export class SalesService {
   }
 
   async recordPayment(userId: string, businessId: string, id: string, input: RecordPaymentDto) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.payments');
     await recordTransactionPayment(this.prisma, 'sale', businessId, userId, id, input);
     return this.get(userId, businessId, id);
   }
 
   async list(userId: string, businessId: string, query: { customerId?: string; search?: string }) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.view');
     return this.prisma.sale.findMany({
       where: {
         businessId,
@@ -178,7 +178,7 @@ export class SalesService {
   }
 
   async get(userId: string, businessId: string, saleId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.view');
     return this.requireSale(businessId, saleId);
   }
 
@@ -192,7 +192,7 @@ export class SalesService {
    * audited adjustment or a future reversal flow, not editing settled items.
    */
   async update(userId: string, businessId: string, saleId: string, input: UpdateSaleInput) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.update');
     await this.requireSale(businessId, saleId);
 
     const saleDate = input.saleDate ? new Date(input.saleDate) : undefined;
@@ -214,13 +214,5 @@ export class SalesService {
     return sale;
   }
 
-  private async requireMembership(userId: string, businessId: string) {
-    return requireBusinessMembership(this.prisma, userId, businessId);
-  }
 
-  private async requireManagerMembership(userId: string, businessId: string) {
-    const membership = await this.requireMembership(userId, businessId);
-    if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') throw new ForbiddenException('You do not have permission for this action.');
-    return membership;
-  }
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -77,7 +78,7 @@ function createFakeEnvironment(
 
   const prisma = {
     user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role } : { isActive: false, role })) },
+    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role, roleDefinition: { permissions: [...(DEFAULT_ROLE_PERMISSIONS[role] ?? [])] } } : { isActive: false, role })) },
     customer: { findFirst: vi.fn(async () => customer) },
     product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     sale: { findFirst: vi.fn(async () => null) },
@@ -192,7 +193,7 @@ describe('SalesService', () => {
   it('scopes sale history and detail lookups to the business', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       sale: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
     };
     const service = new SalesService(prisma as never, {} as never);
@@ -205,7 +206,7 @@ describe('SalesService', () => {
   it('updates metadata without invoking inventory and denies cross-business updates', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'ADMIN' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'ADMIN', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.ADMIN] } }) },
       sale: { findFirst: vi.fn().mockResolvedValue({ id: 'sale-a' }), update: vi.fn().mockResolvedValue({ id: 'sale-a', note: 'corrected' }) },
     };
     const inventory = { applyMovement: vi.fn() };

@@ -1,7 +1,7 @@
 import { FilesService } from '../files/files.service.js';
 import { BadRequestException } from '@nestjs/common';
-import { requireBusinessMembership } from '../auth/business-access.js';
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { requireBusinessPermission } from '../auth/business-access.js';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { customerStatuses } from './dto/customer.dto.js';
@@ -22,7 +22,7 @@ export class CustomersService {
   constructor(private readonly prisma: PrismaService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: Required<Pick<CustomerInput, 'name'>> & Omit<CustomerInput, 'name' | 'status'>, clientId?: string) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'customers.create');
     const images = await this.images(businessId, input);
     return this.prisma.customer.create({
       data: {
@@ -39,7 +39,7 @@ export class CustomersService {
   }
 
   async list(userId: string, businessId: string, query: { search?: string; status?: (typeof customerStatuses)[number] }) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'customers.view');
     const search = query.search?.trim();
     return this.prisma.customer.findMany({
       where: {
@@ -61,12 +61,13 @@ export class CustomersService {
   }
 
   async get(userId: string, businessId: string, customerId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'customers.view');
     return this.requireCustomer(businessId, customerId);
   }
 
   async update(userId: string, businessId: string, customerId: string, input: CustomerInput) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'customers.update');
+    if (input.status === 'INACTIVE') await requireBusinessPermission(this.prisma, userId, businessId, 'customers.delete');
     await this.requireCustomer(businessId, customerId);
     const images = await this.images(businessId, input);
     return this.prisma.customer.update({
@@ -86,7 +87,7 @@ export class CustomersService {
 
   /** Deactivates a customer without deleting it, preserving historical sale records. */
   async deactivate(userId: string, businessId: string, customerId: string) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'customers.delete');
     await this.requireCustomer(businessId, customerId);
     return this.prisma.customer.update({ where: { id: customerId }, data: { revision: { increment: 1 }, status: CustomerStatus.INACTIVE } });
   }
@@ -118,15 +119,7 @@ export class CustomersService {
     return customer;
   }
 
-  private async requireMembership(userId: string, businessId: string) {
-    return requireBusinessMembership(this.prisma, userId, businessId);
-  }
 
-  private async requireManagerMembership(userId: string, businessId: string) {
-    const membership = await this.requireMembership(userId, businessId);
-    if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') throw new ForbiddenException('You do not have permission for this action.');
-    return membership;
-  }
 
   private toStatus(status: (typeof customerStatuses)[number]) {
     return status === 'ACTIVE' ? CustomerStatus.ACTIVE : CustomerStatus.INACTIVE;

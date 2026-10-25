@@ -20,7 +20,7 @@ export class AuthController {
     });
     if (!account?.isActive) throw new UnauthorizedException('Account is inactive.');
     const memberships = await this.prisma.businessUser.findMany({
-      where: { userId: req.user.id, role: 'OWNER', isActive: true, business: { isActive: true } },
+      where: { userId: req.user.id, isActive: true, business: { isActive: true } },
       select: { business: { select: { id: true, name: true, slug: true } } },
       orderBy: { business: { name: 'asc' } },
     });

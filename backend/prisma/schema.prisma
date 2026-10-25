@@ -19,6 +19,7 @@ model Business {
   isActive              Boolean                @default(true)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
+  roles                 BusinessRole[]
   users                 BusinessUser[]
   products              Product[]
   inventories           Inventory[]
@@ -79,6 +80,7 @@ model BusinessUser {
   businessId String
   userId     String
   role       String   @default("OWNER")
+  roleDefinition BusinessRole @relation(fields: [businessId, role], references: [businessId, key], onDelete: Restrict, onUpdate: Cascade)
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -391,4 +393,18 @@ model PlatformAuditLog {
   @@index([businessId, createdAt])
   @@index([actorId, createdAt])
   @@map("platform_audit_logs")
+}
+
+model BusinessRole {
+  businessId String
+  key String
+  name String
+  permissions String[]
+  isSystem Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  members BusinessUser[]
+  @@id([businessId, key])
+  @@map("business_roles")
 }

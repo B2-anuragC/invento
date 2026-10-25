@@ -1,3 +1,4 @@
+import { PermissionsProvider } from '@/services/permissions';
 import { CameraRecoveryNotice } from "@/components/camera-photo";
 import { DefaultTheme, ThemeProvider, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -12,7 +13,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider value={DefaultTheme}>
+    <PermissionsProvider><ThemeProvider value={DefaultTheme}>
       {/* The root owns top/side system insets once, including global notices. */}
       <SafeAreaView
         edges={["top", "left", "right"]}
@@ -78,6 +79,6 @@ export default function RootLayout() {
         </View>
       </SafeAreaView>
       <StatusBar style="dark" />
-    </ThemeProvider>
+    </ThemeProvider></PermissionsProvider>
   );
 }

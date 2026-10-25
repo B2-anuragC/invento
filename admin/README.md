@@ -18,7 +18,7 @@ Configure `backend/.env` using its example. Apply the additive migration to your
 npm --prefix backend run prisma:migrate:deploy
 ```
 
-Use an existing Invento account. Every active shop OWNER can sign in directly; no platform grant is needed. Platform operators can grant global access using the command below. Run these in separate terminals:
+Use an existing Invento account. Every active business member can sign in directly; assigned permissions determine their workspace. No platform grant is needed. Platform operators can grant global access using the command below. Run these in separate terminals:
 
 ```sh
 npm run start:backend
@@ -29,12 +29,11 @@ Open http://127.0.0.1:5174. Vite forwards `/api` to `http://127.0.0.1:3000`. `VI
 
 ## Shop owners and platform administrators
 
-The same login supports two workspaces. `GET /api/auth/panel-access` discovers current platform privileges and active OWNER memberships from the database. Accounts with only MEMBER or shop ADMIN roles cannot enter this owner panel; their existing application permissions are unchanged.
+The same login supports permission-scoped business workspaces and separate platform administration. See [the authorization model, role matrix, migration, API contracts, and rollout](../docs/AUTHORIZATION.md).
 
-- Shop owners see only their active owned shops, with a selector when they own multiple shops. The workspace supports dashboard totals, product/customer/supplier creation and editing, inactive-record reactivation, sales and purchases with multiple line items, transaction metadata corrections, opening stock and adjustments, recent movements, team membership/role management, shop details, and purchase-price visibility settings.
-- Platform administrators retain the global overview, business/user directories, restriction controls, session revocation, and audit log. Open a business detail and select **Manage this shop** for its operational workspace. Platform shop changes retain the actual operator user ID; no fake membership is persisted.
-- Every business operation rechecks server-side membership or current platform privileges. Changing a browser route or `X-Business-Id` header cannot give an owner access to another business. Product/customer/supplier relationships remain scoped to the selected shop. Platform APIs remain exclusively platform-admin protected.
-- Suspended shops cannot receive operational changes, even from platform operators. Reactivate through the audited platform control first. OWNER memberships remain protected from removal/demotion, and platform privileges are never inherited from a shop role.
+Business members see their active businesses and only permitted features. After selecting a business, the **Team** and **Roles** sections use the same centralized APIs as mobile's **Users & permissions** screen. Default and custom roles, activation/deactivation, granular permissions, and recent access history are managed there. Owners are protected; business roles never confer platform privileges.
+
+Platform operators retain global monitoring and restriction controls. Selecting a business opens its management workspace directly, with Roles and Team inside it. Platform access is authorized on every request and recorded automatically; no entry reason form is shown. Account suspension is rejected while it would leave an active business without an active owner.
 
 ## Grant the first platform administrator
 
@@ -49,7 +48,7 @@ The command grants `isPlatformAdmin` and records an audit event in one database 
 ## Access and restriction policy
 
 - Platform endpoints use the existing access-token guard followed by a separate platform-admin guard. The administrator flag is checked in PostgreSQL on each request.
-- All normal domain services use `requireBusinessMembership` to verify active membership and an active business, or current platform-administrator privileges for an active business. No client business ID is trusted by itself. Business-specific financial/product/inventory queries retain their existing tenant scoping and related-record validation.
+- All normal domain services use `requireBusinessMembership` to verify active membership and an active business, or explicitly authorized, audited platform support for an active business. No client business ID is trusted by itself. Business-specific financial/product/inventory queries retain their existing tenant scoping and related-record validation.
 - Business suspension blocks subsequent business API reads and writes for every member. Login and account-level APIs remain available; users can access other active businesses. The business disappears from the normal business picker. Platform administrators retain explicit monitoring/reactivation access.
 - Suspension is checked at request/service admission. It does not cancel requests already admitted, roll back completed writes, or remotely erase cached device data. Reactivation restores normal business API admission. This checkout has no background workers or offline sync API; future workers/sync must call the same restriction policy before executing business work. BullMQ, if needed later, must use PostgreSQL, not Redis.
 - User disablement blocks login, refresh, and subsequent authenticated requests. It increments `sessionVersion` and revokes all refresh tokens. Reactivation does not restore old sessions: a fresh login is required.

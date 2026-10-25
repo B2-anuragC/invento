@@ -42,7 +42,7 @@ export function projectOffline(state: OfflineState): OfflineSnapshot {
       view[command.entity as CatalogEntity] = view[command.entity as CatalogEntity].filter((entry) => entry.id !== command.entityId).concat(record);
     }
   }
-  if (view.access.role === 'MEMBER' && !view.access.membersCanViewPurchasePrice) {
+  if (!view.access.permissions?.includes('pricing.view')) {
     view.purchases = view.purchases.map((record) => { const { total: _total, subtotal: _subtotal, taxTotal: _tax, amountPaid: _paid, payments: _payments, attachment: _attachment, ...visible } = record; return { ...visible, items: record.items.map((item) => { const { purchasePrice: _price, lineTotal: _line, taxAmount: _amount, ...rest } = item; return rest; }) }; });
     view.products = view.products.map((record) => { const { purchasePrice: _price, ...visible } = record as ProductRecord & LocalRecord; return visible as LocalRecord; });
   }

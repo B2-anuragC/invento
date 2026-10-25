@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -76,7 +77,7 @@ function createFakeEnvironment(
   const txClient = buildTxClient();
 
   const prisma = {
-    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role } : { isActive: false, role })) },
+    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role, roleDefinition: { permissions: [...(DEFAULT_ROLE_PERMISSIONS[role] ?? [])] } } : { isActive: false, role })) },
     supplier: { findFirst: vi.fn(async () => supplier) },
     product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     purchase: { findFirst: vi.fn(async () => null) },
@@ -126,7 +127,7 @@ describe('PurchasesService', () => {
       items: [{ id: 'item-a', purchasePrice: new Prisma.Decimal('12'), lineTotal: new Prisma.Decimal('120'), quantity: new Prisma.Decimal('10') }],
     };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
       purchase: { findMany: vi.fn().mockResolvedValue([purchase]) },
     };
@@ -142,7 +143,7 @@ describe('PurchasesService', () => {
 
     const result = await service.create('user-a', 'business-a', purchaseInput);
 
-    expect(result.total.toString()).toBe('2000');
+    expect(result.total?.toString()).toBe('2000');
     expect(store.purchaseItems).toHaveLength(1);
     expect(store.inventory['product-a'].quantity.toString()).toBe('150');
     expect(store.inventoryTransactions).toHaveLength(1);
@@ -166,7 +167,7 @@ describe('PurchasesService', () => {
       ],
     });
 
-    expect(result.total.toString()).toBe('2300');
+    expect(result.total?.toString()).toBe('2300');
     expect(store.purchaseItems).toHaveLength(2);
     expect(store.inventory['product-a'].quantity.toString()).toBe('150');
     expect(store.inventory['product-b'].quantity.toString()).toBe('30');

@@ -1,4 +1,4 @@
-import { requireBusinessMembership } from '../auth/business-access.js';
+import { requireBusinessPermission } from '../auth/business-access.js';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -32,7 +32,7 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async summary(userId: string, businessId: string) {
-    const membership = await this.requireMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const canViewPurchasePrice = await this.canViewPurchasePrice(businessId, membership);
     const today = new Date(Date.now() + indiaOffsetMs).toISOString().slice(0, 10);
     const range = dashboardRange({ from: today, to: today });
@@ -66,7 +66,7 @@ export class DashboardService {
   }
 
   async sales(userId: string, businessId: string, query: DashboardRangeDto) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const range = dashboardRange(query);
     const rows = await this.prisma.$queryRaw<DayTotal[]>(Prisma.sql`
       SELECT to_char("saleDate" + interval '5 hours 30 minutes', 'YYYY-MM-DD') AS date,
@@ -78,7 +78,7 @@ export class DashboardService {
   }
 
   async purchases(userId: string, businessId: string, query: DashboardRangeDto) {
-    const membership = await this.requireMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const range = dashboardRange(query);
     const rows = await this.prisma.$queryRaw<DayTotal[]>(Prisma.sql`
       SELECT to_char("purchaseDate" + interval '5 hours 30 minutes', 'YYYY-MM-DD') AS date,
@@ -96,7 +96,7 @@ export class DashboardService {
   }
 
   async lowStock(userId: string, businessId: string, query: DashboardPageDto) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     return this.prisma.$queryRaw<LowStock[]>(Prisma.sql`
       SELECT p.id AS "productId", p.name, p.sku, p.unit,
         COALESCE(i.quantity, 0) / COALESCE(p."piecesPerUnit", 1) AS quantity, p."minimumStock"
@@ -107,7 +107,7 @@ export class DashboardService {
   }
 
   async topProducts(userId: string, businessId: string, query: DashboardTopProductsDto) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const range = dashboardRange(query);
     const items = await this.prisma.$queryRaw<(Pick<LowStock, 'productId' | 'name' | 'sku' | 'unit'> & { quantity: Prisma.Decimal; revenue: Prisma.Decimal })[]>(Prisma.sql`
       SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN i.quantity * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE i.quantity * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal") AS revenue
@@ -129,16 +129,9 @@ export class DashboardService {
     return { from: range.from, to: range.to, timezone: range.timezone, total: rows.reduce((sum, row) => sum.plus(row.total), new Prisma.Decimal(0)), count: rows.reduce((sum, row) => sum + row.count, 0), days };
   }
 
-  private async requireMembership(userId: string, businessId: string) {
-    return requireBusinessMembership(this.prisma, userId, businessId);
-  }
 
-  private async canViewPurchasePrice(businessId: string, membership: { role: string }) {
-    if (membership.role === 'OWNER' || membership.role === 'ADMIN') return true;
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-      select: { membersCanViewPurchasePrice: true },
-    });
-    return business?.membersCanViewPurchasePrice !== false;
+  private async canViewPurchasePrice(businessId: string, membership: { role: string; permissions?: readonly string[] }) {
+    if (membership.permissions?.includes('pricing.view')) return true;
+    return false;
   }
 }

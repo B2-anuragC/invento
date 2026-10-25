@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { requireBusinessMembership } from './business-access.js';
+import { requireBusinessMembership, supportAccess } from './business-access.js';
 import { AuthController } from './auth.controller.js';
 import type { Request } from 'express';
 
@@ -51,9 +51,9 @@ describe('Shop panel access boundaries', () => {
   it('lets a current platform administrator operate an active shop without membership', async () => {
     const db = database(null, { isActive: true, isPlatformAdmin: true });
     expect(
-      await requireBusinessMembership(db as never, 'operator', 'any-shop'),
+      await supportAccess.run({ userId: 'operator', businessId: 'any-shop' }, () => requireBusinessMembership(db as never, 'operator', 'any-shop')),
     ).toMatchObject({
-      role: 'OWNER',
+      role: 'PLATFORM_SUPPORT',
       userId: 'operator',
       businessId: 'any-shop',
     });
@@ -67,7 +67,7 @@ describe('Shop panel access boundaries', () => {
     });
     expect(
       await requireBusinessMembership(db as never, 'operator', 'shop'),
-    ).toMatchObject({ role: 'OWNER' });
+    ).toMatchObject({ role: 'MEMBER' });
   });
   it.each([
     [{ isActive: true, isPlatformAdmin: false }, true],
@@ -103,7 +103,6 @@ describe('Shop panel access boundaries', () => {
       expect.objectContaining({
         where: {
           userId: 'owner',
-          role: 'OWNER',
           isActive: true,
           business: { isActive: true },
         },

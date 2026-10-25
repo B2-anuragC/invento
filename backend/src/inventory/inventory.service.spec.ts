@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InventoryTransactionType, Prisma } from '@prisma/client';
 import { InventoryService } from './inventory.service.js';
@@ -45,7 +46,7 @@ function createFakePrisma(options: { role?: string; isActive?: boolean; product?
   const txClient = buildClient();
 
   const prisma = {
-    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role } : { isActive: false, role })) },
+    businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role, roleDefinition: { permissions: [...(DEFAULT_ROLE_PERMISSIONS[role] ?? [])] } } : { isActive: false, role })) },
     product: { findFirst: vi.fn(async () => product) },
     inventory: txClient.inventory,
     inventoryTransaction: txClient.inventoryTransaction,

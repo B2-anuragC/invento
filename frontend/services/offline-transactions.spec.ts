@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AppSession,
@@ -105,7 +106,7 @@ describe("Durable offline transactions", () => {
     snapshot = {
       schemaVersion: 1,
       business: { id: "shop", name: "Shop" },
-      access: { role: "OWNER", membersCanViewPurchasePrice: true },
+      access: { role: 'OWNER', permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER], membersCanViewPurchasePrice: true },
       downloadedAt: "2026-10-16T00:00:00Z",
       products: [
         {
@@ -347,13 +348,13 @@ describe("Durable offline transactions", () => {
     expect(await api.offlineCommands(session)).toHaveLength(0);
   });
   it("isolates account storage and enforces roles before recording offline transactions", async () => {
-    snapshot.access.role = "MEMBER";
+    snapshot.access.role = "MEMBER"; snapshot.access.permissions = [...DEFAULT_ROLE_PERMISSIONS.MEMBER];
     online = true;
     await api.syncOffline(session);
     online = false;
     await expect(
       api.saveOfflineTransaction(session, "purchase", purchase()),
-    ).rejects.toThrow("administrators");
+    ).rejects.toThrow("permission");
     expect(
       await api.hasOfflineBusiness({ ...session, businessId: "other" }),
     ).toBe(false);
@@ -383,7 +384,7 @@ describe("Durable offline transactions", () => {
   });
   it('redacts pending purchase costs after a downloaded role change', () => {
     const built = buildOfflineTransaction(snapshot, 'purchase', purchase());
-    const view = projectOffline({ version: 2, snapshot: { ...snapshot, access: { role: 'MEMBER', membersCanViewPurchasePrice: false } }, commands: [{ operationId: 'op', entityId: built.record.id, entity: 'purchase', action: 'create', payload: {}, localRecord: built.record, movements: built.movements, state: 'pending', attempts: 0, retryAt: 0 }] });
+    const view = projectOffline({ version: 2, snapshot: { ...snapshot, access: { role: 'MEMBER', membersCanViewPurchasePrice: false, permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }, commands: [{ operationId: 'op', entityId: built.record.id, entity: 'purchase', action: 'create', payload: {}, localRecord: built.record, movements: built.movements, state: 'pending', attempts: 0, retryAt: 0 }] });
     expect(view.purchases[0].total).toBeUndefined(); expect(view.purchases[0].amountPaid).toBeUndefined(); expect(view.purchases[0].items[0].purchasePrice).toBeUndefined();
   });
   it('Sync now recovers an old persisted backend-version rejection with the original bill identity', async () => {
@@ -442,4 +443,10 @@ describe("Durable offline transactions", () => {
       }),
     ).toThrow("whole");
   });
+  it('allows a custom sales role without granting purchasing authority', () => {
+    snapshot.access = { role: 'CUSTOM_SALES', membersCanViewPurchasePrice: false, permissions: ['sales.create'] };
+    expect(() => buildOfflineTransaction(snapshot, 'sale', sale())).not.toThrow();
+    expect(() => buildOfflineTransaction(snapshot, 'purchase', purchase())).toThrow('permission');
+  });
+
 });

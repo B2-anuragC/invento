@@ -1,3 +1,5 @@
+import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
+import { UseInterceptors } from '@nestjs/common';
 import { BadRequestException, Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -8,7 +10,8 @@ import { DashboardPageDto, DashboardRangeDto, DashboardTopProductsDto } from './
 @ApiTags('Dashboard')
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Business-Id', required: true })
-@UseGuards(AccessTokenGuard)
+@UseInterceptors(BusinessAccessInterceptor)
+@UseGuards(AccessTokenGuard, BusinessPermissionGuard)
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}

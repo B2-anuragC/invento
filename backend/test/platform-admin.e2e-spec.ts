@@ -145,7 +145,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')(
       await call('post', '/products', outsider.token).set('X-Business-Id', businessId)
         .send({ name: 'Forbidden', sku: 'DENIED', unit: 'KG', purchasePrice: '1', sellingPrice: '2', minimumStock: '0' })
         .expect(403);
-      const product = await call('post', '/products').set('X-Business-Id', businessId)
+      const product = await call('post', '/products').set('X-Business-Id', businessId).set('X-Platform-Access-Reason', 'Integration shop support')
         .send({ name: 'Operator product', sku: 'OPERATOR', unit: 'KG', purchasePrice: '1', sellingPrice: '2', minimumStock: '0' })
         .expect(201);
       await call('patch', `/products/${product.body.data.id}`, owner.token).set('X-Business-Id', businessId)
@@ -302,6 +302,8 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')(
         .send({ email: owner.email, password })
         .expect(201);
       owner.token = session.body.data.accessToken;
+      const backupOwner = await account();
+      await call('post', `/businesses/${businessId}/access/members`, owner.token).send({ email: backupOwner.email, role: 'OWNER' }).expect(201);
       await call('patch', `/platform-admin/users/${owner.id}/status`)
         .send({ ...reason, isActive: false })
         .expect(200);

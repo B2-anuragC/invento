@@ -1,10 +1,11 @@
+import { type EffectiveAccess, type Permission } from '@invento/shared';
 import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { configureOffline, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+import { configureOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
 
@@ -205,7 +206,7 @@ export type PurchaseRecord = {
 
 export type BusinessUserRecord = {
   id: string;
-  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  role: string;
   createdAt: string;
   user: ApiUser;
 };
@@ -218,6 +219,7 @@ export type AddedBusinessUserRecord = {
 };
 
 export type PricingAccess = {
+  permissions?: Permission[];
   membersCanViewPurchasePrice: boolean;
   role: BusinessUserRecord['role'];
 };
@@ -373,6 +375,8 @@ async function renewSession(session: AppSession): Promise<AppSession> {
   return refreshRequest;
 }
 
+const authorizationListeners = new Set<() => void>();
+export function subscribeAuthorizationInvalidation(listener: () => void) { authorizationListeners.add(listener); return () => { authorizationListeners.delete(listener); }; }
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -429,6 +433,7 @@ async function request<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 403 || response.status === 401) authorizationListeners.forEach(listener => listener());
     throw new ApiError(getErrorMessage(payload?.error) ?? getErrorMessage(payload?.message) ?? 'Request failed.', response.status);
   }
 
@@ -491,13 +496,14 @@ export async function createBusiness(
 }
 
 export async function fetchDashboardSummary(session: AppSession): Promise<DashboardSummary> {
+  await assertClientPermission(session, 'reports.view');
   if (nativeOffline) {
     const view = await offlineView(session);
     const today = new Date(Date.now() + 19800000).toISOString().slice(0, 10);
     const dateOf = (value: string) => new Date(new Date(value).getTime() + 19800000).toISOString().slice(0, 10);
     const sales = view.sales.filter((sale) => dateOf(sale.saleDate) === today);
     const purchases = view.purchases.filter((purchase) => dateOf(purchase.purchaseDate) === today);
-    const canViewCosts = view.access.role !== 'MEMBER' || view.access.membersCanViewPurchasePrice;
+    const canViewCosts = !!view.access.permissions?.includes('pricing.view');
     return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.reduce((sum, sale) => sum + Number(sale.total), 0), todayPurchases: canViewCosts ? purchases.reduce((sum, purchase) => sum + Number(purchase.total ?? 0), 0) : null, saleCount: sales.length, purchaseCount: purchases.length, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
   }
   return request<DashboardSummary>('/dashboard/summary', { method: 'GET' }, session);
@@ -507,6 +513,7 @@ export async function fetchProducts(
   session: AppSession,
   query: { search?: string; status?: 'ACTIVE' | 'INACTIVE'; category?: string } = {},
 ): Promise<ProductRecord[]> {
+  await assertClientPermission(session, 'products.view');
   if (nativeOffline) { const view = await offlineView(session); return (view.products as ProductRecord[]).filter((product) => product.status === (query.status ?? 'ACTIVE') && (!query.category || product.category === query.category) && (!query.search?.trim() || [product.name, product.sku, product.barcode, product.category].some((field) => field?.toLowerCase().includes(query.search!.trim().toLowerCase())))).sort((a, b) => a.name.localeCompare(b.name)); }
   const params = new URLSearchParams();
   if (query.search?.trim()) params.set('search', query.search.trim());
@@ -517,16 +524,19 @@ export async function fetchProducts(
 }
 
 export async function fetchProductCategories(session: AppSession): Promise<string[]> {
+  await assertClientPermission(session, 'products.view');
   if (nativeOffline) return [...new Set((await offlineView(session)).products.filter((product) => product.status === 'ACTIVE').map((product) => (product as ProductRecord).category).filter((value): value is string => Boolean(value)))].sort();
   return request<string[]>('/products/categories', { method: 'GET' }, session);
 }
 
 export async function fetchProduct(session: AppSession, productId: string): Promise<ProductRecord> {
+  await assertClientPermission(session, 'products.view');
   if (nativeOffline) { const product = (await offlineView(session)).products.find((record) => record.id === productId); if (!product) throw new Error('Product not downloaded to this device.'); return product as ProductRecord; }
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, { method: 'GET' }, session);
 }
 
 export async function createProduct(session: AppSession, input: ProductInput): Promise<ProductRecord> {
+  await assertClientPermission(session, 'products.create');
   if (nativeOffline) return await saveOfflineCatalog(session, 'products', { ...input }) as ProductRecord;
   return request<ProductRecord>('/products', {
     method: 'POST',
@@ -539,6 +549,8 @@ export async function updateProduct(
   productId: string,
   input: Partial<ProductInput> & { status?: 'ACTIVE' | 'INACTIVE' },
 ): Promise<ProductRecord> {
+  if (input.status === 'INACTIVE') await assertClientPermission(session, 'products.delete');
+  await assertClientPermission(session, 'products.update');
   if (nativeOffline) return await saveOfflineCatalog(session, 'products', { ...input }, productId) as ProductRecord;
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, {
     method: 'PATCH',
@@ -547,11 +559,13 @@ export async function updateProduct(
 }
 
 export async function deactivateProduct(session: AppSession, productId: string): Promise<ProductRecord> {
+  await assertClientPermission(session, 'products.delete');
   if (nativeOffline) return await saveOfflineCatalog(session, 'products', { status: 'INACTIVE' }, productId) as ProductRecord;
   return request<ProductRecord>(`/products/${encodeURIComponent(productId)}`, { method: 'DELETE' }, session);
 }
 
 export async function fetchProductStock(session: AppSession, productId: string): Promise<InventoryRecord> {
+  await assertClientPermission(session, 'inventory.view');
   if (nativeOffline) return (await offlineView(session)).inventory.find((record) => record.productId === productId) ?? { productId, quantity: '0', createdAt: null, updatedAt: null };
   return request<InventoryRecord>(`/products/${encodeURIComponent(productId)}/stock`, { method: 'GET' }, session);
 }
@@ -560,6 +574,7 @@ export async function fetchProductTransactions(
   session: AppSession,
   productId: string,
 ): Promise<InventoryTransactionRecord[]> {
+  await assertClientPermission(session, 'inventory.view');
   if (nativeOffline) return (await offlineView(session)).inventoryActivity.filter((record) => record.productId === productId || record.product.id === productId);
   return request<InventoryTransactionRecord[]>(
     `/products/${encodeURIComponent(productId)}/transactions`,
@@ -573,6 +588,7 @@ export async function recordOpeningStock(
   productId: string,
   quantity: string,
 ): Promise<InventoryRecord> {
+  await assertClientPermission(session, 'inventory.adjust');
   if (nativeOffline) return saveOfflineOpening(session, productId, quantity);
   return request<InventoryRecord>('/inventory/opening-stock', {
     method: 'POST',
@@ -581,6 +597,7 @@ export async function recordOpeningStock(
 }
 
 export async function fetchCustomers(session: AppSession): Promise<CustomerRecord[]> {
+  await assertClientPermission(session, 'customers.view');
   if (nativeOffline) return (await offlineView(session)).customers.filter((record) => record.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name)) as CustomerRecord[];
   return request<CustomerRecord[]>('/customers', { method: 'GET' }, session);
 }
@@ -589,6 +606,7 @@ export async function createCustomer(
   session: AppSession,
   input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string },
 ): Promise<CustomerRecord> {
+  await assertClientPermission(session, 'customers.create');
   if (nativeOffline) return await saveOfflineCatalog(session, 'customers', typeof input === 'string' ? { name: input } : { ...input }) as CustomerRecord;
   const body = typeof input === 'string' ? { name: input } : input;
   return request<CustomerRecord>(
@@ -599,6 +617,7 @@ export async function createCustomer(
 }
 
 export async function fetchCustomer(session: AppSession, customerId: string): Promise<CustomerRecord> {
+  await assertClientPermission(session, 'customers.view');
   if (nativeOffline) { const record = (await offlineView(session)).customers.find((record) => record.id === customerId); if (!record) throw new Error('Customer not downloaded to this device.'); return record as CustomerRecord; }
   return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, { method: 'GET' }, session);
 }
@@ -608,6 +627,8 @@ export async function updateCustomer(
   customerId: string,
   input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'imageOriginal' | 'imageThumbnail'>>,
 ): Promise<CustomerRecord> {
+  if (input.status === 'INACTIVE') await assertClientPermission(session, 'customers.delete');
+  await assertClientPermission(session, 'customers.update');
   if (nativeOffline) return await saveOfflineCatalog(session, 'customers', { ...input }, customerId) as CustomerRecord;
   return request<CustomerRecord>(`/customers/${encodeURIComponent(customerId)}`, {
     method: 'PATCH',
@@ -616,11 +637,13 @@ export async function updateCustomer(
 }
 
 export async function fetchInventory(session: AppSession, requireFresh = false): Promise<InventoryRecord[]> {
+  await assertClientPermission(session, 'inventory.view');
   if (nativeOffline) { if (requireFresh) void refreshOfflineSnapshot(session); return (await offlineView(session)).inventory; }
   return request<InventoryRecord[]>('/inventory', { method: 'GET' }, session);
 }
 
 export async function fetchSales(session: AppSession, query: { customerId?: string } = {}): Promise<SaleRecord[]> {
+  await assertClientPermission(session, 'sales.view');
   if (nativeOffline) return (await offlineView(session)).sales.filter((sale) => !query.customerId || sale.customer.id === query.customerId);
   const params = new URLSearchParams();
   if (query.customerId) params.set('customerId', query.customerId);
@@ -629,16 +652,19 @@ export async function fetchSales(session: AppSession, query: { customerId?: stri
 }
 
 export async function fetchSale(session: AppSession, saleId: string): Promise<SaleRecord> {
+  await assertClientPermission(session, 'sales.view');
   if (nativeOffline) { const sale = (await offlineView(session)).sales.find((record) => record.id === saleId || (saleId.startsWith('local_') && record.requestId === saleId.slice(6))); if (sale) return sale; }
   return request<SaleRecord>(`/sales/${encodeURIComponent(saleId)}`, { method: 'GET' }, session);
 }
 
 export async function fetchInventoryActivity(session: AppSession): Promise<InventoryActivityRecord[]> {
+  await assertClientPermission(session, 'inventory.view');
   if (nativeOffline) return (await offlineView(session)).inventoryActivity;
   return request<InventoryActivityRecord[]>('/inventory/activity', { method: 'GET' }, session);
 }
 
 export async function createSale(session: AppSession, input: CreateSaleInput): Promise<SaleRecord> {
+  await assertClientPermission(session, 'sales.create');
   if (nativeOffline) { try { return await saveOfflineTransaction(session, 'sale', input) as SaleRecord; } catch (error) { throw new ApiError(error instanceof Error ? error.message : 'Could not save this bill on your device.', 422); } }
   const saved = await request<SaleRecord>('/sales', {
     method: 'POST',
@@ -649,6 +675,7 @@ export async function createSale(session: AppSession, input: CreateSaleInput): P
 }
 
 export async function fetchSuppliers(session: AppSession): Promise<SupplierRecord[]> {
+  await assertClientPermission(session, 'suppliers.view');
   if (nativeOffline) return (await offlineView(session)).suppliers.filter((record) => record.status === 'ACTIVE').sort((a, b) => a.name.localeCompare(b.name)) as SupplierRecord[];
   return request<SupplierRecord[]>('/suppliers', { method: 'GET' }, session);
 }
@@ -657,6 +684,7 @@ export async function createSupplier(
   session: AppSession,
   input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string; categories?: string[]; productIds?: string[] },
 ): Promise<SupplierRecord> {
+  await assertClientPermission(session, 'suppliers.create');
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', typeof input === 'string' ? { name: input } : { ...input }) as SupplierRecord;
   const body = typeof input === 'string' ? { name: input } : input;
   return request<SupplierRecord>(
@@ -667,6 +695,7 @@ export async function createSupplier(
 }
 
 export async function fetchSupplier(session: AppSession, supplierId: string): Promise<SupplierRecord> {
+  await assertClientPermission(session, 'suppliers.view');
   if (nativeOffline) { const record = (await offlineView(session)).suppliers.find((record) => record.id === supplierId); if (!record) throw new Error('Supplier not downloaded to this device.'); return record as SupplierRecord; }
   return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, { method: 'GET' }, session);
 }
@@ -676,6 +705,8 @@ export async function updateSupplier(
   supplierId: string,
   input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'categories' | 'productIds'>>,
 ): Promise<SupplierRecord> {
+  if (input.status === 'INACTIVE') await assertClientPermission(session, 'suppliers.delete');
+  await assertClientPermission(session, 'suppliers.update');
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', { ...input }, supplierId) as SupplierRecord;
   return request<SupplierRecord>(`/suppliers/${encodeURIComponent(supplierId)}`, {
     method: 'PATCH',
@@ -684,6 +715,7 @@ export async function updateSupplier(
 }
 
 export async function fetchPurchases(session: AppSession, query: { supplierId?: string } = {}): Promise<PurchaseRecord[]> {
+  await assertClientPermission(session, 'purchases.view');
   if (nativeOffline) return (await offlineView(session)).purchases.filter((purchase) => !query.supplierId || purchase.supplier.id === query.supplierId);
   const params = new URLSearchParams();
   if (query.supplierId) params.set('supplierId', query.supplierId);
@@ -692,6 +724,7 @@ export async function fetchPurchases(session: AppSession, query: { supplierId?: 
 }
 
 export async function fetchBusinessUsers(session: AppSession): Promise<BusinessUserRecord[]> {
+  await assertClientPermission(session, 'members.view');
   return request<BusinessUserRecord[]>(`/businesses/${encodeURIComponent(session.businessId)}/users`, { method: 'GET' }, session);
 }
 
@@ -699,6 +732,7 @@ export async function addBusinessUser(
   session: AppSession,
   input: { email: string; role: 'ADMIN' | 'MEMBER' },
 ): Promise<AddedBusinessUserRecord> {
+  await assertClientPermission(session, 'members.invite');
   return request<AddedBusinessUserRecord>(`/businesses/${encodeURIComponent(session.businessId)}/users`, {
     method: 'POST',
     body: JSON.stringify(input),
@@ -710,6 +744,7 @@ export async function updateBusinessUser(
   userId: string,
   role: BusinessUserRecord['role'],
 ): Promise<{ id: string; role: BusinessUserRecord['role']; isActive: boolean }> {
+  await assertClientPermission(session, 'members.update');
   return request<{ id: string; role: BusinessUserRecord['role']; isActive: boolean }>(`/businesses/${encodeURIComponent(session.businessId)}/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
     body: JSON.stringify({ role }),
@@ -717,17 +752,19 @@ export async function updateBusinessUser(
 }
 
 export async function removeBusinessUser(session: AppSession, userId: string): Promise<void> {
+  await assertClientPermission(session, 'members.remove');
   await request(`/businesses/${encodeURIComponent(session.businessId)}/users/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
   }, session);
 }
 
 export async function fetchPricingAccess(session: AppSession): Promise<PricingAccess> {
-  if (nativeOffline) return (await offlineView(session)).access;
+
   return request<PricingAccess>(`/businesses/${encodeURIComponent(session.businessId)}/pricing-access`, { method: 'GET' }, session);
 }
 
 export async function updatePricingAccess(session: AppSession, membersCanViewPurchasePrice: boolean): Promise<Pick<PricingAccess, 'membersCanViewPurchasePrice'>> {
+  await assertClientPermission(session, 'pricing.manage');
   return request<Pick<PricingAccess, 'membersCanViewPurchasePrice'>>(
     `/businesses/${encodeURIComponent(session.businessId)}/pricing-access`,
     { method: 'PATCH', body: JSON.stringify({ membersCanViewPurchasePrice }) },
@@ -736,6 +773,7 @@ export async function updatePricingAccess(session: AppSession, membersCanViewPur
 }
 
 export async function createPurchase(session: AppSession, input: CreatePurchaseInput): Promise<PurchaseRecord> {
+  await assertClientPermission(session, 'purchases.create');
   if (nativeOffline) { try { return await saveOfflineTransaction(session, 'purchase', input) as PurchaseRecord; } catch (error) { throw new ApiError(error instanceof Error ? error.message : 'Could not save this purchase on your device.', 422); } }
   const saved = await request<PurchaseRecord>('/purchases', {
     method: 'POST',
@@ -746,11 +784,13 @@ export async function createPurchase(session: AppSession, input: CreatePurchaseI
 }
 
 export async function fetchPurchase(session: AppSession, purchaseId: string): Promise<PurchaseRecord> {
+  await assertClientPermission(session, 'purchases.view');
   if (nativeOffline) { const purchase = (await offlineView(session)).purchases.find((record) => record.id === purchaseId || (purchaseId.startsWith('local_') && record.requestId === purchaseId.slice(6))); if (purchase) return purchase; }
   return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
 }
 
 export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string }): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.payments' : 'purchases.payments');
   if (id.startsWith('local_')) throw new Error('Synchronize this transaction before recording another payment.');
   const saved = await request<SaleRecord | PurchaseRecord>(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);
   if (nativeOffline) { await rememberConfirmedTransaction(session, kind, saved).catch(() => undefined); await refreshOfflineSnapshot(session); }
@@ -765,3 +805,22 @@ configureOffline(async <T>(path: string, options: RequestInit, session: AppSessi
 }, () => appSession.current, localizeLegacyUploads);
 
 configureFileStorage(request, () => appSession.current, API_BASE_URL, async () => { const session = appSession.current; if (session) await renewSession(session); });
+
+// Access management always uses the shared server identity and selected business.
+export async function fetchEffectiveAccess(session: AppSession): Promise<EffectiveAccess> {
+  if (LOCAL_ONLY) throw new Error('Centralized permissions require server mode and a connection.');
+  return request<EffectiveAccess>(`/businesses/${encodeURIComponent(session.businessId)}/access/me`, {}, session);
+}
+export async function accessRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  const session = appSession.current;
+  if (!session?.businessId || LOCAL_ONLY) throw new Error('Select a business in server mode to manage access.');
+  return request<T>(`/businesses/${encodeURIComponent(session.businessId)}/access/${path}`, options, session);
+}
+const accessSignatures = new Map<string, string>();
+async function assertClientPermission(session: AppSession, permission: Permission) {
+  const access = await fetchEffectiveAccess(session);
+  if (!access.permissions.includes(permission)) throw new ApiError(`Permission required: ${permission}`, 403);
+  const scope = `${session.user.id}:${session.businessId}`;
+  const signature = [...access.permissions].sort().join(',');
+  if (nativeOffline && accessSignatures.get(scope) !== signature) { await refreshOfflineAccess(session); accessSignatures.set(scope, signature); }
+}

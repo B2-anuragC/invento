@@ -78,7 +78,7 @@ export default function PurchasesScreen() {
         </View>
 
         <View style={styles.buttonRow}>
-          <ActionButton title="Add purchase" onPress={() => router.push('/purchase/create')} />
+          <ActionButton permission="purchases.create" title="Add purchase" onPress={() => router.push('/purchase/create')} />
         </View>
 
         <TextInput accessibilityLabel="Search purchases" value={search} onChangeText={setSearch} placeholder="Search invoice or supplier" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />

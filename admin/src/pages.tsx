@@ -280,7 +280,17 @@ export function Directory({ kind }: { kind: "businesses" | "users" }) {
     {
       key: "name",
       label: "Name",
-      render: (r) => <a href={`#/${kind}/${r.id}`}>{String(r.name)}</a>,
+      render: (r) => (
+        <a
+          href={
+            kind === "businesses"
+              ? `#/shops/${encodeURIComponent(String(r.id))}`
+              : `#/${kind}/${r.id}`
+          }
+        >
+          {String(r.name)}
+        </a>
+      ),
     },
     kind === "users"
       ? { key: "email", label: "Email" }
@@ -330,7 +340,7 @@ export function Directory({ kind }: { kind: "businesses" | "users" }) {
           <h1>{label(kind)}</h1>
           <p className="muted">
             {kind === "businesses"
-              ? "Monitor business records and control platform access."
+              ? "Select a business to manage its products, stock, people, roles, and settings."
               : "Accounts, activity, and access across Invento."}
           </p>
         </div>

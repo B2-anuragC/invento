@@ -1,20 +1,24 @@
-import { requireBusinessMembership } from '../auth/business-access.js';
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
+import { AccessManagementService, lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
+import { requireBusinessMembership, requireBusinessPermission } from '../auth/business-access.js';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
-type Role = 'OWNER' | 'ADMIN' | 'MEMBER';
-const managerRoles: Role[] = ['OWNER', 'ADMIN'];
 
 @Injectable()
 export class BusinessesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, input: { name: string; slug: string; email?: string; phone?: string; address?: string }) {
-    return this.prisma.business.create({
-      data: {
-        name: input.name.trim(), slug: input.slug.trim().toLowerCase(), email: input.email?.trim().toLowerCase(),
-        phone: input.phone?.trim(), address: input.address?.trim(), users: { create: { userId, role: 'OWNER' } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      await lockAuthorizationChanges(tx);
+      const account = await tx.user.findUnique({ where: { id: userId }, select: { isActive: true } });
+      if (!account?.isActive) throw new ForbiddenException('Account is inactive.');
+      const business = await tx.business.create({ data: { name: input.name.trim(), slug: input.slug.trim().toLowerCase(), email: input.email?.trim().toLowerCase(), phone: input.phone?.trim(), address: input.address?.trim() } });
+      await tx.businessRole.createMany({ data: Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([key, permissions]) => ({ businessId: business.id, key, name: key[0] + key.slice(1).toLowerCase(), permissions: [...permissions], isSystem: true })) });
+      await tx.businessUser.create({ data: { businessId: business.id, userId, role: 'OWNER' } });
+      await tx.platformAuditLog.create({ data: { actorId: userId, businessId: business.id, action: 'BUSINESS_OWNER_CREATED', targetType: 'membership', targetId: userId, reason: 'Business creation', previous: {}, next: { role: 'OWNER', isActive: true } } });
+      return business;
     });
   }
 
@@ -37,12 +41,12 @@ export class BusinessesService {
   }
 
   async update(userId: string, businessId: string, input: { name?: string; email?: string; phone?: string; address?: string }) {
-    await this.requireRole(userId, businessId, managerRoles);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'business.update');
     return this.prisma.business.update({ where: { id: businessId }, data: { ...input, email: input.email?.trim().toLowerCase(), name: input.name?.trim() } });
   }
 
   async listUsers(userId: string, businessId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'members.view');
     return this.prisma.businessUser.findMany({
       where: { businessId, isActive: true },
       select: { id: true, role: true, createdAt: true, user: { select: { id: true, name: true, email: true, phone: true, avatarUrl: true } } },
@@ -56,57 +60,35 @@ export class BusinessesService {
       select: { membersCanViewPurchasePrice: true },
     });
     if (!business) throw new NotFoundException('Business not found.');
-    return { membersCanViewPurchasePrice: business.membersCanViewPurchasePrice, role: membership.role };
+    return { membersCanViewPurchasePrice: business.membersCanViewPurchasePrice, role: membership.role, permissions: membership.permissions };
   }
 
   async updatePricingAccess(userId: string, businessId: string, membersCanViewPurchasePrice: boolean) {
-    await this.requireRole(userId, businessId, managerRoles);
-    return this.prisma.business.update({
-      where: { id: businessId },
-      data: { membersCanViewPurchasePrice },
-      select: { membersCanViewPurchasePrice: true },
+    return this.prisma.$transaction(async (tx) => {
+      await lockAuthorizationChanges(tx);
+      await lockBusiness(tx, businessId);
+      const actor = await requireBusinessPermission(tx as PrismaService, userId, businessId, 'pricing.manage');
+      if (actor.role === 'MEMBER' || (membersCanViewPurchasePrice && !actor.permissions.includes('pricing.view'))) throw new ForbiddenException('Cannot grant purchase-price access beyond your authority.');
+      const role = await tx.businessRole.findUnique({ where: { businessId_key: { businessId, key: 'MEMBER' } } });
+      const previous = await tx.business.findUniqueOrThrow({ where: { id: businessId }, select: { membersCanViewPurchasePrice: true } });
+      const updated = await tx.business.update({ where: { id: businessId }, data: { membersCanViewPurchasePrice }, select: { membersCanViewPurchasePrice: true } });
+      if (role) await tx.businessRole.update({ where: { businessId_key: { businessId, key: 'MEMBER' } }, data: { permissions: membersCanViewPurchasePrice ? [...new Set([...role.permissions, 'pricing.view'])] : role.permissions.filter(p => p !== 'pricing.view') } });
+      await tx.platformAuditLog.create({ data: { actorId: userId, businessId, action: 'LEGACY_MEMBER_PRICING_CHANGED', targetType: 'role', targetId: 'MEMBER', reason: 'Purchase price visibility setting', previous, next: { membersCanViewPurchasePrice } } });
+      return updated;
     });
   }
 
-  async addUser(actorId: string, businessId: string, email: string, role: 'ADMIN' | 'MEMBER') {
-    await this.requireRole(actorId, businessId, managerRoles);
-    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    if (!user || !user.isActive) throw new NotFoundException('User not found.');
-    const existing = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId: user.id } } });
-    if (existing?.isActive) throw new ForbiddenException('User is already a member of this business.');
-    return this.prisma.businessUser.upsert({
-      where: { businessId_userId: { businessId, userId: user.id } },
-      update: { role, isActive: true },
-      create: { businessId, userId: user.id, role },
-      select: { id: true, role: true, isActive: true, user: { select: { id: true, name: true, email: true } } },
-    });
+  async addUser(actorId: string, businessId: string, email: string, role: string) {
+    return new AccessManagementService(this.prisma).addMember(actorId, businessId, { email, role });
   }
-
-  async updateUser(actorId: string, businessId: string, userId: string, role: Role) {
-    const actor = await this.requireRole(actorId, businessId, managerRoles);
-    const target = await requireBusinessMembership(this.prisma, userId, businessId, false);
-    if (target.role === 'OWNER' && role !== 'OWNER') throw new ForbiddenException('Owner memberships cannot be demoted.');
-    if (target.role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can change an owner membership.');
-    if (role === 'OWNER' && actor.role !== 'OWNER') throw new ForbiddenException('Only the owner can assign owner membership.');
-    return this.prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role } });
+  async updateUser(actorId: string, businessId: string, userId: string, role: string) {
+    return new AccessManagementService(this.prisma).updateMember(actorId, businessId, userId, { role });
   }
-
   async removeUser(actorId: string, businessId: string, userId: string) {
-    const actor = await this.requireRole(actorId, businessId, managerRoles);
-    const target = await requireBusinessMembership(this.prisma, userId, businessId, false);
-    if (target.role === 'OWNER') throw new ForbiddenException('An owner membership cannot be removed.');
-    if (actor.role === 'ADMIN' && target.role === 'ADMIN') throw new ForbiddenException('Administrators cannot remove another administrator.');
-    await this.prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { isActive: false } });
+    await new AccessManagementService(this.prisma).updateMember(actorId, businessId, userId, { isActive: false });
     return { removed: true };
   }
-
   private async requireMembership(userId: string, businessId: string) {
     return requireBusinessMembership(this.prisma, userId, businessId);
-  }
-
-  private async requireRole(userId: string, businessId: string, roles: Role[]) {
-    const membership = await this.requireMembership(userId, businessId);
-    if (!roles.includes(membership.role as Role)) throw new ForbiddenException('You do not have permission for this action.');
-    return membership;
   }
 }

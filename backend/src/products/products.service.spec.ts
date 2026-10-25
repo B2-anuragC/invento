@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProductsService } from './products.service.js';
 
@@ -16,7 +17,7 @@ describe('ProductsService', () => {
     const product = { id: 'product-a', businessId: 'business-a', ...productInput };
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
       product: { create: vi.fn().mockResolvedValue(product) },
     };
 
@@ -31,7 +32,7 @@ describe('ProductsService', () => {
   it('prevents a member of one business from reading another business product', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: false, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: false, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       product: { findFirst: vi.fn() },
     };
 
@@ -44,7 +45,7 @@ describe('ProductsService', () => {
     const product = { id: 'product-a', businessId: 'business-a', status: 'INACTIVE' };
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       product: { findFirst: vi.fn().mockResolvedValue(product) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: true }) },
     };
@@ -55,7 +56,7 @@ describe('ProductsService', () => {
   it('returns not found when a product does not belong to the business', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       product: { findFirst: vi.fn().mockResolvedValue(null) },
     };
 
@@ -67,7 +68,7 @@ describe('ProductsService', () => {
     const product = { id: 'product-a', businessId: 'business-a', purchasePrice: '45.00' };
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       product: { findFirst: vi.fn().mockResolvedValue(product) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
     };
@@ -80,7 +81,7 @@ describe('ProductsService', () => {
     const thumbnail = `/files/${'a'.repeat(64)}/thumbnail`;
     const product = { id: 'product-a', businessId: 'business-a', ...productInput, imageThumbnail: thumbnail, imageOriginal: original };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', business: { isActive: true } }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, business: { isActive: true } }) },
       product: { create: vi.fn().mockResolvedValue(product), findMany: vi.fn().mockResolvedValue([product]) },
     };
     const files = { image: vi.fn().mockResolvedValue({ url: original, thumbnailUrl: thumbnail }) };
@@ -95,7 +96,7 @@ describe('ProductsService', () => {
 
   it('removes both images on update and preserves them when omitted', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', business: { isActive: true } }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, business: { isActive: true } }) },
       product: { findFirst: vi.fn().mockResolvedValue({ ...productInput, piecesPerUnit: null }), update: vi.fn().mockResolvedValue({}) },
     };
     const service = new ProductsService(prisma as never, {} as never);
@@ -109,7 +110,7 @@ describe('ProductsService', () => {
     const originals = ['a', 'b'].map((char) => `/files/${char.repeat(64)}/original`);
     const files = { image: vi.fn().mockImplementation(async (_business, url) => ({ url, thumbnailUrl: url.replace('/original', '/thumbnail') })) };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', business: { isActive: true } }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, business: { isActive: true } }) },
       product: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue({ ...productInput, piecesPerUnit: null }), update: vi.fn().mockResolvedValue({}) },
     };
     const service = new ProductsService(prisma as never, {} as never, files as never);

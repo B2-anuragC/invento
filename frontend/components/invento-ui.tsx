@@ -1,3 +1,5 @@
+import { PermissionBoundary, usePermissions } from '@/services/permissions';
+import type { Permission } from '@invento/shared';
 import type { ReactNode } from 'react';
 import { useSegments } from 'expo-router';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -29,7 +31,7 @@ export function AppScreen({ children, style }: { children: ReactNode; style?: an
   const isTabScreen = segments[0] === '(tabs)';
   return (
     <SafeAreaView edges={isTabScreen ? [] : ['bottom']} style={styles.safeArea}>
-      <View style={[styles.screen, style]}>{children}</View>
+      <View style={[styles.screen, style]}><PermissionBoundary>{children}</PermissionBoundary></View>
     </SafeAreaView>
   );
 }
@@ -90,13 +92,17 @@ export function ActionButton({
   variant = 'primary',
   disabled = false,
   fullWidth = false,
+  permission,
 }: {
   title: string;
   onPress?: () => void;
   variant?: 'primary' | 'secondary';
   disabled?: boolean;
   fullWidth?: boolean;
+  permission?: Permission;
 }) {
+  const { can } = usePermissions();
+  if (permission && !can(permission)) return null;
   return (
     <Pressable
       accessibilityRole="button"

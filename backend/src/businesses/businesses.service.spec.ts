@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { ForbiddenException } from '@nestjs/common';
 import { BusinessesService } from './businesses.service.js';
 
@@ -30,7 +31,7 @@ describe('BusinessesService authorization', () => {
   it('rejects members without manager role from updating a business', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
     } as never;
     const service = new BusinessesService(prisma);
     await expect(service.update('user-a', 'business-a', { name: 'new' })).rejects.toBeInstanceOf(ForbiddenException);
@@ -39,9 +40,10 @@ describe('BusinessesService authorization', () => {
   it('only allows managers to update pricing access', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       business: { update: vi.fn() },
     } as never;
+    (prisma as any).$transaction = async (fn: any) => fn({ ...(prisma as any), $queryRaw: vi.fn() });
     const service = new BusinessesService(prisma);
     await expect(service.updatePricingAccess('user-a', 'business-a', false)).rejects.toBeInstanceOf(ForbiddenException);
     expect((prisma as { business: { update: ReturnType<typeof vi.fn> } }).business.update).not.toHaveBeenCalled();
@@ -50,13 +52,14 @@ describe('BusinessesService authorization', () => {
   it('returns pricing access only for active business members', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
     } as never;
     const service = new BusinessesService(prisma);
     await expect(service.getPricingAccess('user-a', 'business-a')).resolves.toEqual({
       membersCanViewPurchasePrice: false,
       role: 'OWNER',
+      permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER],
     });
   });
 });

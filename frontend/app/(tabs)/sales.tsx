@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
@@ -18,6 +19,7 @@ function formatMoney(value: number) {
 
 export default function SalesScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const params = useLocalSearchParams<{ payment?: string }>();
   const [pendingOnly, setPendingOnly] = useState(params.payment === 'pending');
   useEffect(() => { setPendingOnly(params.payment === 'pending'); }, [params.payment]);
@@ -82,7 +84,7 @@ export default function SalesScreen() {
         </View>
 
         <View style={styles.buttonRow}>
-          <ActionButton title="Quick bill" onPress={() => router.push('/sale/quick')} />
+          <ActionButton permission="sales.create" title="Quick bill" onPress={() => router.push('/sale/quick')} />
         </View>
 
         <Pressable accessibilityRole="button" accessibilityState={{ selected: pendingOnly }} onPress={() => setPendingOnly((current) => !current)} style={styles.pendingCard}>
@@ -108,7 +110,7 @@ export default function SalesScreen() {
                     {new Date(sale.saleDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     {' · '}{sale.items.length} item{sale.items.length === 1 ? '' : 's'}
                   </Text>
-                  <Pressable onPress={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} style={styles.repeatButton}>
+                  <Pressable onPress={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} style={[styles.repeatButton, !can('sales.create') && { display: 'none' }]}>
                     <Text style={styles.repeatText}>Repeat sale</Text>
                   </Pressable>
                 </View>

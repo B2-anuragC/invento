@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSession } from './api';
 import type { OfflineSnapshot } from './offline-model';
@@ -17,7 +18,7 @@ describe('Offline catalog synchronization', () => {
   let uploads: Record<string, unknown>[];
   beforeEach(async () => {
     vi.resetModules(); durable.clear(); storageFault.fail = false; online = true; uploads = [];
-    snapshot = { schemaVersion: 1, business: { id: session.businessId, name: 'Shop' }, access: { role: 'OWNER', membersCanViewPurchasePrice: true }, downloadedAt: '2026-10-10T00:00:00Z', products: [], customers: [], suppliers: [], inventory: [], inventoryActivity: [], sales: [], purchases: [] };
+    snapshot = { schemaVersion: 1, business: { id: session.businessId, name: 'Shop' }, access: { role: 'OWNER', permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER], membersCanViewPurchasePrice: true }, downloadedAt: '2026-10-10T00:00:00Z', products: [], customers: [], suppliers: [], inventory: [], inventoryActivity: [], sales: [], purchases: [] };
     api = await import('./offline-catalog');
     api.configureOffline(async <T>(path: string, options: RequestInit) => {
       if (!online) throw new TypeError('Network unavailable');
@@ -101,10 +102,23 @@ describe('Offline catalog synchronization', () => {
     expect(await api.offlineCommands(session)).toHaveLength(0);
   });
   it('isolates business databases and checks permissions before local writes', async () => {
-    snapshot.access.role = 'MEMBER';
+    snapshot.access.role = 'MEMBER'; snapshot.access.permissions = [...DEFAULT_ROLE_PERMISSIONS.MEMBER];
     await api.offlineView(session);
     await expect(api.saveOfflineCatalog(session, 'customers', { name: 'Denied' })).rejects.toThrow('permission');
     expect(await api.hasOfflineBusiness({ ...session, businessId: 'other' })).toBe(false);
     expect(await api.offlineCommands(session)).toHaveLength(0);
   });
+  it('refreshes current permissions and removes cached cost fields without replaying writes', async () => {
+    snapshot.products = [{ id: 'product', businessId: session.businessId, name: 'Product', purchasePrice: '99', sellingPrice: '100', unit: 'KG', status: 'ACTIVE', revision: 1, updatedAt: '' }] as never;
+    await api.offlineView(session);
+    expect((await api.offlineView(session)).products[0]).toHaveProperty('purchasePrice');
+    snapshot.access = { role: 'CUSTOM_READER', membersCanViewPurchasePrice: false, permissions: ['products.view'] };
+    await api.refreshOfflineAccess(session);
+    const view = await api.offlineView(session);
+    expect(view.products[0]).not.toHaveProperty('purchasePrice');
+    expect(view.customers).toEqual([]);
+    expect(uploads).toEqual([]);
+    await expect(api.saveOfflineCatalog(session, 'products', { name: 'Denied' })).rejects.toThrow('permission');
+  });
+
 });

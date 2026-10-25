@@ -90,13 +90,15 @@ function App() {
             </button>
           </form>
           <p className="muted fine">
-            Shop owners can manage their own shops. Platform administrators can
-            manage all shops.
+            Business members can manage their own shops. Platform administrators
+            can manage all shops.
           </p>
         </section>
       </main>
     );
-  const [, section, id] = route.split("/");
+  const [, section, id, shopSection] = route.split("/");
+  const activeSection =
+    access.isPlatformAdmin && section === "shops" ? "businesses" : section;
   return (
     <div className="shell">
       <aside>
@@ -104,7 +106,7 @@ function App() {
           <span className="brand-icon">i</span> invento
         </a>
         <p className="sidebar-label">
-          {access.isPlatformAdmin ? "PLATFORM ADMIN" : "SHOP OWNER"}
+          {access.isPlatformAdmin ? "PLATFORM ADMIN" : "BUSINESS WORKSPACE"}
         </p>
         <nav>
           {(access.isPlatformAdmin
@@ -117,12 +119,17 @@ function App() {
             : [["shops", "▦"]]
           ).map(([name, icon]) => (
             <a
-              className={section === name ? "selected" : ""}
+              className={activeSection === name ? "selected" : ""}
+              aria-current={activeSection === name ? "page" : undefined}
               href={`#/${name}`}
               key={name}
             >
               <span aria-hidden>{icon}</span>
-              {name === "audit-logs" ? "Audit log" : label(name)}
+              {name === "audit-logs"
+                ? "Audit log"
+                : name === "shops"
+                  ? "Businesses"
+                  : label(name)}
             </a>
           ))}
         </nav>
@@ -147,17 +154,24 @@ function App() {
               : "Shop management"}
           </span>
           <span className="admin-tag">
-            {access.isPlatformAdmin ? "Platform administrator" : "Shop owner"}
+            {access.isPlatformAdmin
+              ? "Platform administrator"
+              : "Business member"}
           </span>
         </header>
         <div className="page">
-          {!access.isPlatformAdmin || section === "shops" ? (
+          {!access.isPlatformAdmin ||
+          section === "shops" ||
+          (section === "businesses" && !!id) ? (
             <ShopWorkspace
-              key={id || "owner"}
+              key={`${id || "owner"}/${shopSection || "overview"}`}
               shops={access.shops}
               platform={access.isPlatformAdmin}
               requestedId={id}
+              initialSection={shopSection}
             />
+          ) : section === "roles" ? (
+            <Directory kind="businesses" />
           ) : section === "overview" ? (
             <Overview />
           ) : section === "businesses" || section === "users" ? (

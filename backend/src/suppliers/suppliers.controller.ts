@@ -1,3 +1,5 @@
+import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
+import { UseInterceptors } from '@nestjs/common';
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -8,7 +10,8 @@ import { SuppliersService } from './suppliers.service.js';
 @ApiTags('Suppliers')
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Business-Id', description: 'Business to access for this request.', required: true })
-@UseGuards(AccessTokenGuard)
+@UseInterceptors(BusinessAccessInterceptor)
+@UseGuards(AccessTokenGuard, BusinessPermissionGuard)
 @Controller('suppliers')
 export class SuppliersController {
   constructor(private readonly suppliers: SuppliersService) {}

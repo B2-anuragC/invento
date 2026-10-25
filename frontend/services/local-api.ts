@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
 import { readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
@@ -47,6 +48,8 @@ export function localRequest<T>(
     .catch(() => {})
     .then(async () => {
       const state = await load();
+      // Device-only data never establishes authority over a server business.
+      for (const snapshot of Object.values(state.snapshots)) snapshot.access.permissions = [...DEFAULT_ROLE_PERMISSIONS.OWNER];
       const input =
         typeof options.body === "string" ? JSON.parse(options.body) : {};
       const method = options.method ?? "GET";
@@ -74,7 +77,7 @@ export function localRequest<T>(
         state.snapshots[business.id] = {
           schemaVersion: 1,
           business: { id: business.id, name: business.name },
-          access: { role: "OWNER", membersCanViewPurchasePrice: true },
+          access: { role: "OWNER", membersCanViewPurchasePrice: true, permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] },
           products: [],
           customers: [],
           suppliers: [],

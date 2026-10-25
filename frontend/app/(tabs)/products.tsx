@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { readProductFavorites, saveProductFavorites } from '@/services/product-favorites';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +24,7 @@ const sectionLabels: Record<ProductSection, string> = {
 
 export default function ProductsScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const insets = useSafeAreaInsets();
   const openFilters = () => { Keyboard.dismiss(); setShowFilters(true); };
   const resetFilters = () => { setCategory('All'); setStockFilter('all'); setUnitFilter('All'); setStatus('ACTIVE'); setSortByPrice(false); setSection('frequent'); };
@@ -147,7 +149,7 @@ export default function ProductsScreen() {
             <Text style={styles.title}>Catalog</Text>
             <Text style={styles.subtitle}>{products.length} PRODUCTS · {Math.max(0, categories.length - 1)} CATEGORIES</Text>
           </View>
-          <Pressable onPress={() => router.push('/product/new')} style={styles.addIcon} accessibilityLabel="Add product">
+          <Pressable disabled={!can('products.create')} style={[styles.addIcon, !can('products.create') && { display: 'none' }]} onPress={() => router.push('/product/new')} accessibilityLabel="Add product">
             <Text style={styles.addIconText}>+</Text>
           </Pressable>
         </View>
@@ -183,7 +185,7 @@ export default function ProductsScreen() {
               {search || filterCount ? 'Try another search or clear your filters.' : section === 'favorites' ? 'Tap the heart on a product to save it here.' : 'Add products to your catalog to start managing stock.'}
             </Text>
             {filterCount ? <ActionButton title="Clear filters" variant="secondary" onPress={resetFilters} /> : null}
-            {!search && !filterCount && section !== 'favorites' ? <ActionButton title="Add product" onPress={() => router.push('/product/new')} /> : null}
+            {!search && !filterCount && section !== 'favorites' ? <ActionButton permission="products.create" title="Add product" onPress={() => router.push('/product/new')} /> : null}
           </View>
         ) : null}
         {!loading && !error ? <ListingLayout view={listingView}>{filteredProducts.map((product) => {

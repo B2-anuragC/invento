@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ActivityDatePicker } from '@/components/activity-date-picker';
 import { readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
@@ -15,6 +16,7 @@ const day = (value: string) => { const date = new Date(value); return `${date.ge
 
 export default function ActivityScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
@@ -31,7 +33,7 @@ export default function ActivityScreen() {
     const session = appSession.current;
     if (!session) { setLoading(false); setError('Sign in to view activity.'); return; }
     setLoading(true); setError('');
-    Promise.all([fetchSales(session), fetchPurchases(session), readDraft(session, 'sale'), readDraft(session, 'purchase'), readDraft(session, 'sale', 'quick')]).then(async ([saleData, purchaseData, saleDraft, purchaseDraft, quickDraft]) => {
+    Promise.all([can('sales.view') ? fetchSales(session) : [], can('purchases.view') ? fetchPurchases(session) : [], can('sales.create') ? readDraft(session, 'sale') : null, can('purchases.create') ? readDraft(session, 'purchase') : null, can('sales.create') ? readDraft(session, 'sale', 'quick') : null]).then(async ([saleData, purchaseData, saleDraft, purchaseDraft, quickDraft]) => {
       const pending: TransactionDraft[] = [];
       for (const draft of [saleDraft, purchaseDraft, ...(quickDraft ? [{ ...quickDraft, source: 'quick' as const }] : [])]) {
         if (!draft) continue;

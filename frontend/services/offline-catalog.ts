@@ -70,7 +70,25 @@ async function ensure(session: AppSession): Promise<OfflineState> {
   })().finally(() => { bootstraps.delete(scope); }));
   return bootstraps.get(scope)!;
 }
-export async function offlineView(session: AppSession) { const state = await ensure(session); if (state.accessBlocked) throw new Error('Business access was revoked. Reconnect to restore access. Your pending work is retained.'); return projectOffline(state); }
+export async function offlineView(session: AppSession) {
+  const state = await ensure(session);
+  if (state.accessBlocked) throw new Error('Business access was revoked. Reconnect to restore access. Your pending work is retained.');
+  const view = projectOffline(state);
+  const can = (p: string) => (state.snapshot.access.permissions as readonly string[] | undefined)?.includes(p);
+  for (const [entity, permission] of Object.entries({ products: 'products.view', customers: 'customers.view', suppliers: 'suppliers.view', sales: 'sales.view', purchases: 'purchases.view', inventory: 'inventory.view', inventoryActivity: 'inventory.view' })) {
+    if (!can(permission)) (view as unknown as Record<string, unknown>)[entity] = [];
+  }
+  if (!can('pricing.view')) {
+    view.products = view.products.map(record => { const product = { ...record } as Record<string, unknown>; delete product.purchasePrice; return product as LocalRecord; });
+    view.purchases = view.purchases.map(record => {
+      const visible = { ...record } as unknown as Record<string, unknown>;
+      for (const key of ['total', 'subtotal', 'taxTotal', 'amountPaid', 'attachment', 'payments']) delete visible[key];
+      visible.items = record.items.map(item => { const line = { ...item } as Record<string, unknown>; for (const key of ['purchasePrice', 'lineTotal', 'taxAmount']) delete line[key]; return line; });
+      return visible as unknown as PurchaseRecord;
+    });
+  }
+  return view;
+}
 export function setOfflineConnectivity(online: boolean) { publish(undefined, { online }); }
 
 export async function syncOffline(session: AppSession, force = false): Promise<void> {
@@ -145,7 +163,7 @@ export async function saveOfflineCatalog(session: AppSession, entity: CatalogEnt
   await ensure(session);
   const clean = JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
   const result = await mutate(session, (state) => {
-    if (state.accessBlocked || !['OWNER', 'ADMIN'].includes(state.snapshot.access.role)) throw new Error('You do not have permission to change this business.');
+    if (state.accessBlocked || !state.snapshot.access.permissions?.includes(`${entity}.${id ? 'update' : 'create'}`)) throw new Error('You do not have permission to change this business.');
     const view = projectOffline(state);
     const previous = id ? view[entity].find((record) => record.id === id) : undefined;
     if (id && !previous) throw new Error('Record not found on this device.');
@@ -179,7 +197,7 @@ export async function saveOfflineCatalog(session: AppSession, entity: CatalogEnt
 export async function saveOfflineOpening(session: AppSession, productId: string, quantity: string): Promise<InventoryRecord> {
   await ensure(session);
   const record = await mutate(session, (state) => {
-    if (state.accessBlocked || !['OWNER', 'ADMIN'].includes(state.snapshot.access.role)) throw new Error('You do not have permission to record stock.');
+    if (state.accessBlocked || !state.snapshot.access.permissions?.includes('inventory.adjust')) throw new Error('You do not have permission to record stock.');
     const view = projectOffline(state);
     const product = view.products.find((item) => item.id === productId) as ProductRecord | undefined;
     if (!product || product.status !== 'ACTIVE') throw new Error('Select an active product.');
@@ -210,7 +228,7 @@ export async function saveOfflineTransaction(session: AppSession, kind: Transact
   await ensure(session);
   const payload = JSON.parse(JSON.stringify({ ...input, requestId: input.requestId ?? randomUUID() })) as CreateSaleInput | CreatePurchaseInput;
   const record = await mutate(session, (state) => {
-    if (state.accessBlocked) throw new Error('Business access was revoked. Reconnect to restore access.');
+    if (state.accessBlocked || !state.snapshot.access.permissions?.includes(kind === 'sale' ? 'sales.create' : 'purchases.create')) throw new Error('Transaction creation permission is unavailable.');
     const view = projectOffline(state);
     const duplicate = (kind === 'sale' ? view.sales : view.purchases).find((entry) => entry.requestId === payload.requestId);
     if (duplicate) return duplicate;
@@ -258,4 +276,11 @@ export async function applyOfflineTransactionReview(session: AppSession, operati
     command.state = 'pending'; command.error = undefined; command.retryAt = 0; command.attempts = 0;
   });
   void syncOffline(session, true);
+}
+
+/** Refresh authorization/data without replaying pending writes as a side effect. */
+export async function refreshOfflineAccess(session: AppSession) {
+  await ensure(session);
+  const snapshot = await transport<OfflineSnapshot>('/sync/snapshot', { method: 'GET' }, session);
+  await mutate(session, state => { state.snapshot = snapshot; state.accessBlocked = false; reconcileTransactions(state); });
 }

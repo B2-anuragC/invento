@@ -1,6 +1,16 @@
+import { type EffectiveAccess, type Permission } from "@invento/shared";
+import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
 import { api, type PanelAccess } from "./api";
-import { display, label, Notice, useLoad, type Row } from "./components";
+import {
+  display,
+  label,
+  Notice,
+  useLoad,
+  Manage,
+  status,
+  type Row,
+} from "./components";
 
 type Field = {
   key: string;
@@ -54,6 +64,7 @@ const sections = [
   "purchases",
   "inventory",
   "team",
+  "roles",
   "settings",
 ];
 
@@ -198,88 +209,229 @@ export function ShopWorkspace({
   shops,
   platform,
   requestedId,
+  initialSection,
 }: {
   shops: PanelAccess["shops"];
   platform: boolean;
   requestedId?: string;
+  initialSection?: string;
 }) {
-  // Owner routes never accept an arbitrary shop ID. The API also checks membership.
-  const [selected, setSelected] = useState(shops[0]?.id || "");
-  const id = platform ? requestedId || selected : selected;
+  const permittedId =
+    requestedId && (platform || shops.some((shop) => shop.id === requestedId));
+  const id = permittedId ? requestedId : undefined;
+  if (requestedId && !id)
+    return (
+      <p role="alert" className="notice">
+        This business is not in your active memberships.{" "}
+        <a href="#/shops">Return to your businesses</a>
+      </p>
+    );
   return (
     <>
       <div className="page-heading">
         <div>
-          <p className="eyebrow">SHOP MANAGEMENT</p>
-          <h1>{platform ? "Manage shop" : "Your shops"}</h1>
+          <p className="eyebrow">BUSINESS MANAGEMENT</p>
+          <h1>{id ? "Business workspace" : "Your businesses"}</h1>
           <p className="muted">
-            Products, stock, people, and daily operations for the selected shop.
+            {id
+              ? "Manage this business’s operations, people, roles, and settings."
+              : "Choose a business to open its management workspace."}
           </p>
         </div>
-        {shops.length > 0 && (
+        {!platform && id && shops.length > 1 && (
           <label>
-            Active shop
+            Selected business
             <select
               value={id}
-              onChange={(e) => {
-                setSelected(e.target.value);
-                if (platform)
-                  location.hash = `/shops/${encodeURIComponent(e.target.value)}`;
+              onChange={(event) => {
+                location.hash = `/shops/${encodeURIComponent(event.target.value)}`;
               }}
             >
-              {platform && id && !shops.some((s) => s.id === id) && (
-                <option value={id}>Selected shop</option>
-              )}
-              {shops.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
+              {shops.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.name}
                 </option>
               ))}
             </select>
           </label>
         )}
       </div>
-      {!id ? (
+      {id ? (
+        <Shop
+          key={`${id}/${initialSection || "overview"}`}
+          id={id}
+          initialSection={initialSection}
+          platform={platform}
+        />
+      ) : platform ? (
         <p>
-          Select a business from the{" "}
-          <a href="#/businesses">business directory</a> to manage its shop.
+          <a href="#/businesses">
+            Choose a business from the business directory →
+          </a>
         </p>
       ) : (
-        <Shop key={id} id={id} />
+        <div className="business-picker">
+          {shops.map((shop) => (
+            <a
+              className="business-choice"
+              key={shop.id}
+              href={`#/shops/${encodeURIComponent(shop.id)}`}
+            >
+              <strong>{shop.name}</strong>
+              <span>{shop.slug}</span>
+              <span className="business-choice-action">Manage business →</span>
+            </a>
+          ))}
+        </div>
       )}
     </>
   );
 }
 
-function Shop({ id }: { id: string }) {
-  const access = useLoad<Row>(`/businesses/${encodeURIComponent(id)}`);
-  const [section, setSection] = useState("overview");
+function useEffectiveAccess(id: string, revision: number) {
+  const [state, setState] = useState<{
+    data?: EffectiveAccess;
+    error?: string;
+    loading: boolean;
+  }>({ loading: true });
+  const [retry, setRetry] = useState(0);
+  React.useEffect(() => {
+    let current = true;
+    api<EffectiveAccess>(`/businesses/${encodeURIComponent(id)}/access/me`)
+      .then((data) => {
+        if (current) setState({ data, loading: false });
+      })
+      .catch((error) => {
+        if (current) setState({ error: error.message, loading: false });
+      });
+    return () => {
+      current = false;
+    };
+  }, [id, revision, retry]);
+  return { ...state, retry: () => setRetry((v) => v + 1) };
+}
+
+function Shop({
+  id,
+  initialSection = "overview",
+  platform = false,
+}: {
+  id: string;
+  platform?: boolean;
+  initialSection?: string;
+}) {
+  const [revision, setRevision] = useState(0);
+  const access = useEffectiveAccess(id, revision);
+  const business = useLoad<Row>(
+    `${platform ? "/platform-admin" : ""}/businesses/${encodeURIComponent(id)}`,
+    revision,
+  );
+  const [section, setSection] = useState(initialSection);
+  React.useEffect(() => {
+    const refresh = () => setRevision((v) => v + 1);
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 15000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+  const sectionPermission: Record<string, Permission> = {
+    overview: "reports.view",
+    products: "products.view",
+    customers: "customers.view",
+    suppliers: "suppliers.view",
+    sales: "sales.view",
+    purchases: "purchases.view",
+    inventory: "inventory.view",
+    team: "members.view",
+    roles: "roles.view",
+    settings: "business.update",
+  };
+  const can = (p: Permission) => !!access.data?.permissions.includes(p);
+  const visible = sections.filter((s) => can(sectionPermission[s]));
+  const active = visible.includes(section)
+    ? section
+    : section === "roles"
+      ? undefined
+      : visible[0];
   return (
     <>
-      <Notice {...access} />
-      {access.data && (
+      <a className="back" href={platform ? "#/businesses" : "#/shops"}>
+        ← Back to businesses
+      </a>
+      {business.data && (
+        <div className="page-heading">
+          <h2>{String(business.data.name)}</h2>
+          {status(business.data.isActive)}
+        </div>
+      )}
+      {platform && <Notice {...business} />}
+      {platform && business.data && (
+        <Manage
+          kind="businesses"
+          id={id}
+          active={Boolean(business.data.isActive)}
+          updated={() => setRevision((v) => v + 1)}
+        />
+      )}
+      {business.data?.isActive === false ? (
+        <p className="notice">
+          This business is suspended. Reactivate it to manage its operations.
+        </p>
+      ) : (
+        <Notice {...access} />
+      )}
+      {access.data && business.data?.isActive !== false && (
         <>
-          <h2>{String(access.data.name)}</h2>
           <div className="tabs" role="tablist">
-            {sections.map((s) => (
+            {visible.map((s) => (
               <button
                 key={s}
                 role="tab"
-                aria-selected={section === s}
+                aria-selected={active === s}
                 onClick={() => setSection(s)}
               >
                 {label(s)}
               </button>
             ))}
           </div>
-          <ShopSection key={section} id={id} section={section} />
+          {active === "team" || active === "roles" ? (
+            <AccessManagement
+              id={id}
+              access={access.data}
+              refreshAccess={() => setRevision((v) => v + 1)}
+            />
+          ) : active ? (
+            <ShopSection
+              key={`${id}/${active}/${access.data.permissions.join(",")}`}
+              id={id}
+              section={active}
+              permissions={access.data.permissions}
+            />
+          ) : (
+            <p>
+              {section === "roles"
+                ? "Your role does not include roles.view for this shop. Ask the shop owner to assign the required permissions."
+                : "No shop features are assigned. Contact your business owner."}
+            </p>
+          )}
         </>
       )}
     </>
   );
 }
 
-function ShopSection({ id, section }: { id: string; section: string }) {
+function ShopSection({
+  id,
+  section,
+  permissions,
+}: {
+  id: string;
+  section: string;
+  permissions: Permission[];
+}) {
+  const can = (p: string) => permissions.includes(p as Permission);
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState<Row | null>(null);
   const [message, setMessage] = useState("");
@@ -300,7 +452,13 @@ function ShopSection({ id, section }: { id: string; section: string }) {
   // useLoad uses api directly; include the tenant header through a dedicated loader.
   const result = useShopLoad<Row | Row[]>(id, path, revision);
   const rows = Array.isArray(result.data) ? result.data : [];
-  const fields = section === "products" ? productFields : personFields;
+  const fields =
+    section === "products"
+      ? productFields.filter(
+          (f) =>
+            !editing?.id || f.key !== "purchasePrice" || can("pricing.view"),
+        )
+      : personFields;
   const catalog = ["products", "customers", "suppliers"].includes(section);
   return (
     <>
@@ -328,7 +486,10 @@ function ShopSection({ id, section }: { id: string; section: string }) {
       )}
       {catalog && (
         <>
-          <button onClick={() => setEditing({})}>
+          <button
+            hidden={!can(`${section}.create`)}
+            onClick={() => setEditing({})}
+          >
             Add{" "}
             {section === "products"
               ? "product"
@@ -342,7 +503,13 @@ function ShopSection({ id, section }: { id: string; section: string }) {
               title={editing.id ? "Edit record" : "New record"}
               fields={
                 editing.id
-                  ? [...fields, field("status", true, ["ACTIVE", "INACTIVE"])]
+                  ? [
+                      ...fields,
+                      ...(can(`${section}.delete`) ||
+                      editing.status === "INACTIVE"
+                        ? [field("status", true, ["ACTIVE", "INACTIVE"])]
+                        : []),
+                    ]
                   : fields
               }
               initial={editing}
@@ -375,14 +542,14 @@ function ShopSection({ id, section }: { id: string; section: string }) {
                   ]
                 : ["name", "contactName", "phone", "email", "status"]
             }
-            edit={setEditing}
+            edit={can(`${section}.update`) ? setEditing : undefined}
           />
           <details className="panel">
             <summary>Inactive records</summary>
             <Inactive
               id={id}
               section={section}
-              edit={setEditing}
+              edit={can(`${section}.update`) ? setEditing : undefined}
               revision={revision}
             />
           </details>
@@ -390,7 +557,9 @@ function ShopSection({ id, section }: { id: string; section: string }) {
       )}
       {["sales", "purchases"].includes(section) && (
         <>
-          <TransactionForm id={id} section={section} saved={refresh} />
+          {can(`${section}.create`) && (
+            <TransactionForm id={id} section={section} saved={refresh} />
+          )}
           <Records
             rows={rows}
             keys={[
@@ -400,7 +569,7 @@ function ShopSection({ id, section }: { id: string; section: string }) {
               "status",
               "note",
             ]}
-            edit={setEditing}
+            edit={can(`${section}.update`) ? setEditing : undefined}
           />
           {editing && (
             <Editor
@@ -436,7 +605,7 @@ function ShopSection({ id, section }: { id: string; section: string }) {
       )}
       {section === "inventory" && (
         <>
-          <StockForm id={id} saved={refresh} />
+          {can("inventory.adjust") && <StockForm id={id} saved={refresh} />}
           <Records
             rows={rows.map((r) => ({ ...r, name: (r.product as Row)?.name }))}
             keys={["name", "quantity", "updatedAt"]}
@@ -444,7 +613,7 @@ function ShopSection({ id, section }: { id: string; section: string }) {
           <Activity id={id} revision={revision} />
         </>
       )}
-      {section === "team" && <Team id={id} rows={rows} saved={refresh} />}
+
       {section === "settings" && result.data && !Array.isArray(result.data) && (
         <>
           <Editor
@@ -465,7 +634,7 @@ function ShopSection({ id, section }: { id: string; section: string }) {
               refresh();
             }}
           />
-          <Pricing id={id} />
+          {can("pricing.manage") && <Pricing id={id} />}
         </>
       )}
     </>
@@ -503,7 +672,7 @@ function Inactive({
 }: {
   id: string;
   section: string;
-  edit: (r: Row) => void;
+  edit?: (r: Row) => void;
   revision: number;
 }) {
   const result = useShopLoad<Row[]>(
@@ -738,91 +907,6 @@ function TransactionForm({
         }}
       />
     </details>
-  );
-}
-function Team({
-  id,
-  rows,
-  saved,
-}: {
-  id: string;
-  rows: Row[];
-  saved: () => void;
-}) {
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [error, setError] = useState("");
-  const base = `/businesses/${encodeURIComponent(id)}/users`;
-  return (
-    <>
-      <Editor
-        title="Add existing account to shop"
-        fields={[
-          { key: "email", type: "email", required: true },
-          field("role", true, ["MEMBER", "ADMIN"]),
-        ]}
-        save={async (data) => {
-          await api(base, { method: "POST", body: JSON.stringify(data) });
-          saved();
-        }}
-      />
-      <Records
-        rows={rows.map((r) => ({
-          ...r,
-          name: (r.user as Row).name,
-          email: (r.user as Row).email,
-        }))}
-        keys={["name", "email", "role"]}
-        edit={setEditing}
-      />
-      {editing && editing.role !== "OWNER" && (
-        <>
-          <Editor
-            key={String(editing.id)}
-            title="Change shop role"
-            fields={[field("role", true, ["MEMBER", "ADMIN"])]}
-            initial={editing}
-            cancel={() => setEditing(null)}
-            save={async (data) => {
-              await api(
-                `${base}/${encodeURIComponent(String((editing.user as Row).id))}`,
-                { method: "PATCH", body: JSON.stringify(data) },
-              );
-              setEditing(null);
-              saved();
-            }}
-          />
-          <button
-            className="danger"
-            onClick={async () => {
-              setError("");
-              try {
-                await api(
-                  `${base}/${encodeURIComponent(String((editing.user as Row).id))}`,
-                  { method: "DELETE" },
-                );
-                setEditing(null);
-                saved();
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-          >
-            Remove from this shop
-          </button>
-        </>
-      )}
-      {editing?.role === "OWNER" && (
-        <p>
-          Owner memberships are protected.{" "}
-          <button onClick={() => setEditing(null)}>Close</button>
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-    </>
   );
 }
 function Pricing({ id }: { id: string }) {

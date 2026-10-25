@@ -50,8 +50,8 @@ export function buildOfflineTransaction(
   kind: TransactionKind,
   input: CreateSaleInput | CreatePurchaseInput,
 ) {
-  if (!["OWNER", "ADMIN"].includes(view.access.role))
-    throw new Error("Only owners and administrators can record transactions.");
+  if (!view.access.permissions?.includes(kind === "sale" ? "sales.create" : "purchases.create"))
+    throw new Error("Transaction creation permission is unavailable.");
   if (!input.requestId || !/^[A-Za-z0-9_-]{8,100}$/.test(input.requestId))
     throw new Error("A transaction request ID is required.");
   const sale = kind === "sale" ? (input as CreateSaleInput) : undefined;

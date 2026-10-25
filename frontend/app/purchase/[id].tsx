@@ -31,7 +31,7 @@ export default function PurchaseDetailsScreen() {
       setLoading(false);
       return;
     }
-    void fetchPricingAccess(session).then((access) => { if (active) setCanRecordPayment(access.role === 'OWNER' || access.role === 'ADMIN'); }).catch(() => { if (active) setCanRecordPayment(false); });
+    void fetchPricingAccess(session).then((access) => { if (active) setCanRecordPayment(!!access.permissions?.includes('purchases.payments')); }).catch(() => { if (active) setCanRecordPayment(false); });
     fetchPurchase(session, id).then(async (record) => {
       const missingIds = [...new Set(record.items.filter((item) => !item.product?.name).map((item) => item.productId))];
       const products = await Promise.all(missingIds.map(async (productId) => {

@@ -1,10 +1,11 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ProductsService } from './products.service.js';
 
 const input = { name: 'Eggs', sku: 'EGGS', unit: 'DOZEN', purchasePrice: '100', sellingPrice: '120', minimumStock: '1' };
 function environment() {
   const prisma = {
-    businessUser: { findUnique: vi.fn().mockResolvedValue({ role: 'OWNER', isActive: true, business: { isActive: true } }) },
+    businessUser: { findUnique: vi.fn().mockResolvedValue({ role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, isActive: true, business: { isActive: true } }) },
     product: {
       create: vi.fn(async ({ data }) => data),
       findFirst: vi.fn().mockResolvedValue({ id: 'product-a', unit: 'BOX', piecesPerUnit: 24 }),

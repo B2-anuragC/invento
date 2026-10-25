@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { LOCAL_ONLY } from '@/services/runtime-mode';
 import { PurchaseAttachment } from './purchase-attachment';
 import { SaleReferencePhoto } from './sale-reference-photo';
@@ -24,6 +25,8 @@ export type ReceiptData = {
 };
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
 export function TransactionReceipt({ data: initialData, inModal = false, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; inModal?: boolean; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
+  const { can } = usePermissions();
+  const mayCreate = can(initialData.kind === 'sale' ? 'sales.create' : 'purchases.create');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [data, setData] = useState(initialData);
@@ -101,7 +104,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     <SaleReferencePhoto value={data.referenceImage} />
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>
-    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}><View style={styles.actions}><Pressable accessibilityRole="button" disabled={!!data.syncState} accessibilityState={{ disabled: !!data.syncState }} onPress={() => void share()} style={[styles.secondary, data.syncState && { opacity: 0.45 }]}><Text style={styles.buttonText}>{data.syncState ? 'Share after sync' : data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{onRepeat && !data.syncState ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
+    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}><View style={styles.actions}><Pressable accessibilityRole="button" disabled={!!data.syncState} accessibilityState={{ disabled: !!data.syncState }} onPress={() => void share()} style={[styles.secondary, data.syncState && { opacity: 0.45 }]}><Text style={styles.buttonText}>{data.syncState ? 'Share after sync' : data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{mayCreate && onRepeat && !data.syncState ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={[styles.primary, !mayCreate && { display: 'none' }]}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
   </View>;
 }
 const styles = StyleSheet.create({

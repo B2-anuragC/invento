@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { Tabs, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -10,6 +11,7 @@ import { appSession, restoreSession } from '@/services/api';
 
 export default function TabLayout() {
   const router = useRouter();
+  const { can } = usePermissions();
   const insets = useSafeAreaInsets();
   const [checkingSession, setCheckingSession] = useState(true);
 
@@ -68,6 +70,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Overview',
+          href: can('reports.view') ? undefined : null,
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="square.grid.2x2.fill" color={color} />,
         }}
       />
@@ -75,6 +78,7 @@ export default function TabLayout() {
         name="products"
         options={{
           title: 'Catalog',
+          href: can('products.view') ? undefined : null,
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="cube.fill" color={color} />,
         }}
       />
@@ -82,6 +86,7 @@ export default function TabLayout() {
         name="sales"
         options={{
           title: 'Sales',
+          href: can('sales.view') ? undefined : null,
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="dollarsign.circle.fill" color={color} />,
         }}
       />
@@ -90,6 +95,7 @@ export default function TabLayout() {
         name="purchases"
         options={{
           title: 'Purchases',
+          href: can('purchases.view') ? undefined : null,
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="cart.fill" color={color} />,
         }}
       />
@@ -97,6 +103,7 @@ export default function TabLayout() {
         name="people"
         options={{
           title: 'People',
+          href: can('customers.view') || can('suppliers.view') ? undefined : null,
           tabBarIcon: ({ color }) => <IconSymbol size={23} name="person.2.fill" color={color} />,
         }}
       />

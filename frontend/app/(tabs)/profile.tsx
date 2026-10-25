@@ -1,3 +1,4 @@
+import { usePermissions, clientRoutePermissions } from '@/services/permissions';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
@@ -8,6 +9,7 @@ import { appSession, logoutSession, persistSession, updateProfile } from '@/serv
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const [loggingOut, setLoggingOut] = useState(false);
   const [profile, setProfile] = useState(() => appSession.current?.user ?? null);
   const [name, setName] = useState(() => appSession.current?.user.name ?? '');
@@ -158,8 +160,9 @@ export default function ProfileScreen() {
               { title: 'Sales history', detail: 'Invoices and repeat sales', route: '/(tabs)/sales' },
               { title: 'Purchase history', detail: 'Supplier invoices and replenishment', route: '/(tabs)/purchases' },
               { title: 'People & contacts', detail: 'Customers and suppliers', route: '/people' },
+              { title: 'Users & permissions', detail: 'Manage business access', route: '/settings/access' },
               { title: 'Pricing access', detail: 'Control price visibility', route: '/settings/pricing' },
-            ].map((item) => (
+            ].filter(item => { const required = clientRoutePermissions(item.route); return !required.length || required.some(can); }).map((item) => (
               <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(item.route as Parameters<typeof router.push>[0])} style={styles.row}>
                 <View style={{ flex: 1 }}><Text style={styles.value}>{item.title}</Text><Text style={styles.role}>{item.detail}</Text></View>
                 <Text style={{ color: '#737B77', fontSize: 24 }}>›</Text>

@@ -108,7 +108,7 @@ export default function PricingAccessScreen() {
     }
   };
 
-  const isManager = access?.role === 'OWNER' || access?.role === 'ADMIN';
+  const isManager = !!access?.permissions?.includes('pricing.manage');
 
   return (
     <AppScreen>

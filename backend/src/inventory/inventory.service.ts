@@ -1,5 +1,5 @@
-import { requireBusinessMembership } from '../auth/business-access.js';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { requireBusinessPermission } from '../auth/business-access.js';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InventoryTransactionType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { adjustmentTypes } from './dto/inventory.dto.js';
@@ -29,14 +29,14 @@ export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async openingStock(userId: string, businessId: string, input: { productId: string; quantity: string; note?: string }) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.adjust');
     await this.requireProduct(businessId, input.productId);
 
     return this.recordOpeningStock({ businessId, productId: input.productId, quantity: input.quantity, note: input.note, userId });
   }
 
   async adjust(userId: string, businessId: string, input: { productId: string; type: (typeof adjustmentTypes)[number]; quantity: string; note?: string }) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.adjust');
     await this.requireProduct(businessId, input.productId);
 
     const type = InventoryTransactionType[input.type];
@@ -47,7 +47,7 @@ export class InventoryService {
   }
 
   async list(userId: string, businessId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.view');
     const rows = await this.prisma.inventory.findMany({
       where: { businessId },
       include: { product: { select: { id: true, name: true, sku: true, unit: true, piecesPerUnit: true, status: true } } },
@@ -57,14 +57,14 @@ export class InventoryService {
   }
 
   async get(userId: string, businessId: string, productId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.view');
     const product = await this.requireProduct(businessId, productId);
     const inventory = await this.prisma.inventory.findUnique({ where: { productId } });
     return inventory ? this.display(inventory, product.piecesPerUnit) : { businessId, productId, quantity: new Prisma.Decimal(0), createdAt: null, updatedAt: null };
   }
 
   async history(userId: string, businessId: string, productId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.view');
     const product = await this.requireProduct(businessId, productId);
     const rows = await this.prisma.inventoryTransaction.findMany({
       where: { businessId, productId },
@@ -74,7 +74,7 @@ export class InventoryService {
   }
 
   async activity(userId: string, businessId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.view');
     const rows = await this.prisma.inventoryTransaction.findMany({
       where: { businessId },
       include: { product: { select: { id: true, name: true, sku: true, unit: true, piecesPerUnit: true } } },
@@ -225,13 +225,5 @@ export class InventoryService {
     return product;
   }
 
-  private async requireMembership(userId: string, businessId: string) {
-    return requireBusinessMembership(this.prisma, userId, businessId);
-  }
 
-  private async requireManagerMembership(userId: string, businessId: string) {
-    const membership = await this.requireMembership(userId, businessId);
-    if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') throw new ForbiddenException('You do not have permission for this action.');
-    return membership;
-  }
 }

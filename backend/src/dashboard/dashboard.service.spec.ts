@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { dashboardRange, DashboardService } from './dashboard.service.js';
@@ -26,7 +27,7 @@ describe('Dashboard business dates', () => {
 
   it('fills missing days and sums decimal amounts without float arithmetic', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
       $queryRaw: vi.fn().mockResolvedValue([
         { date: '2026-09-19', total: new Prisma.Decimal('0.1'), count: 1 },
         { date: '2026-09-21', total: new Prisma.Decimal('0.2'), count: 2 },
@@ -48,7 +49,7 @@ describe('Dashboard business dates', () => {
 
   it('hides purchase totals from members when purchase-price access is disabled', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
       business: { findUnique: vi.fn().mockResolvedValue({ membersCanViewPurchasePrice: false }) },
       $queryRaw: vi.fn().mockResolvedValue([
         { date: '2026-09-20', total: new Prisma.Decimal('520.00'), count: 2 },

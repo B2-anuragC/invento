@@ -164,6 +164,7 @@ describe('Platform validation and calculations', () => {
   it('rejects disabling the last active administrator without making changes', async () => {
     const tx = {
       $queryRaw: vi.fn(),
+      businessUser: { findMany: vi.fn().mockResolvedValue([]) },
       user: {
         findUnique: vi
           .fn()

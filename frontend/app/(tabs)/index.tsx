@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -22,6 +23,7 @@ function formatMoney(value: string | number | undefined) {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [transactions, setTransactions] = useState<RecentTransaction[]>([]);
@@ -45,7 +47,7 @@ export default function DashboardScreen() {
     try {
       const [dashboard, sales] = await Promise.all([
         fetchDashboardSummary(session),
-        fetchSales(session),
+        can('sales.view') ? fetchSales(session) : [],
       ]);
       if (requestId.current !== currentRequestId) return;
       setSummary(dashboard);
@@ -68,7 +70,7 @@ export default function DashboardScreen() {
     } finally {
       if (requestId.current === currentRequestId) setLoading(false);
     }
-  }, []);
+  }, [can]);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,7 +103,7 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <Pressable accessibilityRole="button" accessibilityLabel="View all activity, sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} style={styles.activityShortcut}>
+        <Pressable accessibilityRole="button" accessibilityLabel="View all activity, sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} style={[styles.activityShortcut, !can('sales.view') && !can('purchases.view') && { display: 'none' }]}>
           <Text style={styles.activityLink}>All activity · sales, purchases & drafts</Text>
           <Text style={styles.activityLink}>›</Text>
         </Pressable>
@@ -109,7 +111,7 @@ export default function DashboardScreen() {
         <View style={styles.salesCard}>
           <View style={styles.salesTop}>
             <Text style={styles.salesLabel}>TODAY’S SALES</Text>
-            <Pressable accessibilityLabel="View sales" onPress={() => router.push('/(tabs)/sales')}>
+            <Pressable accessibilityLabel="View sales" style={!can('sales.view') ? { display: 'none' } : undefined} onPress={() => router.push('/(tabs)/sales')}>
               <Text style={styles.arrow}>↗</Text>
             </Pressable>
           </View>
@@ -123,10 +125,10 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable onPress={() => router.push('/sale/quick')} style={styles.primaryAction}>
+          <Pressable onPress={() => router.push('/sale/quick')} style={[styles.primaryAction, !can('sales.create') && { display: 'none' }]}>
             <Text style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
           </Pressable>
-          {lowStockCount > 0 ? (
+          {lowStockCount > 0 && can('inventory.view') ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`${lowStockCount} ${lowStockCount === 1 ? 'product needs' : 'products need'} attention. Review low stock.`} onPress={() => router.push('/(tabs)/inventory')} style={styles.stockAlert}>
             <Text style={styles.alertIcon}>⚠</Text>
             <View style={styles.alertCopy}>
@@ -139,7 +141,7 @@ export default function DashboardScreen() {
         </View>
 
 
-        <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={styles.pendingShortcut}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={[styles.pendingShortcut, !can('sales.view') && { display: 'none' }]}>
           <Text style={styles.activityLink}>Pending customer payments</Text>
           <Text style={styles.activityLink}>›</Text>
         </Pressable>

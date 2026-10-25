@@ -176,3 +176,7 @@ The separate `admin/` workspace uses this backend's `/api/platform-admin` module
 See [admin setup, access policy, migrations, and verification](../admin/README.md).
 Platform and business permissions remain separate; restrictions are stored and checked
 in PostgreSQL. Redis and BullMQ are not required for this feature.
+
+## Centralized business authorization
+
+Business-local roles and granular permissions are shared by web and mobile. See [authorization model, API contracts, preservation migration, and tests](../docs/AUTHORIZATION.md). Apply `20261025000000_business_permissions` and regenerate Prisma before deploying the backend and clients together. Business roles cannot grant platform privileges.

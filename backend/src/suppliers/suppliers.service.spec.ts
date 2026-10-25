@@ -1,3 +1,4 @@
+import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SuppliersService } from './suppliers.service.js';
 
@@ -13,7 +14,7 @@ describe('SuppliersService', () => {
   it('creates a supplier under an authorized business', async () => {
     const supplier = { id: 'supplier-a', businessId: 'business-a', ...supplierInput };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
       supplier: { create: vi.fn().mockResolvedValue(supplier) },
     };
 
@@ -27,7 +28,7 @@ describe('SuppliersService', () => {
 
   it('lists active suppliers for the business by default', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       supplier: { findMany: vi.fn().mockResolvedValue([]) },
     };
 
@@ -41,7 +42,7 @@ describe('SuppliersService', () => {
   it('gets a supplier that belongs to the business', async () => {
     const supplier = { id: 'supplier-a', businessId: 'business-a', ...supplierInput };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(supplier) },
     };
 
@@ -52,7 +53,7 @@ describe('SuppliersService', () => {
     const existing = { id: 'supplier-a', businessId: 'business-a', ...supplierInput };
     const updated = { ...existing, name: 'Acme Renamed' };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(updated) },
     };
 
@@ -63,7 +64,7 @@ describe('SuppliersService', () => {
 
   it('rejects a member without manager permissions from updating a supplier', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       supplier: { findFirst: vi.fn(), update: vi.fn() },
     };
 
@@ -74,7 +75,7 @@ describe('SuppliersService', () => {
 
   it('prevents a user from reading a supplier belonging to another business (tenant isolation)', async () => {
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.MEMBER] } }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(null) },
     };
 
@@ -86,7 +87,7 @@ describe('SuppliersService', () => {
     const existing = { id: 'supplier-a', businessId: 'business-a', status: 'ACTIVE' };
     const deactivated = { ...existing, status: 'INACTIVE' };
     const prisma = {
-      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER' }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
       supplier: { findFirst: vi.fn().mockResolvedValue(existing), update: vi.fn().mockResolvedValue(deactivated) },
     };
 

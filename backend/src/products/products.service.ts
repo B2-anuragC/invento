@@ -1,7 +1,7 @@
 import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { requireBusinessMembership } from '../auth/business-access.js';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { requireBusinessPermission } from '../auth/business-access.js';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
@@ -30,7 +30,7 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
   async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'imageThumbnail' | 'imageOriginal' | 'images'>, clientId?: string) {
-    await this.requireManagerMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'products.create');
     const images = await this.normalizeImages(businessId, input);
     const piecesPerUnit = this.groupSize(input.unit, input.piecesPerUnit);
     const sellingOptions = this.validateOptions(input.sellingOptions ?? [], input.unit, piecesPerUnit);
@@ -60,7 +60,7 @@ export class ProductsService {
   }
 
   async list(userId: string, businessId: string, query: { search?: string; status?: (typeof productStatuses)[number]; category?: string }) {
-    const membership = await this.requireMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'products.view');
     const search = query.search?.trim();
     const products = await this.prisma.product.findMany({
       where: {
@@ -81,7 +81,7 @@ export class ProductsService {
   }
 
   async categories(userId: string, businessId: string) {
-    await this.requireMembership(userId, businessId);
+    await requireBusinessPermission(this.prisma, userId, businessId, 'products.view');
     const products = await this.prisma.product.findMany({
       where: { businessId, status: ProductStatus.ACTIVE, category: { not: null } },
       select: { category: true },
@@ -92,14 +92,15 @@ export class ProductsService {
   }
 
   async get(userId: string, businessId: string, productId: string) {
-    const membership = await this.requireMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'products.view');
     const product = await this.prisma.product.findFirst({ where: { id: productId, businessId } });
     if (!product) throw new NotFoundException('Product not found.');
     return (await this.applyPurchasePriceVisibility(businessId, membership, [product]))[0];
   }
 
   async update(userId: string, businessId: string, productId: string, input: ProductInput) {
-    await this.requireManagerMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'products.update');
+    if (input.status === 'INACTIVE') await requireBusinessPermission(this.prisma, userId, businessId, 'products.delete');
     const images = await this.normalizeImages(businessId, input);
     const product = await this.requireProduct(businessId, productId);
     const unit = input.unit ?? product.unit;
@@ -111,7 +112,7 @@ export class ProductsService {
     }
     const sellingOptions = input.sellingOptions === undefined ? undefined : this.validateOptions(input.sellingOptions, unit, piecesPerUnit);
     try {
-      return await this.prisma.product.update({
+      const updated = await this.prisma.product.update({
         where: { id: productId },
         data: {
           ...input,
@@ -129,6 +130,7 @@ export class ProductsService {
           status: input.status ? this.toStatus(input.status) : undefined,
         },
       });
+      return (await this.applyPurchasePriceVisibility(businessId, membership, [updated]))[0];
     } catch (error) {
       this.throwIfUniqueViolation(error);
       throw error;
@@ -136,9 +138,10 @@ export class ProductsService {
   }
 
   async deactivate(userId: string, businessId: string, productId: string) {
-    await this.requireManagerMembership(userId, businessId);
+    const membership = await requireBusinessPermission(this.prisma, userId, businessId, 'products.delete');
     await this.requireProduct(businessId, productId);
-    return this.prisma.product.update({ where: { id: productId }, data: { revision: { increment: 1 }, status: ProductStatus.INACTIVE } });
+    const updated = await this.prisma.product.update({ where: { id: productId }, data: { revision: { increment: 1 }, status: ProductStatus.INACTIVE } });
+    return (await this.applyPurchasePriceVisibility(businessId, membership, [updated]))[0];
   }
 
   async stock(userId: string, businessId: string, productId: string) {
@@ -204,27 +207,14 @@ export class ProductsService {
     return product;
   }
 
-  private async requireMembership(userId: string, businessId: string) {
-    return requireBusinessMembership(this.prisma, userId, businessId);
-  }
 
-  private async requireManagerMembership(userId: string, businessId: string) {
-    const membership = await this.requireMembership(userId, businessId);
-    if (membership.role !== 'OWNER' && membership.role !== 'ADMIN') throw new ForbiddenException('You do not have permission for this action.');
-    return membership;
-  }
 
   private async applyPurchasePriceVisibility<T extends { purchasePrice: unknown }>(
     businessId: string,
-    membership: { role: string },
+    membership: { role: string; permissions?: readonly string[] },
     products: T[],
   ): Promise<(Omit<T, 'purchasePrice'> & { purchasePrice?: T['purchasePrice'] })[]> {
-    if (membership.role === 'OWNER' || membership.role === 'ADMIN') return products;
-    const business = await this.prisma.business.findUnique({
-      where: { id: businessId },
-      select: { membersCanViewPurchasePrice: true },
-    });
-    if (business?.membersCanViewPurchasePrice !== false) return products;
+    if (membership.permissions?.includes('pricing.view')) return products;
     return products.map(({ purchasePrice: _purchasePrice, ...product }) => product);
   }
 

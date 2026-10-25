@@ -1,3 +1,4 @@
+import { usePermissions } from '@/services/permissions';
 import { ListingLayout, ListingViewToggle, type ListingView } from '@/components/listing-layout';
 import { ProductPhoto, ProductThumbnail, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
@@ -26,6 +27,7 @@ const emptyContact: ContactFields = { name: '', contactName: '', phone: '', emai
 
 export default function PeopleDirectoryScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const insets = useSafeAreaInsets();
   const [listingView, setListingView] = useState<ListingView>('list');
   const isGrid = listingView === 'grid';
@@ -54,7 +56,7 @@ export default function PeopleDirectoryScreen() {
     }
     setLoading(true);
     setError('');
-    Promise.all([fetchCustomers(session), fetchSuppliers(session), fetchProducts(session)])
+    Promise.all([can('customers.view') ? fetchCustomers(session) : [], can('suppliers.view') ? fetchSuppliers(session) : [], can('products.view') ? fetchProducts(session) : []])
       .then(([customerData, supplierData, productData]) => {
         setCatalogProducts(productData);
         setCustomers(customerData);
@@ -62,7 +64,7 @@ export default function PeopleDirectoryScreen() {
       })
       .catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : 'Could not load people.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [can]);
   useFocusEffect(useCallback(() => { loadDirectory(); }, [loadDirectory]));
 
   const people: PersonItem[] = [
@@ -101,7 +103,9 @@ export default function PeopleDirectoryScreen() {
     setPhoto({ imageOriginal: null, imageThumbnail: null });
     setContact(emptyContact);
     setError('');
-    setContactKind(kind ?? (filter === 'Suppliers' ? 'supplier' : 'customer'));
+    const next = kind ?? (filter === 'Suppliers' ? 'supplier' : 'customer');
+    if (!can(next === 'supplier' ? 'suppliers.create' : 'customers.create')) return;
+    setContactKind(next);
     setModalVisible(true);
   };
 
@@ -113,7 +117,7 @@ export default function PeopleDirectoryScreen() {
             <Text style={styles.title}>People</Text>
             <Text style={styles.subtitle}>CUSTOMERS & SUPPLIERS</Text>
           </View>
-          <Pressable accessibilityLabel="Add person" onPress={() => openCreate()} style={styles.addButton}>
+          <Pressable accessibilityLabel="Add person" onPress={() => openCreate()} style={[styles.addButton, !can('customers.create') && !can('suppliers.create') && { display: 'none' }]}>
             <Text style={styles.addButtonText}>＋</Text>
           </Pressable>
         </View>
@@ -134,7 +138,7 @@ export default function PeopleDirectoryScreen() {
           <View style={styles.group}>
             <View style={styles.groupHeading}>
               <Text style={styles.groupTitle}>Customers</Text>
-              <Pressable onPress={() => openCreate('customer')}><Text style={styles.addLink}>+ Add customer</Text></Pressable>
+              <Pressable disabled={!can('customers.create')} style={!can('customers.create') ? { display: 'none' } : undefined} onPress={() => openCreate('customer')}><Text style={styles.addLink}>+ Add customer</Text></Pressable>
             </View>
             {!loading && filter === 'Customers' && people.filter((item) => item.kind === 'customer').length === 0 ? (
               <Text style={styles.emptyGroup}>No customers match your search.</Text>
@@ -155,7 +159,7 @@ export default function PeopleDirectoryScreen() {
           <View style={styles.group}>
             <View style={styles.groupHeading}>
               <Text style={styles.groupTitle}>Suppliers</Text>
-              <Pressable onPress={() => openCreate('supplier')}><Text style={styles.addLink}>+ Add supplier</Text></Pressable>
+              <Pressable disabled={!can('suppliers.create')} style={!can('suppliers.create') ? { display: 'none' } : undefined} onPress={() => openCreate('supplier')}><Text style={styles.addLink}>+ Add supplier</Text></Pressable>
             </View>
             {!loading && filter === 'Suppliers' && people.filter((item) => item.kind === 'supplier').length === 0 ? (
               <Text style={styles.emptyGroup}>No suppliers match your search.</Text>

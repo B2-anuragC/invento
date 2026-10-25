@@ -1,3 +1,6 @@
+import { requireBusinessMembership, requireBusinessPermission, supportAccess } from '../auth/business-access.js';
+import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
+import { UseInterceptors } from '@nestjs/common';
 import { FileJobsService } from './file-jobs.service.js';
 import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { IsIn, IsString, Matches, MaxLength, MinLength } from 'class-validator';
@@ -12,45 +15,53 @@ class UploadFileDto {
   @IsIn(['product', 'customer', 'sale', 'purchase']) kind!: UploadKind;
 }
 @Controller('files')
-@UseGuards(AccessTokenGuard)
+@UseInterceptors(BusinessAccessInterceptor)
+@UseGuards(AccessTokenGuard, BusinessPermissionGuard)
 export class FilesController {
   constructor(private readonly files: FilesService, private readonly prisma: PrismaService, private readonly jobs: FileJobsService) {}
   private async membership(req: Request) {
     const businessId = req.header('X-Business-Id');
     if (!businessId) throw new BadRequestException('Select a business.');
-    const membership = await this.prisma.businessUser.findUnique({ where: { businessId_userId: { businessId, userId: req.user.id } } });
-    if (!membership?.isActive) throw new ForbiddenException('You do not have access to this business.');
-    return membership;
+    return requireBusinessMembership(this.prisma, req.user.id, businessId);
+  }
+
+  private async uploadPermission(req: Request, kind: UploadKind) {
+    const domain = ({ product: 'products', customer: 'customers', sale: 'sales', purchase: 'purchases' } as const)[kind];
+    if (!domain) throw new BadRequestException('Invalid upload kind.');
+    const membership = await requireBusinessPermission(this.prisma, req.user.id, String(req.header('X-Business-Id')), 'files.upload');
+    if (!membership.permissions.includes(`${domain}.create`) && !membership.permissions.includes(`${domain}.update`)) throw new ForbiddenException('No authority to upload for this resource.');
   }
   @Post()
   async upload(@Req() req: Request, @Body() dto: UploadFileDto) {
     const membership = await this.membership(req);
-    if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can upload files.');
-    return this.jobs.upload(membership.businessId, dto, dto.kind);
+    await this.uploadPermission(req, dto.kind);
+    return this.jobs.upload(membership.businessId, dto, dto.kind, req.user.id, supportAccess.getStore()?.auditId);
   }
   @Post('jobs')
   @HttpCode(202)
   async enqueue(@Req() req: Request, @Body() dto: UploadFileDto) {
     const membership = await this.membership(req);
-    if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can upload files.');
-    return this.jobs.enqueue(membership.businessId, dto, dto.kind);
+    await this.uploadPermission(req, dto.kind);
+    return this.jobs.enqueue(membership.businessId, dto, dto.kind, req.user.id, supportAccess.getStore()?.auditId);
   }
   @Get('jobs/:jobId')
   async jobStatus(@Req() req: Request, @Param('jobId') jobId: string) {
-    const membership = await this.membership(req);
-    if (!['OWNER', 'ADMIN'].includes(membership.role)) throw new ForbiddenException('Only owners and administrators can view upload jobs.');
-    return this.jobs.status(membership.businessId, jobId);
+    const membership = await requireBusinessPermission(this.prisma, req.user.id, String(req.header('X-Business-Id')), 'files.upload');
+    const status = await this.jobs.status(membership.businessId, jobId);
+    await this.uploadPermission(req, status.kind);
+    return status;
   }
   @Get(':id/:variant')
   async download(@Req() req: Request, @Param('id') id: string, @Param('variant') variant: string, @Res() res: Response) {
-    const membership = await this.membership(req);
+    const membership = await requireBusinessPermission(this.prisma, req.user.id, String(req.header('X-Business-Id')), 'files.view');
     const result = await this.files.read(membership.businessId, id, variant);
-    if (result.manifest.kind === 'purchase' && membership.role === 'MEMBER') {
-      const business = await this.prisma.business.findUnique({ where: { id: membership.businessId }, select: { membersCanViewPurchasePrice: true } });
-      if (business?.membersCanViewPurchasePrice === false) throw new ForbiddenException('Purchase attachments are restricted.');
+    const domain = ({ product: 'products', customer: 'customers', sale: 'sales', purchase: 'purchases' } as const)[result.manifest.kind];
+    if (!domain || !membership.permissions.includes(`${domain}.view`)) throw new ForbiddenException('Resource access is unavailable.');
+    if (result.manifest.kind === 'purchase' && !membership.permissions.includes('pricing.view')) {
+      throw new ForbiddenException('Purchase attachments are restricted.');
     }
     const name = result.manifest.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    res.set({ 'Content-Type': result.mimeType, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=300', 'Content-Disposition': `${result.mimeType.startsWith('image/') ? 'inline' : 'attachment'}; filename="${name}"` });
+    res.set({ 'Content-Type': result.mimeType, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store', 'Content-Disposition': `${result.mimeType.startsWith('image/') ? 'inline' : 'attachment'}; filename="${name}"` });
     res.send(result.data);
   }
 }
