@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue, QueueEvents } from 'bullmq';
+import { postgresQueues } from '../config/postgres-queue.js';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -8,11 +8,13 @@ import { FilesService, type UploadKind } from './files.service.js';
 
 export const FILE_QUEUE = 'file-processing';
 export type FileJob = { businessId: string; userId?: string; supportAuditId?: string; stagingId: string; name: string; mimeType: string; kind: UploadKind };
+type FileQueue = InstanceType<typeof postgresQueues.Queue<FileJob>>;
+type FileQueueEvents = InstanceType<typeof postgresQueues.QueueEvents>;
 
 @Injectable()
 export class FileJobsService implements OnModuleDestroy {
-  private events?: QueueEvents;
-  constructor(@InjectQueue(FILE_QUEUE) private readonly queue: Queue<FileJob>, private readonly files: FilesService) {}
+  private events?: FileQueueEvents;
+  constructor(@InjectQueue(FILE_QUEUE) private readonly queue: FileQueue, private readonly files: FilesService) {}
 
   async enqueue(businessId: string, file: { name: string; mimeType: string; base64: string }, kind: UploadKind, userId?: string, supportAuditId?: string) {
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(businessId) || !['product', 'customer', 'sale', 'purchase'].includes(kind)) throw new BadRequestException('Invalid upload reference.');
@@ -23,7 +25,7 @@ export class FileJobsService implements OnModuleDestroy {
     const stagingId = randomUUID();
     const directory = join(this.files.root, '.jobs');
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    // Redis holds references only; source bytes live on the persistent upload volume.
+    // PostgreSQL holds references only; source bytes live on the persistent upload volume.
     await writeFile(join(directory, stagingId), bytes, { mode: 0o600, flag: 'wx' });
     try {
       const job = await this.queue.add('process-upload', { businessId, userId, supportAuditId, stagingId, name: file.name, mimeType: file.mimeType, kind }, {
@@ -35,14 +37,14 @@ export class FileJobsService implements OnModuleDestroy {
       });
       return { jobId: job.id!, statusUrl: `/files/jobs/${job.id}` };
     } catch {
-      // Retain the source: a lost Redis acknowledgement may still mean the job was accepted.
+      // Retain the source: a lost queue acknowledgement may still mean the job was accepted.
       throw new ServiceUnavailableException('Could not queue this upload. Please retry.');
     }
   }
 
   async upload(businessId: string, file: { name: string; mimeType: string; base64: string }, kind: UploadKind, userId?: string, supportAuditId?: string) {
     // Compatibility endpoint waits for the worker. New clients can use POST /files/jobs.
-    this.events ??= new QueueEvents(FILE_QUEUE, { connection: this.queue.opts.connection });
+    this.events ??= new postgresQueues.QueueEvents(FILE_QUEUE, { connection: this.queue.opts.connection });
     await this.events.waitUntilReady();
     const { jobId } = await this.enqueue(businessId, file, kind, userId, supportAuditId);
     const job = await this.queue.getJob(jobId);

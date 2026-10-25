@@ -115,15 +115,26 @@ Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
 
 ### Background file processing (BullMQ)
 
-Start Redis with `docker compose up -d redis` before running the backend locally.
-The backend explicitly depends on `ioredis` and configures BullMQ’s client
-factory so Redis connections work in native ESM and close with BullMQ. After
-dependency changes, restart the Docker backend to rerun its startup install:
+BullMQ v6 uses PostgreSQL through its native backend; no Redis service is needed.
+Install dependencies at the workspace root, start PostgreSQL, and configure
+`DATABASE_URL` using `.env.example`. Queue metadata lives in the separate
+`invento_queue` schema in that database. BullMQ runs its own advisory-lock-protected
+schema migrations on connection (`migrate: true`); the API database account must
+have permission to create that schema and its tables. These are separate from
+Prisma's application migrations. PostgreSQL 13+ is required (Docker uses 16).
+Use a direct PostgreSQL connection: the worker/event stream requires persistent
+LISTEN/NOTIFY sessions, so transaction-mode connection pooling is unsuitable.
+
+After dependency changes, recreate the Docker backend to rerun its startup install:
 `docker compose up -d --build --force-recreate backend`.
 
-Configure `REDIS_HOST`, `REDIS_PORT`, optional `REDIS_PASSWORD`, and `REDIS_DB`
-using `.env.example`. Docker configures Redis automatically and persists its
-queue with AOF; eviction is disabled.
+When upgrading an existing Redis deployment, stop new upload submissions and
+let all waiting, active, delayed, prioritized, and paused jobs finish before
+switching. Redis jobs and their status history are not automatically transferred
+to PostgreSQL. Keep the old Redis volume as a rollback archive; do not run
+`docker compose down --volumes`. Once the queue is drained and the PostgreSQL
+worker is verified, stop the old Redis container. Completed legacy job status
+stays in the archived Redis data; stored file attachments remain available.
 
 `POST /api/files/jobs` accepts the same `{ name, mimeType, base64, kind }` body
 as the existing upload endpoint and returns HTTP 202 with `{ jobId, statusUrl }`.
@@ -131,8 +142,8 @@ Poll `GET /api/files/jobs/:jobId` using the same access token and business heade
 When `state` is `completed`, `result` contains the stored attachment URLs, ready
 for use in product, customer, sale, or purchase requests. When `state` is `failed`,
 show `error` and let the user submit a corrected file. The global API response
-wrapper applies to these endpoints as usual. Only active owners/admins can
-submit or inspect jobs; job lookups are scoped to their business.
+wrapper applies to these endpoints as usual. The current business permissions govern
+submission and inspection; job lookups are scoped to their business.
 
 `POST /api/files` remains compatible: it queues processing and waits up to two
 minutes for the existing attachment response. A timeout returns HTTP 503 with
@@ -143,11 +154,11 @@ The Nest worker runs alongside the API with concurrency 2, three attempts, and
 exponential retry delays. Invalid files fail without retries. Image resizing,
 PDF previews (requiring Poppler), and the initial S3 mirror run in the worker;
 existing S3 recovery behavior remains in place. Sources are staged under
-`UPLOAD_STORAGE_PATH/.jobs`; Redis stores only metadata and file references.
+`UPLOAD_STORAGE_PATH/.jobs`; PostgreSQL stores only metadata and file references.
 All API/worker replicas must share that persistent upload directory. Successful
 jobs remove their source; failed sources remain for diagnosis/retry. Periodically
 remove staging files for expired jobs and orphaned submissions (after checking
-Redis and allowing for active uploads). Completed job status is retained up to
+the queue database and allowing for active uploads). Completed job status is retained up to
 24 hours/1,000 jobs; failed status up to seven days/1,000 jobs. File attachments
 remain available independently of job retention.
 
@@ -180,3 +191,12 @@ in PostgreSQL. Redis and BullMQ are not required for this feature.
 ## Centralized business authorization
 
 Business-local roles and granular permissions are shared by web and mobile. See [authorization model, API contracts, preservation migration, and tests](../../docs/AUTHORIZATION.md). Apply `20261025000000_business_permissions` and regenerate Prisma before deploying the backend and clients together. Business roles cannot grant platform privileges.
+
+### PostgreSQL queue verification
+
+Run `npm --workspace @invento/api run test:queue:db -- --database postgresql://USER:PASSWORD@HOST/DB_review`
+against a dedicated, otherwise idle test database. The script refuses database
+names without `_test` or `_review`. It exercises Nest's actual queue/worker wiring,
+completion events, transient retries, job status isolation, staging cleanup and
+execution-time membership revocation. It removes only its own test jobs/files;
+BullMQ's test schema remains available for subsequent runs.

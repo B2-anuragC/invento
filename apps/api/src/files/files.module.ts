@@ -1,3 +1,4 @@
+import '../config/postgres-queue.js';
 import { BullModule } from '@nestjs/bullmq';
 import { FileJobsService, FILE_QUEUE } from './file-jobs.service.js';
 import { FileProcessor } from './file.processor.js';

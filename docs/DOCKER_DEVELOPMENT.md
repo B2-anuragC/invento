@@ -1,7 +1,8 @@
 # Docker Development
 
 The development stack runs PostgreSQL and the NestJS backend in Docker while
-the Expo frontend continues to run on the host.
+the Expo frontend continues to run on the host. BullMQ uses the same PostgreSQL
+instance, with queue tables in the `invento_queue` schema; Redis is not required.
 
 ## Start
 

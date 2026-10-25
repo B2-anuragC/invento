@@ -50,7 +50,7 @@ npm run build                   # Shared, API, Expo web export, admin
 npm test                        # API tests, mobile service tests, admin types, mobile lint
 npm run typecheck
 npm run lint
-npm run docker:dev              # PostgreSQL, Redis and API; run clients separately
+npm run docker:dev              # PostgreSQL and API; run clients separately
 ```
 
 Use `npm --workspace @invento/api run prisma:generate` and `npm --workspace @invento/api run prisma:migrate:deploy` for database tooling. The Docker service/container and persistent-volume names remain unchanged to preserve existing local infrastructure.

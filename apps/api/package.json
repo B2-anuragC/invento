@@ -29,7 +29,8 @@
     "db:down": "docker compose down --volumes",
     "typecheck": "tsc --noEmit --incremental false",
     "test:mvp": "node test/run-mvp-verification.mjs",
-    "test:authorization:db": "node scripts/test-authorization.mjs"
+    "test:authorization:db": "node scripts/test-authorization.mjs",
+    "test:queue:db": "npm run build && node scripts/test-file-queue.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",
@@ -44,8 +45,8 @@
     "bullmq": "^6.3.15",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
-    "ioredis": "^6.0.0",
     "joi": "^18.2.9",
+    "pg": "^8.23.1",
     "prisma": "^5.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

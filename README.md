@@ -4,14 +4,14 @@ An npm-workspaces monorepo for the Invento inventory platform.
 
 | Workspace | Location | Stack |
 | --- | --- | --- |
-| `@invento/api` | `apps/api` | NestJS, Prisma, PostgreSQL, existing Redis file queue |
+| `@invento/api` | `apps/api` | NestJS, Prisma, PostgreSQL, BullMQ PostgreSQL file queue |
 | `@invento/admin` | `apps/admin` | React, TypeScript, Vite |
 | `@invento/mobile` | `apps/mobile` | Expo, React Native, Expo Router; Android/iOS/web |
 | `@invento/shared` | `packages/shared` | Shared TypeScript types, permissions and utilities |
 
 ## Start development
 
-Run `npm ci` at the repository root. Configure the app-local environment files using their examples. Start PostgreSQL and Redis, generate Prisma, and apply the existing migrations to your chosen development database before starting the API.
+Run `npm ci` at the repository root. Configure the app-local environment files using their examples. Start PostgreSQL, generate Prisma, and apply the existing migrations to your chosen development database before starting the API.
 
 ```sh
 npm run build:shared
@@ -22,7 +22,7 @@ npm run dev
 
 The admin runs on port 5173 and proxies `/api` to the API on port 3000. Expo serves the mobile app and its web target. Configure a device-reachable API URL when testing on a phone.
 
-Alternatively, `npm run docker:dev` runs PostgreSQL, Redis and the API. In other terminals use `npm run dev:admin` and `npm run dev:mobile`. Do not start a second host API on port 3000 while the Docker API is running.
+Alternatively, `npm run docker:dev` runs PostgreSQL and the API. In other terminals use `npm run dev:admin` and `npm run dev:mobile`. Do not start a second host API on port 3000 while the Docker API is running.
 
 ## Verify
 

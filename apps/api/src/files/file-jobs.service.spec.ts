@@ -11,7 +11,7 @@ describe('Queued uploads', () => {
   beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'invento-jobs-')); });
   afterEach(async () => { await rm(root, { recursive: true, force: true }); });
   const file = { name: 'test.png', mimeType: 'image/png', base64: Buffer.from('source').toString('base64') };
-  it('stages bytes outside Redis and configures retries', async () => {
+  it('stages bytes outside the queue database and configures retries', async () => {
     const queue = { add: vi.fn().mockImplementation(async (_name, _data, options) => ({ id: options.jobId })) };
     const service = new FileJobsService(queue as never, { root } as never);
     const result = await service.enqueue('business-a', file, 'product', 'actor');
