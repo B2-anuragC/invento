@@ -70,7 +70,7 @@ Missing/expired tokens or inactive users return 401. Inactive/missing business
 membership returns 403. All queries scope data to the authorized business.
 
 Swagger at /docs documents the five operations, authentication, header, query
-constraints, and metric definitions. Tests in backend/test/sales.e2e-spec.ts
+constraints, and metric definitions. Tests in apps/api/test/sales.e2e-spec.ts
 verify known totals, midnight boundaries, tenant isolation, empty responses,
 low-stock semantics, stable pagination, historical rankings, and OpenAPI
 registration. Unit tests cover date ranges, Decimal summation, and missing days.

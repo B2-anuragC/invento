@@ -35,14 +35,14 @@ Platform privileges are separate. The admin web client marks scoped business req
 
 The catalog is `packages/shared/src/permissions.ts`. Add identifiers there, explicitly map the operation in the server guard and service, add client controls, and add enforcement tests. Cancellation and export are not cataloged because the current backend has no such operations. New handlers in protected business controllers are denied until mapped. Record IDs remain checked against the selected business by domain services.
 
-No production migration is automatically applied. Deploy the additive SQL migration and regenerate Prisma before deploying backend/clients together. Existing email verification, email invitations, push notifications, and secure remote deletion of offline data are unavailable; this implementation adds existing registered accounts and does not send invitation email.
+No production migration is automatically applied. Deploy the additive SQL migration and regenerate Prisma before deploying apps/api/clients together. Existing email verification, email invitations, push notifications, and secure remote deletion of offline data are unavailable; this implementation adds existing registered accounts and does not send invitation email.
 
 ## Validation and rollout
 
-Run `npm run build:shared`, `npm --prefix backend run prisma:validate`, `npm --prefix backend run prisma:generate`, `npm --prefix backend test`, backend/admin builds, and the frontend typecheck/lint. Meaningful PostgreSQL/HTTP and migration-preservation tests use an isolated migrated database:
+Run `npm run build:shared`, `npm --prefix apps/api run prisma:validate`, `npm --prefix apps/api run prisma:generate`, `npm --prefix apps/api test`, apps/api/admin builds, and the frontend typecheck/lint. Meaningful PostgreSQL/HTTP and migration-preservation tests use an isolated migrated database:
 
 ```sh
-npm --prefix backend run test:authorization:db -- --database 'postgresql://user:password@localhost:5432/invento_authorization_test'
+npm --prefix apps/api run test:authorization:db -- --database 'postgresql://user:password@localhost:5432/invento_authorization_test'
 ```
 
 The runner rejects database names without `_test` or `_review`. Tests create their own accounts/businesses and remove only their fixtures. A migration-preservation test runs the additive migration in a temporary schema inside a rolled-back transaction. The HTTP suite covers live permission changes on unchanged JWTs, membership isolation, foreign resources/roles, self-escalation, status-update deletion bypasses, price redaction, platform support audit failure, role-change audit rollback, sync filtering/replay denial, simultaneous owner demotions, and account-suspension ownership checks. No email delivery or Redis is needed by these focused authorization tests; production file processing continues to use its existing Redis/storage infrastructure. Old queued uploads without actor identity must be resubmitted. New queued uploads recheck both account and resource authority at execution; platform jobs require their original persisted support authorization and recheck current platform access.

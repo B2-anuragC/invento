@@ -9,13 +9,13 @@ From the repository root:
 ```sh
 npm install
 npm run build:shared
-npm --prefix backend run prisma:generate
+npm --prefix apps/api run prisma:generate
 ```
 
-Configure `backend/.env` using its example. Apply the additive migration to your **local development database**:
+Configure `apps/api/.env` using its example. Apply the additive migration to your **local development database**:
 
 ```sh
-npm --prefix backend run prisma:migrate:deploy
+npm --prefix apps/api run prisma:migrate:deploy
 ```
 
 Use an existing Invento account. Every active business member can sign in directly; assigned permissions determine their workspace. No platform grant is needed. Platform operators can grant global access using the command below. Run these in separate terminals:
@@ -25,11 +25,11 @@ npm run start:backend
 npm run start:admin
 ```
 
-Open http://127.0.0.1:5174. Vite forwards `/api` to `http://127.0.0.1:3000`. `VITE_API_URL` can override the API location (see `.env.example`). The backend prefix must match that URL.
+Open http://127.0.0.1:5173. Vite forwards `/api` to `http://127.0.0.1:3000`. `VITE_API_URL` can override the API location (see `.env.example`). The backend prefix must match that URL.
 
 ## Shop owners and platform administrators
 
-The same login supports permission-scoped business workspaces and separate platform administration. See [the authorization model, role matrix, migration, API contracts, and rollout](../docs/AUTHORIZATION.md).
+The same login supports permission-scoped business workspaces and separate platform administration. See [the authorization model, role matrix, migration, API contracts, and rollout](../../docs/AUTHORIZATION.md).
 
 Business members see their active businesses and only permitted features. After selecting a business, the **Team** and **Roles** sections use the same centralized APIs as mobile's **Users & permissions** screen. Default and custom roles, activation/deactivation, granular permissions, and recent access history are managed there. Owners are protected; business roles never confer platform privileges.
 
@@ -37,7 +37,7 @@ Platform operators retain global monitoring and restriction controls. Selecting 
 
 ## Grant the first platform administrator
 
-Only a trusted operator with database access can run this command. Use an existing active account; the script never creates accounts or passwords. From `backend/`, with the correct environment file:
+Only a trusted operator with database access can run this command. Use an existing active account; the script never creates accounts or passwords. From `apps/api/`, with the correct environment file:
 
 ```sh
 node --env-file=.env scripts/grant-platform-admin.mjs operator@example.com 'Initial platform administrator setup'
@@ -75,13 +75,13 @@ Audit records intentionally have no cascading target foreign keys so their ident
 
 ```sh
 npm run build:admin
-npm --prefix backend run lint
-npm --prefix backend run typecheck
-npm --prefix backend test
-npm --prefix backend run build
+npm --prefix apps/api run lint
+npm --prefix apps/api run typecheck
+npm --prefix apps/api test
+npm --prefix apps/api run build
 ```
 
-Serve `admin/dist` using your existing hosting infrastructure, over HTTPS, with `/api` routed to the existing backend. Hash navigation requires no SPA rewrite. `VITE_API_URL`, when supplied, is a public build-time setting, never a secret. Production migrations belong in your normal reviewed deployment process; none are automatically run by this web app.
+Serve `apps/admin/dist` using your existing hosting infrastructure, over HTTPS, with `/api` routed to the existing backend. Hash navigation requires no SPA rewrite. `VITE_API_URL`, when supplied, is a public build-time setting, never a secret. Production migrations belong in your normal reviewed deployment process; none are automatically run by this web app.
 
 Database integration tests opt in and must use an isolated, migrated test database:
 
@@ -89,7 +89,7 @@ Database integration tests opt in and must use an isolated, migrated test databa
 RUN_DATABASE_TESTS=1 NODE_ENV=test DATABASE_URL='<test-postgres-url>' \
   JWT_ACCESS_SECRET='<test-secret-at-least-32-characters>' \
   JWT_REFRESH_SECRET='<different-test-secret-at-least-32-characters>' \
-  npm --prefix backend run test:e2e
+  npm --prefix apps/api run test:e2e
 ```
 
 The tests create and remove their own fixtures. Database suites run sequentially because dashboard assertions inspect platform-wide totals. Coverage includes unauthenticated/business-user denial, public privilege-injection rejection, cross-business access and relationships, suspension, disablement, access/refresh revocation, confirmation validation, last-admin protection under concurrency, audit rollback, pagination, and aggregate calculations.

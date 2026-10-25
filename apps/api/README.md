@@ -168,15 +168,15 @@ fallback. Product detail and offline snapshots include the gallery; list respons
 retain the compact cover fields.
 
 Apply the `20261015000000_product_gallery` migration before running this version:
-`npm --prefix backend run prisma:migrate:deploy` followed by
-`npm --prefix backend run prisma:generate`. Docker startup performs these steps.
+`npm --prefix apps/api run prisma:migrate:deploy` followed by
+`npm --prefix apps/api run prisma:generate`. Docker startup performs these steps.
 ## Platform administration
 
-The separate `admin/` workspace uses this backend's `/api/platform-admin` module.
+The separate `apps/admin/` workspace uses this backend's `/api/platform-admin` module.
 See [admin setup, access policy, migrations, and verification](../admin/README.md).
 Platform and business permissions remain separate; restrictions are stored and checked
 in PostgreSQL. Redis and BullMQ are not required for this feature.
 
 ## Centralized business authorization
 
-Business-local roles and granular permissions are shared by web and mobile. See [authorization model, API contracts, preservation migration, and tests](../docs/AUTHORIZATION.md). Apply `20261025000000_business_permissions` and regenerate Prisma before deploying the backend and clients together. Business roles cannot grant platform privileges.
+Business-local roles and granular permissions are shared by web and mobile. See [authorization model, API contracts, preservation migration, and tests](../../docs/AUTHORIZATION.md). Apply `20261025000000_business_permissions` and regenerate Prisma before deploying the backend and clients together. Business roles cannot grant platform privileges.

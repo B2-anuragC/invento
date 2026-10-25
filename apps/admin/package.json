@@ -11,7 +11,7 @@
   "dependencies": {
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "@invento/shared": "file:../packages/shared"
+    "@invento/shared": "file:../../packages/shared"
   },
   "devDependencies": {
     "vite": "^8.3.2",

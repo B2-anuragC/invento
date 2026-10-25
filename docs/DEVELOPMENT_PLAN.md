@@ -70,14 +70,14 @@ Before implementation, read:
 
 ```text
 .github/copilot-instructions.md
-.github/PROJECT_CONTEXT.md
-.github/PROJECT_STRUCTURE.md
-.github/docs/PRODUCT.md
-.github/docs/REQUIREMENTS.md
-.github/docs/ARCHITECTURE.md
-.github/docs/DATABASE.md
-.github/docs/DECISIONS.md
-.github/docs/STATUS.md
+docs/PROJECT_CONTEXT.md
+docs/PROJECT_STRUCTURE.md
+docs/PRODUCT.md
+docs/REQUIREMENTS.md
+docs/ARCHITECTURE.md
+docs/DATABASE.md
+docs/DECISIONS.md
+docs/STATUS.md
 ```
 
 Read only the documents relevant to the current phase when appropriate, but always read `PROJECT_CONTEXT.md` and `copilot-instructions.md`.
@@ -1942,7 +1942,7 @@ The AI layer must remain separated from the core business transaction system.
 
 When beginning the next phase, use:
 
-> Read `.github/DEVELOPMENT_PLAN.md` and the relevant Invento documentation.
+> Read `docs/DEVELOPMENT_PLAN.md` and the relevant Invento documentation.
 >
 > Phase 1 is already completed.
 >

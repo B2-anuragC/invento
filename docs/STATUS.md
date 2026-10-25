@@ -104,7 +104,7 @@ Implemented `Inventory` (current-stock projection) and `InventoryTransaction`
 (`OPENING_STOCK, PURCHASE, SALE, RETURN_IN, RETURN_OUT, ADJUSTMENT_IN,
 ADJUSTMENT_OUT, DAMAGE, EXPIRED`).
 
-Endpoints (`backend/src/inventory/`):
+Endpoints (`apps/api/src/inventory/`):
 
 ```text
 POST /api/inventory/opening-stock
@@ -141,9 +141,9 @@ each inventory mutation opening its own nested `$transaction`. Existing
 unaffected — they call these methods without a transaction client and get
 identical standalone behavior to before. Inflow/outflow direction for each
 `InventoryTransactionType` was extracted to
-`backend/src/inventory/inventory.movement-types.ts::isInflowTransaction` as
+`apps/api/src/inventory/inventory.movement-types.ts::isInflowTransaction` as
 the single shared source of truth, so no future service duplicates that
-determination. See `.github/docs/DATABASE.md` for details.
+determination. See `docs/DATABASE.md` for details.
 
 ## Phase 5 — Suppliers & Purchases Implementation Notes
 
@@ -264,10 +264,10 @@ Repeatable checks from the repository root:
 ```powershell
 npm test
 npm run build
-npm --prefix backend run lint
-npm --prefix backend run typecheck
+npm --prefix apps/api run lint
+npm --prefix apps/api run typecheck
 $env:TEST_DATABASE_URL = 'postgresql://invento:invento@localhost:5432/invento_phase8_verify?schema=public'
-npm --prefix backend run test:mvp
+npm --prefix apps/api run test:mvp
 ```
 
 Create the isolated database once before the last command, for example with

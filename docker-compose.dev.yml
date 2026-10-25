@@ -1,5 +1,6 @@
 services:
   backend:
+    working_dir: /app
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -7,19 +8,22 @@ services:
       JWT_ACCESS_SECRET: development-access-secret-change-me-32-chars
       JWT_REFRESH_SECRET: development-refresh-secret-change-me-32-chars
     volumes:
-      - ./backend:/app/backend
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - workspace_node_modules:/app/node_modules
+      - ./apps/api:/app/apps/api
       - ./packages/shared:/app/packages/shared
-      - backend_node_modules:/app/backend/node_modules
+      - backend_node_modules:/app/apps/api/node_modules
       - shared_node_modules:/app/packages/shared/node_modules
     command:
       - sh
       - -c
       - >-
-        npm install --include=dev &&
-        npx prisma generate --schema=./prisma/schema.prisma &&
-        npx prisma migrate deploy --schema=./prisma/schema.prisma &&
-        npm --prefix /app/packages/shared run build &&
-        (npm --prefix /app/packages/shared run build -- --watch &) &&
-        npm run start:dev
+        npm ci --workspace @invento/api --workspace @invento/shared --include=dev &&
+        npm --workspace @invento/api run prisma:generate &&
+        npm --workspace @invento/api run prisma:migrate:deploy &&
+        npm --workspace @invento/shared run build &&
+        (npm --workspace @invento/shared run build -- --watch &) &&
+        npm --workspace @invento/api run start:dev
     stdin_open: true
     tty: true

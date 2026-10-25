@@ -2,16 +2,22 @@
 node_modules
 
 .vscode/*
+!.vscode/launch.json
 **/package-lock.json
+!/package-lock.json
 
 .env
 .env.*
 !.env.example
-backend/.env
-backend/.env.*
-!backend/.env.example
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
 
-backend/uploads/
+apps/api/uploads/
 
 # Local Android build artifacts
 /builds/
+
+# Generated Expo caches and operating-system metadata
+**/.expo/
+**/.DS_Store

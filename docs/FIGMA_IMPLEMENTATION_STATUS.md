@@ -1,6 +1,6 @@
 # Figma implementation status
 
-Updated 10 October 2026. References are the SVGs in `figma_design/`.
+Updated 10 October 2026. References are the SVGs in `design/figma/`.
 
 The initial quick audit mapped code to 27 exports; it did not establish pixel-perfect parity. Reviewing the actual SVG images identified accounting and draft-management requirements. These are now implemented across the API and screens.
 

@@ -5,9 +5,19 @@ node_modules
 .gitignore
 .env
 .env.*
-!backend/.env.example
+!apps/api/.env.example
 **/.DS_Store
 **/.idea
 **/.vscode
 
-backend/uploads
+apps/api/uploads
+
+**/.expo
+**/android
+**/ios
+builds
+
+# Docker ignore patterns must explicitly cover app-local secrets.
+**/.env
+**/.env.*
+!**/.env.example

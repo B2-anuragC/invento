@@ -31,9 +31,9 @@ The current design uses a clean, card-based mobile interface with:
 - simple list layouts for inventory and transactions
 
 Core UI primitives can be seen in:
-- frontend/components/invento-ui.tsx
-- frontend/app/(tabs)/index.tsx
-- frontend/app/(tabs)/products.tsx
+- apps/mobile/components/invento-ui.tsx
+- apps/mobile/app/(tabs)/index.tsx
+- apps/mobile/app/(tabs)/products.tsx
 
 This is a strong base for a light business app, especially for MVP and early product validation.
 

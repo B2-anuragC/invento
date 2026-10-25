@@ -227,7 +227,7 @@ projection. `quantity` on the transaction is signed (positive for inflow
 types, negative for outflow types); `balanceAfter` records the resulting
 projection value at the time of the transaction for auditability.
 
-Every mutation (`backend/src/inventory/inventory.service.ts`) runs inside a
+Every mutation (`apps/api/src/inventory/inventory.service.ts`) runs inside a
 Prisma interactive transaction: the `Inventory` row is locked with
 `SELECT ... FOR UPDATE`, the new balance is computed, and the operation is
 rejected before any write if the balance would go negative. Opening stock may
@@ -254,7 +254,7 @@ of re-implementing stock calculation, negative-stock validation, ledger
 creation, or row locking.
 
 The inflow/outflow direction for each `InventoryTransactionType` is defined
-once in `backend/src/inventory/inventory.movement-types.ts`
+once in `apps/api/src/inventory/inventory.movement-types.ts`
 (`isInflowTransaction`) and is not duplicated anywhere else. Any future caller
 (including Purchase/Sale services) must reuse this function rather than
 re-deriving which transaction types increase vs. decrease stock.

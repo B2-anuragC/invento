@@ -1,6 +1,6 @@
 # Local-only Android APK
 
-Build with `npm --prefix frontend run build:apk:local` after setting `ANDROID_HOME` to an Android SDK installation. The script sets `EXPO_PUBLIC_LOCAL_ONLY=true` for native generation and JavaScript bundling, then writes `builds/invento-local-only.apk`. It packages both ARM64 and ARMv7 and uses Expo's generated development signing key for sideload testing; this is not a Play Store signing setup.
+Build with `npm --prefix apps/mobile run build:apk:local` after setting `ANDROID_HOME` to an Android SDK installation. The script sets `EXPO_PUBLIC_LOCAL_ONLY=true` for native generation and JavaScript bundling, then writes `builds/invento-local-only.apk`. It packages both ARM64 and ARMv7 and uses Expo's generated development signing key for sideload testing; this is not a Play Store signing setup.
 
 The app opens local business setup without a cloud login. Products, contacts, opening stock, bills and payments are stored in private SQLite storage, with local photos in the application's document directory. Closing/reopening the app retains these records. Android internet permission and automatic cloud backups are disabled for this build. Manual share actions still open an external app at the user's request. Uninstalling the app or clearing its data removes its local records.
 
@@ -8,4 +8,4 @@ Local mode uses a separate session key and never sends API requests. Existing se
 
 Local domain writes and their stored snapshot commit together. The existing durable outbox processes local writes on the device; its request IDs prevent duplicates after a restart or lost acknowledgement. No initial server download is required. Team invitation and other unsupported server-only operations return a local-mode explanation.
 
-If the app closes immediately on launch, connect the device with USB debugging enabled and inspect `adb logcat -b crash -d`. An error such as `Cannot find native module 'ExpoSecureStore'` means the installed binary is missing a native dependency. Declare native dependencies in `frontend/package.json`, rebuild the APK, and install it with `adb install -r builds/invento-local-only.apk` to retain app data. Restarting Metro alone cannot add native modules to an installed APK.
+If the app closes immediately on launch, connect the device with USB debugging enabled and inspect `adb logcat -b crash -d`. An error such as `Cannot find native module 'ExpoSecureStore'` means the installed binary is missing a native dependency. Declare native dependencies in `apps/mobile/package.json`, rebuild the APK, and install it with `adb install -r builds/invento-local-only.apk` to retain app data. Restarting Metro alone cannot add native modules to an installed APK.

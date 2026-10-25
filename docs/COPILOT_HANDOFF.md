@@ -10,9 +10,9 @@ relevant docs before changing code. Existing implementation is authoritative.
 
 ## Phase 6 implementation
 
-- `backend/src/customers/`: customer CRUD, active/inactive lifecycle, search,
+- `apps/api/src/customers/`: customer CRUD, active/inactive lifecycle, search,
   active membership and OWNER/ADMIN write authorization.
-- `backend/src/sales/`: create/list/detail and metadata-only PATCH; required
+- `apps/api/src/sales/`: create/list/detail and metadata-only PATCH; required
   customer, sale date, payment method and positive unique product lines.
 - Phase 6 migration `20260920085540` is restored from Git; `20260920120000`
   reconciles it with the current Customer/Sale/SaleItem schema.
@@ -25,7 +25,7 @@ relevant docs before changing code. Existing implementation is authoritative.
 ## Verification
 
 Unit tests include snapshot/restore rollback using the real InventoryService.
-`backend/test/sales.e2e-spec.ts` adds opt-in PostgreSQL HTTP tests for the stock
+`apps/api/test/sales.e2e-spec.ts` adds opt-in PostgreSQL HTTP tests for the stock
 sequence, rollback on item two, concurrent oversell, lifecycle, tenant/role
 isolation, validation and immutable sale items.
 
@@ -33,10 +33,10 @@ Standard checks:
 
 ```sh
 npm run build
-npm --prefix backend test
-npm --prefix backend run lint
-npm --prefix backend run prisma:validate
-npm --prefix backend run test:e2e
+npm --prefix apps/api test
+npm --prefix apps/api run lint
+npm --prefix apps/api run prisma:validate
+npm --prefix apps/api run test:e2e
 ```
 
 The PostgreSQL sales suite requires RUN_DATABASE_TESTS=1 and a migrated database.

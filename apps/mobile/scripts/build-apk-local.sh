@@ -12,6 +12,6 @@ npx expo prebuild --platform android --no-install
   cd android
   ./gradlew :app:assembleRelease --no-daemon --max-workers=4 -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 )
-mkdir -p ../builds
-cp android/app/build/outputs/apk/release/app-release.apk ../builds/invento-local-only.apk
-shasum -a 256 ../builds/invento-local-only.apk
+mkdir -p ../../builds
+cp android/app/build/outputs/apk/release/app-release.apk ../../builds/invento-local-only.apk
+shasum -a 256 ../../builds/invento-local-only.apk

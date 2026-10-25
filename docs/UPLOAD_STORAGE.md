@@ -22,7 +22,7 @@ assets, and S3 objects are private.
 ## Local storage
 
 `UPLOAD_STORAGE_PATH` chooses the server's app-owned directory (default
-`backend/uploads` when launched from the backend directory). It contains:
+`apps/api/uploads` when launched from the backend directory). It contains:
 
 ```
 <business-id>/<content-hash>/original
@@ -49,7 +49,7 @@ immediately and retain only returned references in form state/drafts.
 
 Without `S3_BUCKET`, uploads remain local. To enable S3 in Docker, put these
 settings in the root `.env` (Compose passes them to the backend). For a backend
-running directly, use `backend/.env` or process environment variables:
+running directly, use `apps/api/.env` or process environment variables:
 
 ```dotenv
 S3_BUCKET=my-private-bucket

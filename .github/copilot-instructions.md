@@ -4,11 +4,11 @@
 
 Before making significant changes to the codebase:
 
-1. Read `.github/PROJECT_CONTEXT.md`.
-2. Read `.github/PROJECT_STRUCTURE.md`.
-3. Read the relevant documentation under `.github/docs/`.
+1. Read `docs/PROJECT_CONTEXT.md`.
+2. Read `docs/PROJECT_STRUCTURE.md`.
+3. Read the relevant documentation under `docs/`.
 4. Inspect the existing implementation before creating or modifying files.
-5. Follow the architecture and decisions documented in `.github/docs/ARCHITECTURE.md` and `.github/docs/DECISIONS.md`.
+5. Follow the architecture and decisions documented in `docs/ARCHITECTURE.md` and `docs/DECISIONS.md`.
 6. Do not assume that something is missing just because it is not documented. Inspect the existing code first.
 
 ## Architecture
@@ -75,7 +75,7 @@ Do not directly modify stock quantities from arbitrary services or controllers.
 
 Inventory changes must follow the inventory transaction model documented in:
 
-`.github/docs/DATABASE.md`
+`docs/DATABASE.md`
 
 Examples of inventory-affecting operations:
 
@@ -192,19 +192,19 @@ Do not introduce new libraries or architectural patterns without a clear reason.
 
 When an architectural decision changes, update:
 
-`.github/docs/DECISIONS.md`
+`docs/DECISIONS.md`
 
 When database architecture changes, update:
 
-`.github/docs/DATABASE.md`
+`docs/DATABASE.md`
 
 When product requirements change, update:
 
-`.github/docs/REQUIREMENTS.md`
+`docs/REQUIREMENTS.md`
 
 When project status changes significantly, update:
 
-`.github/docs/STATUS.md`
+`docs/STATUS.md`
 
 ## Important
 

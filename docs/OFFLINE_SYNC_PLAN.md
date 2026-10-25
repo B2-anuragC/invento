@@ -26,7 +26,7 @@ Unfinished Quick bills have a separate per-account/business draft slot and resum
 
 Still to implement: additional payment/adjustment commands, complete conflict-resolution actions (including correcting quantities or partial payments), background worker leasing, offline authorization validity policy, recovery/export tools, large-data paging, offline web storage/asset caching. Web continues using the existing online APIs.
 
-The original milestone verified 135 unit tests, 21 PostgreSQL integration tests and Android/iOS JavaScript exports. The 16 October transaction update passes 189 unit tests, backend/frontend type checks, frontend lint and backend compilation; Android and web exports are checked separately. JavaScript bundle exports are not native app binary builds.
+The original milestone verified 135 unit tests, 21 PostgreSQL integration tests and Android/iOS JavaScript exports. The 16 October transaction update passes 189 unit tests, apps/api/frontend type checks, frontend lint and backend compilation; Android and web exports are checked separately. JavaScript bundle exports are not native app binary builds.
 
 Verification covers restart recovery from persisted state, stable retry IDs after lost responses, local storage failure, dependency blocking, tenant isolation, duplicate server uploads, revisions and restricted-price snapshots. Native airplane-mode visual/end-to-end verification remains outstanding.
 
@@ -38,8 +38,8 @@ Local success means durably saved on this device. Server confirmation is a separ
 
 ## Current gaps
 
-- `frontend/services/api.ts` exposes direct HTTP reads/writes to screens. There is no replicated business database or operation queue.
-- `frontend/app/index.tsx` restores credentials but requires `fetchBusinesses()` before entering the app.
+- `apps/mobile/services/api.ts` exposes direct HTTP reads/writes to screens. There is no replicated business database or operation queue.
+- `apps/mobile/app/index.tsx` restores credentials but requires `fetchBusinesses()` before entering the app.
 - AsyncStorage currently retains form drafts only. It is not an inventory/accounting database.
 - Sales, purchases and payments have retry identifiers, but catalog/contact/inventory mutations do not have a uniform idempotency protocol.
 - The backend calculates GST and selling-option prices from current product configuration. Offline receipts must instead retain the agreed configuration at the time of the local sale.
@@ -51,11 +51,11 @@ Use `expo-sqlite` on Android/iOS, with database migrations, transactions and for
 
 Proposed modules:
 
-- `frontend/services/local-db/`: schema, migrations, transactional access and subscriptions.
-- `frontend/services/repositories/`: catalog, customers, suppliers, inventory, sales, purchases, payments and dashboard queries.
-- `frontend/services/sync/`: outbox, transport, reconciliation, connectivity and retry scheduling.
-- `frontend/components/sync-status.tsx`: offline/pending/syncing/action-needed feedback.
-- `backend/src/sync/`: bootstrap, change-feed and mutation endpoints.
+- `apps/mobile/services/local-db/`: schema, migrations, transactional access and subscriptions.
+- `apps/mobile/services/repositories/`: catalog, customers, suppliers, inventory, sales, purchases, payments and dashboard queries.
+- `apps/mobile/services/sync/`: outbox, transport, reconciliation, connectivity and retry scheduling.
+- `apps/mobile/components/sync-status.tsx`: offline/pending/syncing/action-needed feedback.
+- `apps/api/src/sync/`: bootstrap, change-feed and mutation endpoints.
 - `packages/shared/`: command schemas, decimal calculations and validation rules used by both sides.
 
 Store products and selling options, customers, suppliers, transactions and items, payments, stock movements, confirmed inventory, permitted settings, drafts, outbox entries, server revisions and sync cursors. Partition storage and queries by account and business; never synchronize one account's queue under another account's credentials.

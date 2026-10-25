@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "@invento/mobile",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
@@ -10,11 +10,13 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "build:apk:local": "bash ./scripts/build-apk-local.sh"
+    "build:apk:local": "bash ./scripts/build-apk-local.sh",
+    "test": "vitest run --config vitest.config.mts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
-    "@invento/shared": "file:../packages/shared",
+    "@invento/shared": "file:../../packages/shared",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
@@ -55,7 +57,8 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.2"
   },
   "private": true
 }

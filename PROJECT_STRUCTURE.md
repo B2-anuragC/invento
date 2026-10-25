@@ -1,68 +1,62 @@
-# Invento Project Structure
+# Invento monorepo
 
-Invento is an npm-workspaces monorepo with a NestJS backend, an Expo Router frontend, and a framework-agnostic shared package.
+Invento uses npm workspaces. Runnable applications live in `apps/`; framework-independent code lives in `packages/`.
 
 ```text
 invento/
-├── package.json                  # Root workspace scripts and orchestration
-├── package-lock.json             # Root dependency lockfile
-├── PROJECT_STRUCTURE.md          # This project context document
-├── backend/                      # NestJS API
-│   ├── package.json              # Backend scripts and dependencies
-│   ├── src/
-│   │   ├── main.ts               # API bootstrap
-│   │   ├── app.module.ts         # Root Nest module
-│   │   ├── app.controller.ts     # Example API controller
-│   │   ├── app.service.ts        # Example service
-│   │   └── app.controller.spec.ts# Controller unit test
-│   ├── test/
-│   │   └── app.e2e-spec.ts       # End-to-end test
-│   ├── nest-cli.json              # Nest CLI configuration
-│   ├── tsconfig.json              # Development TypeScript config
-│   ├── tsconfig.build.json        # Production build TypeScript config
-│   ├── vitest.config.ts           # Unit test configuration
-│   └── vitest.config.e2e.ts       # E2E test configuration
-├── frontend/                     # Expo React Native application
-│   ├── package.json              # Frontend scripts and dependencies
-│   ├── app.json                  # Expo application configuration
-│   ├── app/
-│   │   ├── _layout.tsx           # Root navigation/theme layout
-│   │   ├── modal.tsx              # Modal route
-│   │   └── (tabs)/
-│   │       ├── _layout.tsx       # Tab navigator layout
-│   │       ├── index.tsx         # Home tab
-│   ├── components/               # Reusable UI components
-│   │   ├── ui/                   # Platform-aware UI primitives
-│   │   └── haptic-tab.tsx        # Haptic tab button
-│   ├── constants/                # Theme and application constants
-│   ├── hooks/                    # Shared React hooks
-│   ├── assets/images/            # App icons, splash images, and logos
-│   ├── scripts/                  # Frontend maintenance scripts
-│   ├── eslint.config.js          # ESLint configuration
-│   └── tsconfig.json             # Frontend TypeScript configuration
-└── packages/
-    └── shared/                   # Shared backend/frontend code
-        ├── package.json          # @invento/shared package definition
-        ├── src/
-        │   ├── index.ts          # Shared package entry point
-        │   ├── types/            # Shared API and domain types
-        │   └── utils/            # Framework-agnostic runtime helpers
-        └── tsconfig.json         # Shared package build configuration
+├── apps/
+│   ├── api/                     # @invento/api — NestJS, Prisma, PostgreSQL
+│   │   ├── src/                 # Auth, authorization, business modules, sync, files
+│   │   ├── prisma/              # Schema and versioned migrations
+│   │   ├── test/                # PostgreSQL/HTTP integration tests
+│   │   ├── scripts/
+│   │   └── Dockerfile
+│   ├── admin/                   # @invento/admin — React + Vite web admin
+│   │   └── src/
+│   └── mobile/                  # @invento/mobile — Expo for Android, iOS and web
+│       ├── app/                 # Expo Router routes
+│       ├── components/
+│       ├── services/            # API, offline storage/sync, service tests
+│       ├── hooks/
+│       ├── constants/
+│       ├── assets/
+│       ├── plugins/
+│       ├── scripts/
+│       └── app.json             # Authoritative Expo configuration
+├── packages/
+│   └── shared/                  # @invento/shared — types, permissions, utilities
+├── docs/                        # Setup, architecture, decisions and product context
+├── design/                      # UX context and Figma reference assets
+├── .github/                     # GitHub-specific configuration
+├── docker-compose.yml
+├── docker-compose.dev.yml
+├── package.json                 # Workspace commands
+└── package-lock.json            # Authoritative dependency lockfile
 ```
 
-## Workspaces
+Native `android/` and `ios/` directories, when generated or maintained, belong inside `apps/mobile/`. `node_modules/`, `.expo/`, `dist/`, native build outputs and root `builds/` APK artifacts are generated and ignored.
 
-- `backend`: NestJS API, built with `npm run build:backend`.
-- `frontend`: Expo SDK 57 app, started with `npm run start:frontend`.
-- `packages/shared`: TypeScript package imported as `@invento/shared` by both apps.
+## Workspace commands
 
-## Root Commands
+Run from the repository root:
 
-```bash
-npm install       # Install all workspace dependencies
-npm start         # Build shared code and run backend/frontend together
-npm run build     # Build shared, backend, and frontend
-npm test          # Run backend tests and frontend lint
+```sh
+npm ci
+npm run dev                     # API, mobile, admin and shared compiler watch
+npm run dev:api
+npm run dev:mobile
+npm run dev:admin
+npm run build                   # Shared, API, Expo web export, admin
+npm test                        # API tests, mobile service tests, admin types, mobile lint
+npm run typecheck
+npm run lint
+npm run docker:dev              # PostgreSQL, Redis and API; run clients separately
 ```
 
-Generated folders such as `node_modules`, Expo `.expo` data, and build output are intentionally excluded from this document.
+Use `npm --workspace @invento/api run prisma:generate` and `npm --workspace @invento/api run prisma:migrate:deploy` for database tooling. The Docker service/container and persistent-volume names remain unchanged to preserve existing local infrastructure.
+
+Each app owns its source, environment file, app-specific dependencies, build configuration and tests. Cross-app code is imported through `@invento/shared`; applications must not import another app's implementation. The API and mobile test commands discover only their own tests.
+
+`start:backend`, `start:frontend`, `start:admin`, `build:backend`, `build:frontend`, `test:backend` and `test:frontend` remain compatibility aliases. Prefer the `api`, `mobile` and `admin` command names for new tooling.
+
+For the move map, preserved Expo identifiers, local restart instructions and validation, see [the migration notes](docs/MONOREPO_MIGRATION.md).

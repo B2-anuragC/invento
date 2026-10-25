@@ -549,7 +549,7 @@ Backend stack:
 Suggested module structure:
 
 ```text
-backend/src/
+apps/api/src/
 
 ├── auth/
 ├── users/
@@ -582,7 +582,7 @@ Controllers should remain thin. Business rules belong in services/domain logic.
 
 ## 21. API-First Development
 
-Current strategy: **backend/API first**.
+Current strategy: **apps/api/API first**.
 
 Build the backend in this order:
 
