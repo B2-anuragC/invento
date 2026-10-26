@@ -1,3 +1,5 @@
+import { SaleCreator } from "./sale-creator";
+import { type SaleProduct } from "./sale-model";
 import { type EffectiveAccess, type Permission } from "@invento/shared";
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
@@ -81,12 +83,14 @@ function Editor({
   initial = {},
   save,
   cancel,
+  submitLabel = "Save changes",
 }: {
   title: string;
   fields: Field[];
   initial?: Row;
   save: (data: Row) => Promise<void>;
   cancel?: () => void;
+  submitLabel?: string;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -151,7 +155,7 @@ function Editor({
       )}
       <div className="actions">
         <button className="primary" disabled={busy}>
-          {busy ? "Saving…" : "Save"}
+          {busy ? "Saving…" : submitLabel}
         </button>
         {cancel && (
           <button type="button" onClick={cancel} disabled={busy}>
@@ -179,7 +183,7 @@ function Records({
           <thead>
             <tr>
               {keys.map((k) => (
-                <th key={k}>{label(k)}</th>
+                <th key={k}>{k === "sku" ? "SKU" : label(k)}</th>
               ))}
               {edit && <th>Actions</th>}
             </tr>
@@ -188,7 +192,24 @@ function Records({
             {rows.map((row, i) => (
               <tr key={String(row.id ?? i)}>
                 {keys.map((k) => (
-                  <td key={k}>{display(row[k])}</td>
+                  <td key={k}>
+                    {k === "status" ? (
+                      <span
+                        className={`badge ${row[k] === "ACTIVE" || row[k] === "COMPLETED" ? "active" : row[k] === "INACTIVE" || row[k] === "CANCELLED" ? "inactive" : ""}`}
+                      >
+                        {String(row[k] ?? "—")
+                          .replaceAll("_", " ")
+                          .toLowerCase()
+                          .replace(/^./, (c) => c.toUpperCase())}
+                      </span>
+                    ) : k === "unit" ? (
+                      String(row[k] ?? "—")
+                        .replaceAll("_", " ")
+                        .toLowerCase()
+                    ) : (
+                      display(row[k])
+                    )}
+                  </td>
                 ))}
                 {edit && (
                   <td>
@@ -228,40 +249,24 @@ export function ShopWorkspace({
     );
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">BUSINESS MANAGEMENT</p>
-          <h1>{id ? "Business workspace" : "Your businesses"}</h1>
-          <p className="muted">
-            {id
-              ? "Manage this business’s operations, people, roles, and settings."
-              : "Choose a business to open its management workspace."}
-          </p>
+      {!id && (
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">BUSINESS MANAGEMENT</p>
+            <h1>Your businesses</h1>
+            <p className="muted">
+              Choose a business to open its management workspace.
+            </p>
+          </div>
         </div>
-        {!platform && id && shops.length > 1 && (
-          <label>
-            Selected business
-            <select
-              value={id}
-              onChange={(event) => {
-                location.hash = `/shops/${encodeURIComponent(event.target.value)}`;
-              }}
-            >
-              {shops.map((shop) => (
-                <option key={shop.id} value={shop.id}>
-                  {shop.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
+      )}
       {id ? (
         <Shop
           key={`${id}/${initialSection || "overview"}`}
           id={id}
           initialSection={initialSection}
           platform={platform}
+          shops={shops}
         />
       ) : platform ? (
         <p>
@@ -315,9 +320,11 @@ function Shop({
   id,
   initialSection = "overview",
   platform = false,
+  shops,
 }: {
   id: string;
   platform?: boolean;
+  shops: PanelAccess["shops"];
   initialSection?: string;
 }) {
   const [revision, setRevision] = useState(0);
@@ -361,20 +368,40 @@ function Shop({
         ← Back to businesses
       </a>
       {business.data && (
-        <div className="page-heading">
-          <h2>{String(business.data.name)}</h2>
-          {status(business.data.isActive)}
+        <div className="business-header">
+          <div>
+            <h1>{String(business.data.name)}</h1>
+            <p>Business workspace · Operations, team and access</p>
+          </div>
+          <div className="header-actions">
+            {!platform && shops.length > 1 && (
+              <select
+                aria-label="Selected business"
+                value={id}
+                onChange={(event) => {
+                  location.hash = `/shops/${encodeURIComponent(event.target.value)}`;
+                }}
+              >
+                {shops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {status(business.data.isActive)}
+            {platform && (
+              <Manage
+                kind="businesses"
+                id={id}
+                active={Boolean(business.data.isActive)}
+                updated={() => setRevision((v) => v + 1)}
+              />
+            )}
+          </div>
         </div>
       )}
       {platform && <Notice {...business} />}
-      {platform && business.data && (
-        <Manage
-          kind="businesses"
-          id={id}
-          active={Boolean(business.data.isActive)}
-          updated={() => setRevision((v) => v + 1)}
-        />
-      )}
       {business.data?.isActive === false ? (
         <p className="notice">
           This business is suspended. Reactivate it to manage its operations.
@@ -384,7 +411,7 @@ function Shop({
       )}
       {access.data && business.data?.isActive !== false && (
         <>
-          <div className="tabs" role="tablist">
+          <div className="tabs" role="tablist" aria-label="Business sections">
             {visible.map((s) => (
               <button
                 key={s}
@@ -463,7 +490,11 @@ function ShopSection({
   return (
     <>
       <Notice {...result} />
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p className="success" role="status">
+          {message}
+        </p>
+      )}
       {section === "overview" && result.data && !Array.isArray(result.data) && (
         <>
           <p className="muted">Today · Asia/Kolkata</p>
@@ -486,17 +517,27 @@ function ShopSection({
       )}
       {catalog && (
         <>
-          <button
-            hidden={!can(`${section}.create`)}
-            onClick={() => setEditing({})}
-          >
-            Add{" "}
-            {section === "products"
-              ? "product"
-              : section === "customers"
-                ? "customer"
-                : "supplier"}
-          </button>
+          <div className="section-heading">
+            <div>
+              <h2>{label(section)}</h2>
+              <p>
+                {rows.length} active {rows.length === 1 ? "record" : "records"}{" "}
+                · Manage your business directory
+              </p>
+            </div>
+            <button
+              className="primary"
+              hidden={!can(`${section}.create`)}
+              onClick={() => setEditing({})}
+            >
+              + Add{" "}
+              {section === "products"
+                ? "product"
+                : section === "customers"
+                  ? "customer"
+                  : "supplier"}
+            </button>
+          </div>
           {editing && (
             <Editor
               key={String(editing.id || "new")}
@@ -768,7 +809,7 @@ function RecordProductForm({
   const [productId, setProductId] = useState(String(products[0]?.id || ""));
   if (!products.length) return <p>Add a product first.</p>;
   return (
-    <>
+    <div className="product-entry">
       <label>
         Product
         <select
@@ -785,9 +826,10 @@ function RecordProductForm({
       <Editor
         title={title}
         fields={fields}
+        submitLabel={title === "Add line item" ? "Add item" : "Save stock"}
         save={(data) => save({ ...data, productId })}
       />
-    </>
+    </div>
   );
 }
 function TransactionForm({
@@ -805,107 +847,127 @@ function TransactionForm({
   const [person, setPerson] = useState("");
   const [lines, setLines] = useState<Row[]>([]);
   const [version, setVersion] = useState(0);
+  if (sale)
+    return (
+      <>
+        <Notice {...products} />
+        <Notice {...people} />
+        {products.data && people.data && (
+          <SaleCreator
+            id={id}
+            products={products.data as unknown as SaleProduct[]}
+            customers={people.data}
+            saved={saved}
+          />
+        )}
+      </>
+    );
   return (
     <details className="panel">
-      <summary>New {sale ? "sale" : "purchase"}</summary>
-      <Notice {...products} />
-      <Notice {...people} />
-      <label>
-        {sale ? "Customer" : "Supplier"}
-        <select
-          value={person}
-          required
-          onChange={(e) => setPerson(e.target.value)}
-        >
-          <option value="">Select {sale ? "customer" : "supplier"}</option>
-          {people.data?.map((p) => (
-            <option key={String(p.id)} value={String(p.id)}>
-              {String(p.name)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {products.data && (
-        <RecordProductForm
-          key={version}
-          products={products.data}
-          title="Add line item"
+      <summary>+ New {sale ? "sale" : "purchase"}</summary>
+      <div className="disclosure-body">
+        <Notice {...products} />
+        <Notice {...people} />
+        <label>
+          {sale ? "Customer" : "Supplier"}
+          <select
+            value={person}
+            required
+            onChange={(e) => setPerson(e.target.value)}
+          >
+            <option value="">Select {sale ? "customer" : "supplier"}</option>
+            {people.data?.map((p) => (
+              <option key={String(p.id)} value={String(p.id)}>
+                {String(p.name)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {products.data && (
+          <RecordProductForm
+            key={version}
+            products={products.data}
+            title="Add line item"
+            fields={[
+              field("quantity", true),
+              field(sale ? "sellingPrice" : "purchasePrice", true),
+            ]}
+            save={async (data) => {
+              if (
+                !/^\d{1,9}(?:\.\d{1,3})?$/.test(String(data.quantity)) ||
+                Number(data.quantity) <= 0 ||
+                !/^\d{1,10}(?:\.\d{1,2})?$/.test(
+                  String(data[sale ? "sellingPrice" : "purchasePrice"]),
+                ) ||
+                Number(data[sale ? "sellingPrice" : "purchasePrice"]) <= 0
+              )
+                throw new Error(
+                  "Enter a positive quantity and price within the supported precision.",
+                );
+              if (lines.some((l) => l.productId === data.productId))
+                throw new Error(
+                  "This product is already included. Remove it before adding it again.",
+                );
+              setLines([...lines, data]);
+              setVersion((v) => v + 1);
+            }}
+          />
+        )}
+        {lines.map((line, index) => (
+          <div className="transaction-line" key={String(line.productId)}>
+            {String(products.data?.find((p) => p.id === line.productId)?.name)}{" "}
+            · {String(line.quantity)} ×{" "}
+            {String(line[sale ? "sellingPrice" : "purchasePrice"])}{" "}
+            <button
+              onClick={() => setLines(lines.filter((_, i) => i !== index))}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <Editor
+          key={`transaction-${version}`}
+          title="Transaction details"
+          submitLabel={sale ? "Create sale" : "Create purchase"}
           fields={[
-            field("quantity", true),
-            field(sale ? "sellingPrice" : "purchasePrice", true),
+            {
+              key: sale ? "saleDate" : "purchaseDate",
+              required: true,
+              type: "date",
+            },
+            field("invoiceNumber"),
+            ...(sale
+              ? [
+                  field("paymentMethod", true, [
+                    "CASH",
+                    "UPI",
+                    "CARD",
+                    "BANK_TRANSFER",
+                    "OTHER",
+                  ]),
+                ]
+              : []),
+            field("note"),
           ]}
           save={async (data) => {
-            if (
-              !/^\d{1,9}(?:\.\d{1,3})?$/.test(String(data.quantity)) ||
-              Number(data.quantity) <= 0 ||
-              !/^\d{1,10}(?:\.\d{1,2})?$/.test(
-                String(data[sale ? "sellingPrice" : "purchasePrice"]),
-              ) ||
-              Number(data[sale ? "sellingPrice" : "purchasePrice"]) <= 0
-            )
+            if (!person || !lines.length)
               throw new Error(
-                "Enter a positive quantity and price within the supported precision.",
+                "Select a customer or supplier and add at least one line item.",
               );
-            if (lines.some((l) => l.productId === data.productId))
-              throw new Error(
-                "This product is already included. Remove it before adding it again.",
-              );
-            setLines([...lines, data]);
+            await shopApi(id, `/${section}`, {
+              method: "POST",
+              body: JSON.stringify({
+                ...data,
+                [sale ? "customerId" : "supplierId"]: person,
+                items: lines,
+              }),
+            });
+            setLines([]);
             setVersion((v) => v + 1);
+            saved();
           }}
         />
-      )}
-      {lines.map((line, index) => (
-        <p key={String(line.productId)}>
-          {String(products.data?.find((p) => p.id === line.productId)?.name)} ·{" "}
-          {String(line.quantity)} ×{" "}
-          {String(line[sale ? "sellingPrice" : "purchasePrice"])}{" "}
-          <button onClick={() => setLines(lines.filter((_, i) => i !== index))}>
-            Remove
-          </button>
-        </p>
-      ))}
-      <Editor
-        key={`transaction-${version}`}
-        title="Complete transaction"
-        fields={[
-          {
-            key: sale ? "saleDate" : "purchaseDate",
-            required: true,
-            type: "date",
-          },
-          field("invoiceNumber"),
-          ...(sale
-            ? [
-                field("paymentMethod", true, [
-                  "CASH",
-                  "UPI",
-                  "CARD",
-                  "BANK_TRANSFER",
-                  "OTHER",
-                ]),
-              ]
-            : []),
-          field("note"),
-        ]}
-        save={async (data) => {
-          if (!person || !lines.length)
-            throw new Error(
-              "Select a customer or supplier and add at least one line item.",
-            );
-          await shopApi(id, `/${section}`, {
-            method: "POST",
-            body: JSON.stringify({
-              ...data,
-              [sale ? "customerId" : "supplierId"]: person,
-              items: lines,
-            }),
-          });
-          setLines([]);
-          setVersion((v) => v + 1);
-          saved();
-        }}
-      />
+      </div>
     </details>
   );
 }

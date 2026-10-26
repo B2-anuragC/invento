@@ -27,10 +27,13 @@ async function send(path: string, init: RequestInit = {}) {
 async function parse<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(
-      body.error?.message ||
-        body.message ||
-        `Request failed (${response.status}).`,
+    throw Object.assign(
+      new Error(
+        body.error?.message ||
+          body.message ||
+          `Request failed (${response.status}).`,
+      ),
+      { status: response.status },
     );
   return body.data;
 }

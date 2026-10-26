@@ -77,7 +77,7 @@ export function AccessManagement({
         </p>
       )}
       {can("members.view") && (
-        <section className="panel">
+        <section className="panel access-panel">
           <h2>Shop memberships</h2>
           <Notice {...members} />
           {Array.isArray(members.data) &&
@@ -145,7 +145,7 @@ export function AccessManagement({
       )}
       {can("members.invite") && can("roles.view") && (
         <form
-          className="panel shop-fields"
+          className="panel access-panel shop-fields"
           onSubmit={(e) => {
             e.preventDefault();
             const d = new FormData(e.currentTarget);
@@ -183,7 +183,7 @@ export function AccessManagement({
         </form>
       )}
       {can("roles.view") && (
-        <section className="panel">
+        <section className="panel access-panel">
           <h2>Business roles</h2>
           <Notice {...roles} />
           {Array.isArray(roles.data) &&
@@ -245,7 +245,7 @@ export function AccessManagement({
         editing.key !== "OWNER" &&
         editing.key !== access?.role && (
           <form
-            className="panel"
+            className="panel access-panel role-editor"
             onSubmit={(e) => {
               e.preventDefault();
               const data = new FormData(e.currentTarget);
@@ -328,7 +328,7 @@ function BusinessAudit({ base }: { base: string }) {
     }[]
   >(`${base}/audit`);
   return (
-    <section className="panel">
+    <section className="panel access-panel access-audit">
       <h2>Recent access changes</h2>
       <Notice {...result} />
       {result.data?.map((r) => (
