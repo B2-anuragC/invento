@@ -3,8 +3,9 @@ import { FormError } from '@/components/form-error';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +17,8 @@ import {
   View,
 } from 'react-native';
 
-import { AppScreen, formatUnitLabel } from '@/components/invento-ui';
+import { AppScreen, ConfirmationDialog, formatUnitLabel } from '@/components/invento-ui';
+import { formSnapshot, hasUnsavedChanges } from '@/services/unsaved-changes';
 import {
   appSession,
   createProduct,
@@ -78,6 +80,40 @@ export default function ProductDetailsScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
+  const navigation = useNavigation();
+  const [leaveAction, setLeaveAction] = useState<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  const leavingAfterSave = useRef(false);
+
+  // Unsaved changes: compare the editable fields with the snapshot taken when editing began.
+  const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, minimumStock });
+  const baselineForm = useRef<string | undefined>(isNew ? currentForm : undefined);
+  useEffect(() => {
+    if (!editing) baselineForm.current = currentForm;
+  }, [editing, currentForm]);
+  const unsaved = editing && hasUnsavedChanges(baselineForm.current, currentForm);
+  usePreventRemove(unsaved && !saving, ({ data }) => {
+    if (!leavingAfterSave.current) setLeaveAction(data.action);
+  });
+
+  const fillForm = (productData: ProductRecord) => {
+    setPhoto({ images: productData.images, imageThumbnail: productData.imageThumbnail ?? null, imageOriginal: productData.imageOriginal ?? null });
+    setName(productData.name);
+    setSku(productData.sku);
+    setBarcode(productData.barcode ?? '');
+    setCategory(productData.category ?? '');
+    setUnit(productData.unit);
+    setSellingOptions(productData.sellingOptions ?? []);
+    setPiecesPerUnit(productData.piecesPerUnit ? String(productData.piecesPerUnit) : '');
+    setPurchasePrice(String(productData.purchasePrice));
+    setSellingPrice(String(productData.sellingPrice));
+    setGstRate(String(productData.gstRate ?? 0));
+    setMinimumStock(String(productData.minimumStock));
+  };
+  const cancelEditing = () => {
+    if (product) fillForm(product);
+    setError('');
+    setEditing(false);
+  };
 
   const addSellingOption = () => {
     setSellingOptions((current) => current.length >= 20 ? current : [...current, {
@@ -120,22 +156,11 @@ export default function ProductDetailsScreen() {
       .then(([productData, stockData, transactionData]) => {
         if (!active) return;
         setProduct(productData);
-        setPhoto({ images: productData.images, imageThumbnail: productData.imageThumbnail ?? null, imageOriginal: productData.imageOriginal ?? null });
         setInventory(stockData);
         setTransactions(transactionData);
         setEditing(false);
         setNotice(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
-        setName(productData.name);
-        setSku(productData.sku);
-        setBarcode(productData.barcode ?? '');
-        setCategory(productData.category ?? '');
-        setUnit(productData.unit);
-        setSellingOptions(productData.sellingOptions ?? []);
-        setPiecesPerUnit(productData.piecesPerUnit ? String(productData.piecesPerUnit) : '');
-        setPurchasePrice(String(productData.purchasePrice));
-        setSellingPrice(String(productData.sellingPrice));
-        setGstRate(String(productData.gstRate ?? 0));
-        setMinimumStock(String(productData.minimumStock));
+        fillForm(productData);
       })
       .catch((loadError: unknown) => {
         if (active) setError(loadError instanceof Error ? loadError.message : 'Could not load product details.');
@@ -196,6 +221,7 @@ export default function ProductDetailsScreen() {
     try {
       if (isNew) {
         const createdProduct = await createProduct(session, input);
+        leavingAfterSave.current = true;
         router.replace(`/product/${createdProduct.id}?created=1`);
       } else {
         const updated = await updateProduct(session, id, input);
@@ -472,7 +498,7 @@ export default function ProductDetailsScreen() {
             <Pressable disabled={saving || photoBusy} onPress={() => void saveProduct()} style={[styles.primaryButton, (saving || photoBusy) && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}</Text>
             </Pressable>
-            {!isNew ? <Pressable onPress={() => setEditing(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel editing</Text></Pressable> : null}
+            {!isNew ? <Pressable onPress={cancelEditing} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel editing</Text></Pressable> : null}
           </>
         ) : (
           <>
@@ -534,6 +560,20 @@ export default function ProductDetailsScreen() {
           </>
         )}
       </ScrollView>
+      <ConfirmationDialog
+        visible={!!leaveAction}
+        title="Discard unsaved changes?"
+        message={isNew ? 'This product has not been added to your catalog yet.' : 'Your changes to this product have not been saved.'}
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        onCancel={() => setLeaveAction(null)}
+        onConfirm={() => {
+          if (!leaveAction) return;
+          const action = leaveAction;
+          setLeaveAction(null);
+          navigation.dispatch(action);
+        }}
+      />
     </AppScreen>
   );
 }
