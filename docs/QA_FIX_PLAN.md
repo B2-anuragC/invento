@@ -30,7 +30,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | # | Change | Status |
 |---|---|---|
 | 12 | Sequential per-business invoice numbers that restart each financial year: `INV/2026-27/0001` for sales, `PUR/2026-27/0001` for purchases, with a configurable prefix | Done |
-| 13 | Shop GSTIN, state, address and phone in settings (admin and a mobile Shop details screen); customer and supplier GSTIN | |
+| 13 | Shop GSTIN, state, address and phone in settings (admin and a mobile Shop details screen); customer and supplier GSTIN | Done |
 | 14 | Receipt shows shop name and details, customer GSTIN, HSN codes and the CGST/SGST or IGST split | |
 | 15 | Print / save as PDF (A4) from the receipt; share through the system share sheet, not only WhatsApp | |
 

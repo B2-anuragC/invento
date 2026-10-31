@@ -1,11 +1,7 @@
 import { SaleCreator } from "./sale-creator";
 import { type SaleProduct } from "./sale-model";
-import {
-  isValidPhone,
-  PHONE_RULE_MESSAGE,
-  type EffectiveAccess,
-  type Permission,
-} from "@invento/shared";
+import { GST_STATES, type EffectiveAccess, type Permission } from "@invento/shared";
+import { firstFieldError } from "./form-validation";
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
 import { api, type PanelAccess } from "./api";
@@ -22,6 +18,8 @@ import {
 
 type Field = {
   key: string;
+  /** Labelled choices with a blank "Not set" option, for optional selects. */
+  choices?: { value: string; label: string }[];
   title?: string;
   required?: boolean;
   options?: string[];
@@ -39,7 +37,11 @@ const personFields = [
   { key: "phone", type: "tel" },
   { key: "email", type: "email" },
   field("address"),
+  { key: "gstin", title: "GSTIN", type: "gstin", max: 20 },
 ];
+const stateChoices = Object.entries(GST_STATES)
+  .map(([value, name]) => ({ value, label: `${name} (${value})` }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 const productFields = [
   field("name", true),
   field("sku", true),
@@ -113,14 +115,9 @@ function Editor({
             ([key, value]) => value !== "" || initial[key] != null,
           ),
         );
-        const invalidPhone = fields.find(
-          (f) =>
-            f.type === "tel" &&
-            String(values[f.key] ?? "").trim() !== "" &&
-            !isValidPhone(String(values[f.key])),
-        );
-        if (invalidPhone) {
-          setError(PHONE_RULE_MESSAGE);
+        const invalid = firstFieldError(fields, values);
+        if (invalid) {
+          setError(invalid);
           return;
         }
         setBusy(true);
@@ -140,7 +137,16 @@ function Editor({
           <label key={f.key}>
             {f.title || label(f.key)}
             {f.required ? " *" : ""}
-            {f.options ? (
+            {f.choices ? (
+              <select name={f.key} defaultValue={String(initial[f.key] ?? "")}>
+                <option value="">Not set</option>
+                {f.choices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            ) : f.options ? (
               <select
                 name={f.key}
                 defaultValue={String(initial[f.key] ?? f.options[0])}
@@ -155,7 +161,8 @@ function Editor({
             ) : (
               <input
                 name={f.key}
-                type={f.type || "text"}
+                type={f.type === "gstin" ? "text" : f.type || "text"}
+                style={f.type === "gstin" ? { textTransform: "uppercase" } : undefined}
                 required={f.required}
                 maxLength={f.max ?? 160}
                 defaultValue={String(initial[f.key] ?? "")}
@@ -604,8 +611,9 @@ function ShopSection({
                     "minimumStock",
                     "status",
                   ]
-                : ["name", "contactName", "phone", "email", "status"]
+                : ["name", "contactName", "phone", "email", "gstin", "status"]
             }
+            titles={{ gstin: "GSTIN" }}
             edit={can(`${section}.update`) ? setEditing : undefined}
           />
           <details className="panel">
@@ -699,6 +707,8 @@ function ShopSection({
               { key: "email", type: "email" },
               { key: "phone", type: "tel" },
               field("address"),
+              { key: "gstin", title: "GSTIN (leave blank if not registered)", type: "gstin", max: 20 },
+              { key: "stateCode", title: "State (set from the GSTIN when registered)", choices: stateChoices },
               { key: "invoicePrefix", title: "Sales invoice prefix (e.g. INV)", max: 3 },
               { key: "purchasePrefix", title: "Purchase number prefix (e.g. PUR)", max: 3 },
             ]}
