@@ -373,6 +373,15 @@ describe("Durable offline transactions", () => {
     expect(built.movements.map((movement) => movement.quantity)).toEqual([-10, -2]);
     expect(built.record.items).toHaveLength(2);
   });
+  it('gives a provisional bill the GST details and HSN codes the server will copy', () => {
+    const view = { ...snapshot, business: { ...snapshot.business, gstin: '27AAPFU0939F1ZV', stateCode: '27' }, products: snapshot.products.map((product) => ({ ...product, hsnCode: '70052910' })), customers: snapshot.customers.map((customer) => ({ ...customer, gstin: '29AAPFU0939F1ZR' })) } as OfflineSnapshot;
+    const record = buildOfflineTransaction(view, 'sale', sale('request_gst_details')).record as SaleRecord;
+    expect(record).toMatchObject({ taxType: 'INTER_STATE', sellerGstin: '27AAPFU0939F1ZV', sellerStateCode: '27', buyerGstin: '29AAPFU0939F1ZR', placeOfSupply: '29' });
+    expect(record.items[0].hsnCode).toBe('70052910');
+    // A shop without a GSTIN (or an older device copy without shop details) issues bills of supply.
+    expect(buildOfflineTransaction(snapshot, 'sale', sale('request_unregistered')).record).toMatchObject({ taxType: 'UNREGISTERED', sellerGstin: null, buyerGstin: null });
+    expect(buildOfflineTransaction(view, 'purchase', purchase()).record).not.toHaveProperty('taxType');
+  });
   it('checks stock across all lines of a product and rejects identical lines', () => {
     withPack();
     expect(() => buildOfflineTransaction(snapshot, 'sale', packAndLoose('3'))).toThrow('Insufficient stock');

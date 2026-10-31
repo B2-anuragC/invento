@@ -1,8 +1,9 @@
 import { usePermissions } from '@/services/permissions';
 import { FormError } from '@/components/form-error';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
+import { hsnCodeError } from '@/services/gst';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
-import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
+import { normalizeHsnCode, sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
@@ -73,6 +74,7 @@ export default function ProductDetailsScreen() {
   const [purchasePrice, setPurchasePrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
   const [gstRate, setGstRate] = useState('0');
+  const [hsnCode, setHsnCode] = useState('');
   const [minimumStock, setMinimumStock] = useState('0');
   const [openingStock, setOpeningStock] = useState('');
   const [editing, setEditing] = useState(isNew);
@@ -85,7 +87,7 @@ export default function ProductDetailsScreen() {
   const leavingAfterSave = useRef(false);
 
   // Unsaved changes: compare the editable fields with the snapshot taken when editing began.
-  const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, minimumStock });
+  const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, hsnCode, minimumStock });
   const baselineForm = useRef<string | undefined>(isNew ? currentForm : undefined);
   useEffect(() => {
     if (!editing) baselineForm.current = currentForm;
@@ -107,6 +109,7 @@ export default function ProductDetailsScreen() {
     setPurchasePrice(String(productData.purchasePrice));
     setSellingPrice(String(productData.sellingPrice));
     setGstRate(String(productData.gstRate ?? 0));
+    setHsnCode(productData.hsnCode ?? '');
     setMinimumStock(String(productData.minimumStock));
   };
   const cancelEditing = () => {
@@ -200,9 +203,12 @@ export default function ProductDetailsScreen() {
       if (Math.abs(movement * 1000 - Math.round(movement * 1000)) > 1e-7) { setError(prefix + 'use a quantity that fits the stock unit’s three-decimal precision.'); return; }
     }
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
+    const hsnError = hsnCodeError(hsnCode);
+    if (hsnError) { setError(hsnError); return; }
     const input: ProductInput = {
       ...photo,
       gstRate,
+      hsnCode: normalizeHsnCode(hsnCode),
       name: cleanName,
       sku: cleanSku,
       barcode: barcode.trim(),
@@ -444,6 +450,8 @@ export default function ProductDetailsScreen() {
             <Text style={styles.sectionTitle}>Pricing & reorder level</Text>
             <Text style={styles.label}>GST rate (%)</Text><TextInput accessibilityLabel="Product GST rate" value={gstRate} onChangeText={(value) => { if (/^\d{0,3}(?:\.\d{0,2})?$/.test(value)) setGstRate(value); }} keyboardType="decimal-pad" style={styles.input} />
             <Text style={styles.helperText}>Prices exclude GST. The configured rate is added when saving a sale or purchase; saved receipts keep their original rate.</Text>
+            <Text style={styles.label}>HSN code (optional)</Text><TextInput accessibilityLabel="Product HSN code" value={hsnCode} onChangeText={(value) => { if (/^[\d ]{0,10}$/.test(value)) { setHsnCode(value); clearErrorOnEdit(); } }} keyboardType="number-pad" placeholder="e.g. 70052910" placeholderTextColor="#9CA3AF" maxLength={10} style={styles.input} />
+            <Text style={styles.helperText}>4, 6 or 8 digits, printed beside this product on GST invoices.</Text>
             <View style={styles.fieldsRow}>
               <View style={styles.field}>
                 <Text style={styles.label}>Purchase price</Text>

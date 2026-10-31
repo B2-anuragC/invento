@@ -1,4 +1,4 @@
-import { type EffectiveAccess, type Permission } from '@invento/shared';
+import { type EffectiveAccess, type Permission, type GstTaxType } from '@invento/shared';
 import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
@@ -79,6 +79,7 @@ export type ProductRecord = {
   piecesPerUnit?: number | null;
   sellingOptions?: SellingOption[];
   gstRate?: string;
+  hsnCode?: string | null;
   purchasePrice?: string | null;
   sellingPrice: string;
   minimumStock: string;
@@ -99,6 +100,8 @@ export type ProductInput = {
   piecesPerUnit?: number | null;
   sellingOptions?: SellingOption[];
   gstRate?: string;
+  /** Digits only; an empty string clears the code. */
+  hsnCode?: string;
   purchasePrice: string;
   sellingPrice: string;
   minimumStock: string;
@@ -154,12 +157,18 @@ export type SaleRecord = {
   documentNumber?: string | null;
   financialYear?: string | null;
   documentSeq?: number | null;
+  /** GST details copied onto the sale when it was created; null on older sales. */
+  taxType?: GstTaxType | null;
+  sellerGstin?: string | null;
+  sellerStateCode?: string | null;
+  buyerGstin?: string | null;
+  placeOfSupply?: string | null;
   saleDate: string;
   total: string | number;
   paymentMethod: string;
   note?: string | null;
   customer: { id: string; name: string; phone?: string | null };
-  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
@@ -797,6 +806,12 @@ export async function fetchBusinessDetails(session: AppSession): Promise<Busines
     if (!isServerUnreachable(error)) throw error;
     return (await offlineView(session)).business as BusinessDetails;
   }
+}
+
+/** Shop details printed on receipts: the device copy on phones, so receipts open offline without waiting. */
+export async function fetchReceiptShop(session: AppSession): Promise<BusinessDetails | null> {
+  if (!nativeOffline) return fetchBusinessDetails(session);
+  return (await offlineView(session)).business ?? null;
 }
 
 /** Saves shop details online and refreshes the device copy used by offline receipts. */

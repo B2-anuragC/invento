@@ -37,6 +37,7 @@ import { FormError } from "@/components/form-error";
 import { paymentMethodLabel } from "@/services/payment-methods";
 import { decodeDraftLines, encodeDraftLines, sameLine } from "@/services/bill-lines";
 import { formatMoney as money, formatQuantity } from '@/services/format';
+import { saleGstDetails } from '@/services/gst';
 import {
   TransactionReceipt,
   type ReceiptData,
@@ -422,6 +423,7 @@ export default function QuickBillScreen() {
         syncError: saved.syncError,
         id: saved.id,
         kind: "sale",
+        gst: saleGstDetails(saved),
         date: saved.saleDate,
         invoice: saved.invoiceNumber, documentNumber: saved.documentNumber,
         contact: saved.customer.name,
@@ -446,6 +448,7 @@ export default function QuickBillScreen() {
           gstRate: item.gstRate,
           taxAmount: item.taxAmount,
           lineTotal: item.lineTotal,
+          hsnCode: item.hsnCode,
         })),
       });
       pendingInput.current = null;

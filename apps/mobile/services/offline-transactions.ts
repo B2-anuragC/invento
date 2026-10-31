@@ -2,12 +2,14 @@ import { sellingUnitConversion } from "@invento/shared";
 import type {
   CreateSaleInput,
   CreatePurchaseInput,
+  CustomerRecord,
   ProductRecord,
   SupplierRecord,
   SaleRecord,
   PurchaseRecord,
 } from "./api";
 import type { OfflineSnapshot } from "./offline-model";
+import { provisionalSaleGst } from "./gst";
 import { validDueDate } from "./transaction-accounting";
 
 export type TransactionKind = "sale" | "purchase";
@@ -224,6 +226,7 @@ export function buildOfflineTransaction(
             sellingOptionId: saleLine?.sellingOptionId,
             optionName: option?.name,
             unitsPerOption: option?.quantity ?? "1",
+            hsnCode: product.hsnCode || null,
           }
         : { purchasePrice: price }),
       gstRate: rate,
@@ -258,6 +261,8 @@ export function buildOfflineTransaction(
     sale
       ? {
           ...common,
+          // The same GST details the server copies when this bill syncs.
+          ...provisionalSaleGst(view.business, contact as CustomerRecord),
           referenceImage: sale.referenceImage,
           customer: contact,
           saleDate: date,
