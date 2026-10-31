@@ -563,6 +563,51 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(await prisma.sale.count({ where: { businessId } })).toBe(0);
   });
 
+  it('numbers sales and purchases per financial year with no gaps, under concurrency and retries', async () => {
+    const first = (await api('post', '/sales').send(input('1')).expect(201)).body.data;
+    expect(first).toMatchObject({ documentNumber: 'INV/2026-27/0001', financialYear: '2026-27', documentSeq: 1, invoiceNumber: 'SALE-TEST' });
+
+    // A sale that fails on stock rolls back and uses no number.
+    const failed = await api('post', '/sales').send(input('100000'));
+    expect(failed.status).toBeGreaterThanOrEqual(400);
+    expect((await api('post', '/sales').send(input('1')).expect(201)).body.data.documentNumber).toBe('INV/2026-27/0002');
+
+    // Concurrent sales receive distinct, consecutive numbers.
+    const concurrent = await Promise.all(Array.from({ length: 6 }, () => api('post', '/sales').send({ ...input('1'), requestId: randomUUID() })));
+    expect(concurrent.map((response) => response.status)).toEqual(Array(6).fill(201));
+    expect(concurrent.map((response) => response.body.data.documentSeq).sort((a: number, b: number) => a - b)).toEqual([3, 4, 5, 6, 7, 8]);
+
+    // The same request sent twice at once creates one sale with one number.
+    const requestId = randomUUID();
+    const retried = await Promise.all([api('post', '/sales').send({ ...input('1'), requestId }), api('post', '/sales').send({ ...input('1'), requestId })]);
+    expect(retried.map((response) => response.body.data.documentNumber)).toEqual(['INV/2026-27/0009', 'INV/2026-27/0009']);
+
+    // Each financial year has its own series, split at midnight IST on 1 April.
+    expect((await api('post', '/sales').send({ ...input('1'), saleDate: '2026-03-31T18:29:00Z' }).expect(201)).body.data.documentNumber).toBe('INV/2025-26/0001');
+
+    // A new prefix continues the same sequence; invalid prefixes are rejected.
+    await api('patch', `/businesses/${businessId}`).send({ invoicePrefix: 'gs' }).expect(200);
+    expect((await api('post', '/sales').send(input('1')).expect(201)).body.data.documentNumber).toBe('GS/2026-27/0010');
+    await api('patch', `/businesses/${businessId}`).send({ invoicePrefix: 'GSTX' }).expect(400);
+
+    // Lists include and search the number.
+    expect((await api('get', '/sales?search=0002').expect(200)).body.data.map((sale: { documentNumber: string }) => sale.documentNumber)).toEqual(['INV/2026-27/0002']);
+
+    // A numbered sale keeps its financial year; future dates are rejected.
+    await api('patch', `/sales/${first.id}`).send({ saleDate: '2026-03-31T18:00:00Z' }).expect(400);
+    expect((await api('patch', `/sales/${first.id}`).send({ saleDate: '2026-10-01', invoiceNumber: 'REF-1' }).expect(200)).body.data).toMatchObject({ documentNumber: 'INV/2026-27/0001', invoiceNumber: 'REF-1' });
+    await api('post', '/sales').send({ ...input('1'), saleDate: new Date(Date.now() + 3 * 86400000).toISOString() }).expect(400);
+
+    // Purchases have their own series and keep the supplier's invoice number.
+    const supplier = (await api('post', '/suppliers').send({ name: 'Numbering supplier' }).expect(201)).body.data;
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, invoiceNumber: 'SUP-77', purchaseDate: '2026-09-20', items: [{ productId: products[1], quantity: '1', purchasePrice: '10' }] }).expect(201)).body.data;
+    expect(purchase).toMatchObject({ documentNumber: 'PUR/2026-27/0001', invoiceNumber: 'SUP-77' });
+
+    // Counters hold exactly the numbers that were issued.
+    const counters = await prisma.documentCounter.findMany({ where: { businessId }, orderBy: [{ series: 'asc' }, { financialYear: 'asc' }] });
+    expect(counters.map((counter) => [counter.series, counter.financialYear, counter.lastNumber])).toEqual([['PURCHASE', '2026-27', 1], ['SALE', '2025-26', 1], ['SALE', '2026-27', 10]]);
+  });
+
   it('sells a pack and loose pieces of one product on separate lines', async () => {
     const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
       { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },

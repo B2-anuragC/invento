@@ -1,6 +1,7 @@
 import { FilesService } from '../files/files.service.js';
 import { sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
+import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
@@ -109,6 +110,7 @@ export class SalesService {
     if (total.greaterThan('999999999999.99')) throw new BadRequestException('Sale total exceeds the supported range.');
     const saleDate = new Date(input.saleDate);
     if (Number.isNaN(saleDate.getTime())) throw new BadRequestException('Invalid sale date.');
+    assertNotFutureDated(saleDate, 'Sale');
 
     const amountPaid = paidAmount(input.amountPaid, total);
     const dueDate = dueDateFor(input.dueDate, saleDate);
@@ -149,6 +151,10 @@ export class SalesService {
         });
       }
 
+      // Numbered last, after the stock locks, so the counter row is held briefly
+      // and is always the final lock a sale takes (no lock-order deadlocks).
+      await tx.sale.update({ where: { id: sale.id }, data: await allocateDocumentNumber(tx, businessId, 'SALE', saleDate) });
+
       if (amountPaid?.gt(0)) await tx.transactionPayment.create({ data: { businessId, saleId: sale.id, requestId: `initial_${sale.id}`, amount: amountPaid, method: input.paymentMethod ?? PaymentMethod.CASH, createdByUserId: userId } });
       return tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true, payments: true, customer: true } });
     });
@@ -173,9 +179,9 @@ export class SalesService {
       where: {
         businessId,
         ...(query.customerId ? { customerId: query.customerId } : {}),
-        ...(query.search ? { invoiceNumber: { contains: query.search, mode: 'insensitive' } } : {}),
+        ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }
@@ -186,7 +192,8 @@ export class SalesService {
   }
 
   /**
-   * Updates sale metadata only (invoice number, sale date, note).
+   * Updates sale metadata only (reference, sale date, note). The system
+   * invoice number cannot change, and the date must stay in its financial year.
    *
    * Line items, quantities, and prices cannot be edited once a sale has
    * been created, because inventory transactions have already been applied
@@ -196,10 +203,14 @@ export class SalesService {
    */
   async update(userId: string, businessId: string, saleId: string, input: UpdateSaleInput) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.update');
-    await this.requireSale(businessId, saleId);
+    const existing = await this.requireSale(businessId, saleId);
 
     const saleDate = input.saleDate ? new Date(input.saleDate) : undefined;
     if (saleDate && Number.isNaN(saleDate.getTime())) throw new BadRequestException('Invalid sale date.');
+    if (saleDate) {
+      assertNotFutureDated(saleDate, 'Sale');
+      assertSameFinancialYear(existing, saleDate);
+    }
 
     return this.prisma.sale.update({
       where: { id: saleId },

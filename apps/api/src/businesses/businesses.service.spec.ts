@@ -1,5 +1,5 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BusinessesService } from './businesses.service.js';
 
 describe('BusinessesService authorization', () => {
@@ -60,6 +60,36 @@ describe('BusinessesService authorization', () => {
       membersCanViewPurchasePrice: false,
       role: 'OWNER',
       permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER],
+    });
+  });
+  describe('invoice prefixes', () => {
+    const owner = () => {
+      const prisma = {
+        user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+        businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
+        business: { update: vi.fn(async ({ data }: { data: object }) => data) },
+      };
+      return { prisma, service: new BusinessesService(prisma as never) };
+    };
+
+    it('normalises prefixes to uppercase before saving', async () => {
+      const { service, prisma } = owner();
+      await service.update('user-a', 'business-a', { invoicePrefix: ' gs ', purchasePrefix: 'p1' });
+      expect(prisma.business.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ invoicePrefix: 'GS', purchasePrefix: 'P1' }) }));
+    });
+
+    it('rejects prefixes that would break the 16-character invoice number', async () => {
+      const { service, prisma } = owner();
+      for (const invoicePrefix of ['', 'INVO', 'I/V', 'I-V']) {
+        await expect(service.update('user-a', 'business-a', { invoicePrefix })).rejects.toBeInstanceOf(BadRequestException);
+      }
+      expect(prisma.business.update).not.toHaveBeenCalled();
+    });
+
+    it('leaves prefixes unchanged when they are not sent', async () => {
+      const { service, prisma } = owner();
+      await service.update('user-a', 'business-a', { name: 'Shop' });
+      expect(prisma.business.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ invoicePrefix: undefined, purchasePrefix: undefined }) }));
     });
   });
 });

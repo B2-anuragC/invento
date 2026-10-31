@@ -6,6 +6,7 @@ import {
   recordTransactionPayment,
 } from '../common/transaction-accounting.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import {
   BadRequestException,
@@ -254,6 +255,7 @@ export class PurchasesService {
     const purchaseDate = new Date(input.purchaseDate);
     if (Number.isNaN(purchaseDate.getTime()))
       throw new BadRequestException('Invalid purchase date.');
+    assertNotFutureDated(purchaseDate, 'Purchase');
 
     const amountPaid = paidAmount(input.amountPaid, total);
     const dueDate = dueDateFor(input.dueDate, purchaseDate);
@@ -304,6 +306,12 @@ export class PurchasesService {
             tx,
           );
         }
+
+        // Numbered last, after the stock locks (see SalesService.create).
+        await tx.purchase.update({
+          where: { id: purchase.id },
+          data: await allocateDocumentNumber(tx, businessId, 'PURCHASE', purchaseDate),
+        });
 
         if (amountPaid?.gt(0))
           await tx.transactionPayment.create({
@@ -390,7 +398,12 @@ export class PurchasesService {
         businessId,
         ...(query.supplierId ? { supplierId: query.supplierId } : {}),
         ...(query.search
-          ? { invoiceNumber: { contains: query.search, mode: 'insensitive' } }
+          ? {
+              OR: [
+                { documentNumber: { contains: query.search, mode: 'insensitive' } },
+                { invoiceNumber: { contains: query.search, mode: 'insensitive' } },
+              ],
+            }
           : {}),
       },
       select: {
@@ -398,6 +411,9 @@ export class PurchasesService {
         businessId: true,
         supplierId: true,
         invoiceNumber: true,
+        documentNumber: true,
+        financialYear: true,
+        documentSeq: true,
         purchaseDate: true,
         subtotal: true,
         taxTotal: true,
@@ -454,13 +470,17 @@ export class PurchasesService {
       businessId,
       'purchases.update',
     );
-    await this.requirePurchase(businessId, purchaseId);
+    const existing = await this.requirePurchase(businessId, purchaseId);
 
     const purchaseDate = input.purchaseDate
       ? new Date(input.purchaseDate)
       : undefined;
     if (purchaseDate && Number.isNaN(purchaseDate.getTime()))
       throw new BadRequestException('Invalid purchase date.');
+    if (purchaseDate) {
+      assertNotFutureDated(purchaseDate, 'Purchase');
+      assertSameFinancialYear(existing, purchaseDate);
+    }
 
     const updated = await this.prisma.purchase.update({
       where: { id: purchaseId },

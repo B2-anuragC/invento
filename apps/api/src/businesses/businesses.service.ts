@@ -1,7 +1,7 @@
-import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
+import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, isValidDocumentPrefix, normalizeDocumentPrefix } from '@invento/shared';
 import { AccessManagementService, lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
 import { requireBusinessMembership, requireBusinessPermission } from '../auth/business-access.js';
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 
@@ -40,9 +40,16 @@ export class BusinessesService {
     return business;
   }
 
-  async update(userId: string, businessId: string, input: { name?: string; email?: string; phone?: string; address?: string }) {
+  async update(userId: string, businessId: string, input: { name?: string; email?: string; phone?: string; address?: string; invoicePrefix?: string; purchasePrefix?: string }) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'business.update');
-    return this.prisma.business.update({ where: { id: businessId }, data: { ...input, email: input.email?.trim().toLowerCase(), name: input.name?.trim() } });
+    // Changing a prefix continues the same yearly sequence; numbers stay unique.
+    const prefix = (value: string | undefined) => {
+      if (value === undefined) return undefined;
+      const normalized = normalizeDocumentPrefix(value);
+      if (!isValidDocumentPrefix(normalized)) throw new BadRequestException(DOCUMENT_PREFIX_RULE_MESSAGE);
+      return normalized;
+    };
+    return this.prisma.business.update({ where: { id: businessId }, data: { ...input, email: input.email?.trim().toLowerCase(), name: input.name?.trim(), invoicePrefix: prefix(input.invoicePrefix), purchasePrefix: prefix(input.purchasePrefix) } });
   }
 
   async listUsers(userId: string, businessId: string) {

@@ -15,6 +15,9 @@ export class UpdateBusinessDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsEmail() email?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @IsPhone() @MaxLength(30) phone?: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(300) address?: string;
+  // Normalised to uppercase and checked against the shared prefix rule by the service.
+  @ApiPropertyOptional({ description: 'Sales invoice prefix: 1 to 3 letters or digits, e.g. INV.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(10) invoicePrefix?: string;
+  @ApiPropertyOptional({ description: 'Purchase number prefix: 1 to 3 letters or digits, e.g. PUR.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(10) purchasePrefix?: string;
 }
 
 export class AddBusinessUserDto {

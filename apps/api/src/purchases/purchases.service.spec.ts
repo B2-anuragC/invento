@@ -26,7 +26,8 @@ function createFakeEnvironment(
     purchaseItems: unknown[];
     inventory: Record<string, InventoryRow>;
     inventoryTransactions: unknown[];
-  } = { purchases: {}, purchaseItems: [], inventory: {}, inventoryTransactions: [] };
+    counters: Record<string, number>;
+  } = { purchases: {}, purchaseItems: [], inventory: {}, inventoryTransactions: [], counters: {} };
 
   for (const [productId, quantity] of Object.entries(options.openingStock ?? { 'product-a': '100.000' })) {
     store.inventory[productId] = { id: `inventory-${productId}`, businessId: 'business-a', productId, quantity: new Prisma.Decimal(quantity) };
@@ -34,7 +35,13 @@ function createFakeEnvironment(
 
   function buildTxClient() {
     return {
-      $queryRaw: vi.fn(async (query: { values?: unknown[] }) => {
+      $queryRaw: vi.fn(async (query: { strings?: readonly string[]; values?: unknown[] }) => {
+        // Invoice counter: INSERT ... ON CONFLICT DO UPDATE ... RETURNING "lastNumber".
+        if (query?.strings?.join('').includes('document_counters')) {
+          const key = (query.values ?? []).slice(0, 3).join('|');
+          store.counters[key] = (store.counters[key] ?? 0) + 1;
+          return [{ lastNumber: store.counters[key] }];
+        }
         const productId = query?.values?.[0] as string | undefined;
         if (options.failInventoryOnProductId && options.failInventoryOnProductId === productId) throw new Error('Simulated inventory failure');
         const row = productId ? store.inventory[productId] : undefined;
@@ -53,7 +60,12 @@ function createFakeEnvironment(
           return data;
         }),
       },
+      business: { findUniqueOrThrow: vi.fn(async () => ({ invoicePrefix: 'INV', purchasePrefix: 'PUR' })) },
       purchase: {
+        update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          Object.assign(store.purchases[where.id] as Record<string, unknown>, data);
+          return store.purchases[where.id];
+        }),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
           const purchase = { id: 'purchase-a', ...data };
           store.purchases[purchase.id] = purchase;
@@ -86,21 +98,24 @@ function createFakeEnvironment(
     // persistent `store` if the callback resolves. If it throws, the
     // snapshot is discarded and `store` is left exactly as it was before.
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
-      const snapshotBefore = structuredClone({
+      // JSON copy: decimals in stored purchases cannot be structured-cloned.
+      const snapshotBefore = JSON.parse(JSON.stringify({
         purchases: store.purchases,
         purchaseItems: store.purchaseItems,
         inventory: Object.fromEntries(Object.entries(store.inventory).map(([id, row]) => [id, { ...row, quantity: row.quantity.toString() }])),
         inventoryTransactions: store.inventoryTransactions,
-      });
+        counters: store.counters,
+      }));
       try {
         return await callback(txClient);
       } catch (error) {
         store.purchases = snapshotBefore.purchases;
         store.purchaseItems = snapshotBefore.purchaseItems;
         store.inventory = Object.fromEntries(
-          Object.entries(snapshotBefore.inventory).map(([id, row]) => [id, { ...row, quantity: new Prisma.Decimal(row.quantity) }]),
+          Object.entries(snapshotBefore.inventory as Record<string, InventoryRow>).map(([id, row]) => [id, { ...row, quantity: new Prisma.Decimal(row.quantity) }]),
         );
         store.inventoryTransactions = snapshotBefore.inventoryTransactions;
+        store.counters = snapshotBefore.counters;
         throw error;
       }
     }),
@@ -120,6 +135,21 @@ const purchaseInput = {
 };
 
 describe('PurchasesService', () => {
+  it('numbers purchases in their own PUR series and keeps the supplier invoice number', async () => {
+    const { service, store } = createFakeEnvironment();
+    const first = await service.create('user-a', 'business-a', purchaseInput);
+    const second = await service.create('user-a', 'business-a', { ...purchaseInput, purchaseDate: '2026-04-01T00:00:00+05:30' });
+    expect(first).toMatchObject({ documentNumber: 'PUR/2025-26/0001', invoiceNumber: purchaseInput.invoiceNumber });
+    expect(second).toMatchObject({ documentNumber: 'PUR/2026-27/0001' });
+    expect(Object.keys(store.counters).sort()).toEqual(['business-a|PURCHASE|2025-26', 'business-a|PURCHASE|2026-27']);
+  });
+
+  it('rejects a purchase dated more than a day in the future without using a number', async () => {
+    const { service, store } = createFakeEnvironment();
+    await expect(service.create('user-a', 'business-a', { ...purchaseInput, purchaseDate: new Date(Date.now() + 3 * 86400000).toISOString() })).rejects.toThrow('in the future');
+    expect(store.counters).toEqual({});
+  });
+
   it('hides purchase totals and unit costs from members when access is disabled', async () => {
     const purchase = {
       id: 'purchase-a',

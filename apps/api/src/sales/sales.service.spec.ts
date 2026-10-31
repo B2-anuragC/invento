@@ -26,7 +26,8 @@ function createFakeEnvironment(
     saleItems: unknown[];
     inventory: Record<string, InventoryRow>;
     inventoryTransactions: unknown[];
-  } = { sales: {}, saleItems: [], inventory: {}, inventoryTransactions: [] };
+    counters: Record<string, number>;
+  } = { sales: {}, saleItems: [], inventory: {}, inventoryTransactions: [], counters: {} };
 
   for (const [productId, quantity] of Object.entries(options.openingStock ?? { 'product-a': '100.000' })) {
     store.inventory[productId] = { id: `inventory-${productId}`, businessId: 'business-a', productId, quantity: new Prisma.Decimal(quantity) };
@@ -34,7 +35,13 @@ function createFakeEnvironment(
 
   function buildTxClient() {
     return {
-      $queryRaw: vi.fn(async (query: { values?: unknown[] }) => {
+      $queryRaw: vi.fn(async (query: { strings?: readonly string[]; values?: unknown[] }) => {
+        // Invoice counter: INSERT ... ON CONFLICT DO UPDATE ... RETURNING "lastNumber".
+        if (query?.strings?.join('').includes('document_counters')) {
+          const key = (query.values ?? []).slice(0, 3).join('|');
+          store.counters[key] = (store.counters[key] ?? 0) + 1;
+          return [{ lastNumber: store.counters[key] }];
+        }
         const productId = query?.values?.[0] as string | undefined;
         if (options.failInventoryOnProductId && options.failInventoryOnProductId === productId) throw new Error('Simulated inventory failure');
         const row = productId ? store.inventory[productId] : undefined;
@@ -53,7 +60,12 @@ function createFakeEnvironment(
           return data;
         }),
       },
+      business: { findUniqueOrThrow: vi.fn(async () => ({ invoicePrefix: 'INV', purchasePrefix: 'PUR' })) },
       sale: {
+        update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+          Object.assign(store.sales[where.id] as Record<string, unknown>, data);
+          return store.sales[where.id];
+        }),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
           const sale = { id: 'sale-a', ...data };
           store.sales[sale.id] = sale;
@@ -91,6 +103,7 @@ function createFakeEnvironment(
         saleItems: store.saleItems,
         inventory: Object.fromEntries(Object.entries(store.inventory).map(([id, row]) => [id, { ...row, quantity: row.quantity.toString() }])),
         inventoryTransactions: store.inventoryTransactions,
+        counters: store.counters,
       }));
       try {
         return await callback(txClient);
@@ -101,6 +114,7 @@ function createFakeEnvironment(
           Object.entries(snapshotBefore.inventory as Record<string, InventoryRow>).map(([id, row]) => [id, { ...row, quantity: new Prisma.Decimal(row.quantity) }]),
         );
         store.inventoryTransactions = snapshotBefore.inventoryTransactions;
+        store.counters = snapshotBefore.counters;
         throw error;
       }
     }),
@@ -198,7 +212,7 @@ describe('SalesService', () => {
     };
     const service = new SalesService(prisma as never, {} as never);
     await service.list('user-a', 'business-a', { customerId: 'customer-a', search: 'INV' });
-    expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { businessId: 'business-a', customerId: 'customer-a', invoiceNumber: { contains: 'INV', mode: 'insensitive' } } }));
+    expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { businessId: 'business-a', customerId: 'customer-a', OR: [{ documentNumber: { contains: 'INV', mode: 'insensitive' } }, { invoiceNumber: { contains: 'INV', mode: 'insensitive' } }] } }));
     // History screens summarise every method used to pay, in order, so the list carries them.
     expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } }) }));
     await expect(service.get('user-a', 'business-a', 'sale-b')).rejects.toBeInstanceOf(NotFoundException);
@@ -347,6 +361,72 @@ describe('SalesService', () => {
 
     await expect(service.create('user-a', 'business-a', { ...saleInput, items: [packLine, packLine] })).rejects.toThrow('combine the quantity');
     expect(store.inventory['product-a'].quantity.toString()).toBe('200');
+  });
+
+  describe('invoice numbers', () => {
+    it('numbers sales consecutively within the financial year and keeps the typed reference separate', async () => {
+      const { service } = createFakeEnvironment();
+      const first = await service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] });
+      const second = await service.create('user-a', 'business-a', { ...saleInput, invoiceNumber: undefined, items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] });
+      expect(first).toMatchObject({ documentNumber: 'INV/2025-26/0001', financialYear: '2025-26', documentSeq: 1, invoiceNumber: 'INV-001' });
+      expect(second).toMatchObject({ documentNumber: 'INV/2025-26/0002', documentSeq: 2 });
+    });
+
+    it('uses no number for a sale that rolls back', async () => {
+      const { service, store } = createFakeEnvironment({ openingStock: { 'product-a': '1' } });
+      await expect(service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', quantity: '2.000', sellingPrice: '40.00' }] })).rejects.toThrow('Insufficient stock');
+      expect(store.counters).toEqual({});
+      const sale = await service.create('user-a', 'business-a', { ...saleInput, items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] });
+      expect(sale).toMatchObject({ documentNumber: 'INV/2025-26/0001' });
+    });
+
+    it('starts each financial year at 1 April in India', async () => {
+      const { service } = createFakeEnvironment();
+      const line = { items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] };
+      const lastOfYear = await service.create('user-a', 'business-a', { ...saleInput, ...line, saleDate: '2026-03-31T18:29:59Z' });
+      const firstOfYear = await service.create('user-a', 'business-a', { ...saleInput, ...line, saleDate: '2026-03-31T18:30:00Z' });
+      expect(lastOfYear).toMatchObject({ documentNumber: 'INV/2025-26/0001' });
+      expect(firstOfYear).toMatchObject({ documentNumber: 'INV/2026-27/0001' });
+    });
+
+    it('rejects a sale dated more than a day in the future', async () => {
+      const { service, store } = createFakeEnvironment();
+      const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      await expect(service.create('user-a', 'business-a', { ...saleInput, saleDate: future })).rejects.toThrow('in the future');
+      expect(store.counters).toEqual({});
+    });
+  });
+
+  describe('editing a numbered sale', () => {
+    const environment = (sale: Record<string, unknown>) => {
+      const prisma = {
+        user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+        businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'ADMIN', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.ADMIN] } }) },
+        sale: { findFirst: vi.fn().mockResolvedValue(sale), update: vi.fn(async ({ data }: { data: object }) => ({ ...sale, ...data })) },
+      };
+      return { prisma, service: new SalesService(prisma as never, {} as never) };
+    };
+    const numbered = { id: 'sale-a', documentNumber: 'INV/2025-26/0004', financialYear: '2025-26' };
+
+    it('allows a new date within the invoice financial year', async () => {
+      const { service, prisma } = environment(numbered);
+      await service.update('user-a', 'business-a', 'sale-a', { saleDate: '2026-03-31T18:00:00Z', note: 'moved' });
+      expect(prisma.sale.update).toHaveBeenCalled();
+    });
+
+    it('rejects a date in another financial year and never changes the number', async () => {
+      const { service, prisma } = environment(numbered);
+      await expect(service.update('user-a', 'business-a', 'sale-a', { saleDate: '2026-03-31T18:30:00Z' })).rejects.toThrow('financial year 2025-26');
+      expect(prisma.sale.update).not.toHaveBeenCalled();
+      await service.update('user-a', 'business-a', 'sale-a', { invoiceNumber: 'REF-9' });
+      expect(prisma.sale.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.not.objectContaining({ documentNumber: expect.anything() }) }));
+    });
+
+    it('lets unnumbered (older) sales change date freely', async () => {
+      const { service, prisma } = environment({ id: 'sale-a', documentNumber: null, financialYear: null });
+      await service.update('user-a', 'business-a', 'sale-a', { saleDate: '2024-06-01' });
+      expect(prisma.sale.update).toHaveBeenCalled();
+    });
   });
 
   it('rejects a member without manager permissions from creating a sale', async () => {

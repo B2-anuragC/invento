@@ -16,6 +16,8 @@ model Business {
   phone                 String?
   address               String?
   membersCanViewPurchasePrice Boolean                @default(true)
+  invoicePrefix         String                 @default("INV")
+  purchasePrefix        String                 @default("PUR")
   isActive              Boolean                @default(true)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
@@ -29,8 +31,23 @@ model Business {
   customers             Customer[]
   sales                 Sale[]
   payments              TransactionPayment[]
+  documentCounters      DocumentCounter[]
 
   @@map("businesses")
+}
+
+/// Last invoice number issued per business, series (SALE or PURCHASE) and
+/// Indian financial year. Incremented inside the sale/purchase transaction,
+/// so a rolled-back bill uses no number.
+model DocumentCounter {
+  businessId    String
+  series        String
+  financialYear String
+  lastNumber    Int
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@id([businessId, series, financialYear])
+  @@map("document_counters")
 }
 
 enum ProductStatus {
@@ -209,7 +226,11 @@ model Purchase {
   id              String         @id @default(cuid())
   businessId      String
   supplierId      String
+  /// The supplier's own invoice number; our number is documentNumber.
   invoiceNumber   String?
+  documentNumber  String?
+  financialYear   String?
+  documentSeq     Int?
   purchaseDate    DateTime
   subtotal        Decimal       @db.Decimal(14, 2)
   taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
@@ -229,8 +250,10 @@ model Purchase {
 
   @@index([businessId, purchaseDate])
   @@index([businessId, supplierId])
+  @@index([businessId, documentNumber])
   @@map("purchases")
   @@unique([businessId, requestId])
+  @@unique([businessId, financialYear, documentSeq])
 }
 
 model PurchaseItem {
@@ -297,7 +320,11 @@ model Sale {
   id              String        @id @default(cuid())
   businessId      String
   customerId      String
+  /// Free-text reference typed by the user; the system number is documentNumber.
   invoiceNumber   String?
+  documentNumber  String?
+  financialYear   String?
+  documentSeq     Int?
   saleDate        DateTime
   paymentMethod   PaymentMethod
   subtotal        Decimal       @db.Decimal(14, 2)
@@ -318,8 +345,10 @@ model Sale {
 
   @@index([businessId, saleDate])
   @@index([businessId, customerId])
+  @@index([businessId, documentNumber])
   @@map("sales")
   @@unique([businessId, requestId])
+  @@unique([businessId, financialYear, documentSeq])
 }
 
 model SaleItem {
