@@ -18,7 +18,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | 3 | Offline: a network failure keeps the last known permissions instead of locking every screen; only a server refusal removes access | Done |
 | 4 | Enter submits login/register on web; browser autofill enables Sign in; form errors shown next to the button and scrolled into view; validation errors no longer say "Retry" | Done |
 | 5 | Correct singular/plural and unit labels; one money and date formatter across mobile | Done |
-| 6 | Receipt lists every payment method used | |
+| 6 | Receipt lists every payment method used; readable payment method names | Done |
 | 7 | Access screen stops re-rendering mid-task during the 15-second permission refresh | |
 | 8 | Glass calculator returns its quantity to the purchase or sale that opened it | |
 | 9 | Due-date picker disables dates before the transaction date | |

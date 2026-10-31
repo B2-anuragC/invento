@@ -28,6 +28,7 @@ import {
 import { phoneError } from '@/services/contact-validation';
 import { FormError } from '@/components/form-error';
 import { formatDate, formatMoney } from '@/services/format';
+import { paymentMethodsSummary } from '@/services/payment-methods';
 
 type Contact = CustomerRecord | SupplierRecord;
 
@@ -204,7 +205,7 @@ export default function ContactDetailsScreen() {
             <View key={sale.id} style={customerStyles.card}>
               <View style={customerStyles.between}><Text style={customerStyles.name}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={customerStyles.badge}>Saved</Text></View>
               <Text style={customerStyles.meta}>Sale · {formatDate(sale.saleDate)} · {sale.items.length} items</Text>
-              <View style={customerStyles.between}><Text style={customerStyles.meta}>Payment method</Text><Text style={customerStyles.name}>{sale.paymentMethod.replaceAll('_', ' ')}</Text></View>
+              <View style={customerStyles.between}><Text style={customerStyles.meta}>Payment method</Text><Text style={customerStyles.name}>{paymentMethodsSummary(sale.payments, sale.paymentMethod)}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Invoice total</Text><Text style={customerStyles.link}>{formatMoney(Number(sale.total))}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>To collect</Text><Text style={customerStyles.link}>{paymentBalance(sale) == null ? 'Not confirmed' : formatMoney(paymentBalance(sale)!)}</Text></View>{sale.dueDate ? <Text style={[customerStyles.meta, isOverdue(sale) && { color: '#A74737' }]}>Due {sale.dueDate.slice(0, 10)} · {isOverdue(sale) ? 'Overdue' : 'Not overdue'}</Text> : null}
               {can('sales.payments') && sale.total != null && paymentBalance(sale) !== 0 ? <Pressable accessibilityRole="button" onPress={() => setPaymentTarget(sale)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={customerStyles.link}>Record payment</Text></Pressable> : null}

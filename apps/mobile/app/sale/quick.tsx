@@ -34,6 +34,7 @@ import {
 import { TransactionFinanceFields } from "@/components/transaction-finance-fields";
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
 import { FormError } from "@/components/form-error";
+import { paymentMethodLabel } from "@/services/payment-methods";
 import { formatMoney as money, formatQuantity } from '@/services/format';
 import {
   TransactionReceipt,
@@ -807,7 +808,7 @@ export default function QuickBillScreen() {
                 <View style={styles.fill}>
                   <Text style={styles.meta}>Payment &amp; details</Text>
                   <Text style={styles.bold}>
-                    {method.replaceAll("_", " ")} ·{" "}
+                    {paymentMethodLabel(method)} ·{" "}
                     {mode === "full"
                       ? "Fully paid"
                       : mode === "partial"

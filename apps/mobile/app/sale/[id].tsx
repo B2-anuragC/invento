@@ -8,6 +8,7 @@ import { ActionButton, AppScreen, ListCard, formatUnitLabel } from '@/components
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { appSession, fetchPricingAccess, fetchProduct, fetchSale, type SaleRecord } from '@/services/api';
 import { formatDateTime, formatMoney as money } from '@/services/format';
+import { paymentMethodsSummary } from '@/services/payment-methods';
 
 
 export default function SaleDetailsScreen() {
@@ -62,7 +63,7 @@ export default function SaleDetailsScreen() {
             <ListCard title="Invoice summary">
               <Text style={styles.name}>{sale.customer?.name ?? 'Customer'}</Text>
               <Text style={styles.meta}>{formatDateTime(sale.saleDate)}</Text>
-              <Text style={styles.meta}>Payment method · {sale.paymentMethod.replaceAll('_', ' ')}</Text>
+              <Text style={styles.meta}>Payment method · {paymentMethodsSummary(sale.payments, sale.paymentMethod)}</Text>
               {sale.note ? <Text style={styles.meta}>Note · {sale.note}</Text> : null}
             </ListCard>
             <ListCard title={`Items sold · ${sale.items.length} line items`}>

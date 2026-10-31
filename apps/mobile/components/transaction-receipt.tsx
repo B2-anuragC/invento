@@ -5,6 +5,7 @@ import { SaleReferencePhoto } from './sale-reference-photo';
 import type { PaymentRecord, FileAttachment } from '@/services/api';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
+import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
 import { appSession, fetchSale, fetchPurchase } from '@/services/api';
@@ -30,6 +31,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [data, setData] = useState(initialData);
+  const methods = paymentMethodsSummary(data.payments, data.paymentMethod);
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   useEffect(() => { setData(initialData); }, [initialData]);
   useEffect(() => {
@@ -97,8 +99,8 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
       ))}
       <View style={styles.card}>{data.subtotal != null ? <View style={styles.row}><Text style={styles.meta}>Subtotal · excluding GST</Text><Text style={styles.bold}>{money(Number(data.subtotal))}</Text></View> : null}{data.taxTotal != null ? <View style={styles.row}><Text style={styles.meta}>GST · saved item rates</Text><Text style={styles.bold}>{money(Number(data.taxTotal))}</Text></View> : null}<View style={styles.row}><Text style={styles.meta}>Total amount</Text><Text style={styles.total}>{total}</Text></View></View>
       <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{balance == null ? 'Payment history not confirmed' : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{!data.syncState && onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={onPayment} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
-      {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : payment.method.replaceAll('_', ' ')}</Text><Text style={styles.meta}>{formatDate(payment.paidAt)}</Text></View><Text style={styles.bold}>{money(Number(payment.amount))}</Text></View>)}</View> : null}
-      {data.paymentMethod ? <View style={styles.card}><Text style={styles.meta}>Payment method</Text><Text style={styles.bold}>{data.paymentMethod.replaceAll('_', ' ')}</Text></View> : null}
+      {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : paymentMethodLabel(payment.method)}</Text><Text style={styles.meta}>{formatDate(payment.paidAt)}</Text></View><Text style={styles.bold}>{money(Number(payment.amount))}</Text></View>)}</View> : null}
+      {methods ? <View style={styles.card}><Text style={styles.meta}>{methods.includes(' + ') ? 'Payment methods' : 'Payment method'}</Text><Text style={styles.bold}>{methods}</Text></View> : null}
       {data.note ? <View style={styles.card}><Text style={styles.meta}>Note</Text><Text style={styles.bold}>{data.note}</Text></View> : null}
       {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
     <SaleReferencePhoto value={data.referenceImage} />
