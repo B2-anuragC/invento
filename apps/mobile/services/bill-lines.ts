@@ -13,6 +13,15 @@ export function sameLine(a: { productId: string; optionId?: string }, b: { produ
   return lineKey(a) === lineKey(b);
 }
 
+/**
+ * A saved line, matched between the device's provisional copy of a bill and the
+ * server's, which lists the lines in another order: product, selling option and
+ * unit sold for sales; purchases have one line per product.
+ */
+export function savedLineKey(kind: 'sale' | 'purchase', line: { productId: string; sellingOptionId?: string | null; unit?: string | null }): string {
+  return kind === 'purchase' ? line.productId : [line.productId, line.sellingOptionId ?? '', line.unit ?? ''].join(separator);
+}
+
 type DraftLines = { quantities: Record<string, string>; prices: Record<string, string>; selectedOptions?: Record<string, string> };
 
 /** Draft maps keyed by line. Plain lines keep the bare product id, as older drafts did. */

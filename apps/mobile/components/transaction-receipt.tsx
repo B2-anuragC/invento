@@ -7,6 +7,7 @@ import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
 import { receiptIdentity } from '@/services/transaction-labels';
+import { savedLineKey } from '@/services/bill-lines';
 import { lineTaxText, receiptTitle, saleGstDetails, stateLabel, taxTotalRows, type SaleGstDetails } from '@/services/gst';
 import { invoiceFileName, invoiceHtml } from '@/services/invoice-document';
 import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
@@ -29,7 +30,8 @@ export type ReceiptData = {
   gst?: SaleGstDetails | null;
   id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; documentNumber?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
   subtotal?: string | number; taxTotal?: string | number; amountPaid?: string | number | null; dueDate?: string | null; payments?: PaymentRecord[];
-  items: { id: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null }[];
+  /** lineKey matches a line to the server's copy, which lists lines in another order. */
+  items: { id: string; lineKey?: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null }[];
 };
 const money = formatMoney;
 export function TransactionReceipt({ data: initialData, inModal = false, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; inModal?: boolean; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
@@ -56,7 +58,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     const load = initialData.kind === 'sale' ? fetchSale(session, initialData.id) : fetchPurchase(session, initialData.id);
     void load.then((record) => {
       if (!active) return;
-      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, gst: initialData.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...initialData.items[index], id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined })) });
+      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, gst: initialData.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...(initialData.items.find((entry) => entry.lineKey === savedLineKey(initialData.kind, item)) ?? initialData.items[index]), id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined })) });
     }).catch(() => {});
     return () => { active = false; };
   }, [initialData, sync.syncing, sync.pending, sync.conflicts]);

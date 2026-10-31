@@ -35,7 +35,12 @@ import { TransactionFinanceFields } from "@/components/transaction-finance-field
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
 import { FormError } from "@/components/form-error";
 import { paymentMethodLabel } from "@/services/payment-methods";
-import { decodeDraftLines, encodeDraftLines, sameLine } from "@/services/bill-lines";
+import {
+  decodeDraftLines,
+  encodeDraftLines,
+  sameLine,
+  savedLineKey,
+} from "@/services/bill-lines";
 import { formatMoney as money, formatQuantity } from '@/services/format';
 import { saleGstDetails } from '@/services/gst';
 import {
@@ -438,6 +443,7 @@ export default function QuickBillScreen() {
         paymentMethod: saved.paymentMethod,
         items: saved.items.map((item) => ({
           id: item.id,
+          lineKey: savedLineKey("sale", item),
           name:
             products.find((p) => p.id === item.productId)?.name ??
             item.product?.name ??
