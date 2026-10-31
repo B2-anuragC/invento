@@ -6,14 +6,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
+import { formatDateTime, formatMoney } from '@/services/format';
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 export default function PurchasesScreen() {
   const router = useRouter();
@@ -96,7 +90,7 @@ export default function PurchasesScreen() {
                   </Text>
                   <Text style={styles.supplier}>{purchase.supplier?.name ?? 'Supplier'}</Text>
                   <Text style={styles.date}>
-                    {purchase.syncState ? `${purchase.syncState === 'conflict' ? 'Needs attention' : 'Pending sync'} · ` : ''}{new Date(purchase.purchaseDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {purchase.syncState ? `${purchase.syncState === 'conflict' ? 'Needs attention' : 'Pending sync'} · ` : ''}{formatDateTime(purchase.purchaseDate)}
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
                   </Text>
                 </View>

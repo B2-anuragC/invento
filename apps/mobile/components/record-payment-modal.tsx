@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { appSession, recordTransactionPayment } from '@/services/api';
 import { requestKey } from '@/services/transaction-accounting';
+import { formatMoney } from '@/services/format';
 export function RecordPaymentModal({ kind, id, total, amountPaid, onClose, onSaved }: { kind: 'sale' | 'purchase'; id: string; total: string | number; amountPaid?: string | number | null; onClose: () => void; onSaved: () => void }) {
   const [amount, setAmount] = useState('');
   const [opening, setOpening] = useState('');
@@ -24,7 +25,7 @@ export function RecordPaymentModal({ kind, id, total, amountPaid, onClose, onSav
     <Text style={styles.title}>Record {kind === 'sale' ? 'customer payment' : 'supplier payment'}</Text>
     <Text style={styles.meta}>Record money already received or paid. This does not transfer money.</Text>
     {amountPaid == null ? <><Text style={styles.meta}>Historical payment information is unknown. Enter the total paid before this payment, including 0 if none.</Text><TextInput accessibilityLabel="Previously paid amount" value={opening} editable={!busy} onChangeText={(value) => { if (/^\d{0,12}(?:\.\d{0,2})?$/.test(value)) setOpening(value); }} keyboardType="decimal-pad" placeholder="Previously paid (₹)" style={styles.input} /></> : null}
-    <Text style={styles.meta}>Remaining balance: ₹{Math.max(0, balance).toFixed(2)}</Text>
+    <Text style={styles.meta}>Remaining balance: {formatMoney(Math.max(0, balance))}</Text>
     <TextInput accessibilityLabel="Payment amount" value={amount} editable={!busy} onChangeText={(value) => { if (/^\d{0,12}(?:\.\d{0,2})?$/.test(value)) setAmount(value); }} keyboardType="decimal-pad" placeholder="Payment amount (₹)" style={styles.input} />
     <View style={styles.chips}>{['CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'OTHER'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: method === value, disabled: busy }} disabled={busy} onPress={() => setMethod(value)} style={[styles.chip, method === value && styles.selected]}><Text style={{ color: method === value ? '#FFFFFF' : '#24332A' }}>{value.replaceAll('_', ' ')}</Text></Pressable>)}</View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}

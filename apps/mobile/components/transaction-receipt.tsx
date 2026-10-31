@@ -4,6 +4,7 @@ import { PurchaseAttachment } from './purchase-attachment';
 import { SaleReferencePhoto } from './sale-reference-photo';
 import type { PaymentRecord, FileAttachment } from '@/services/api';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
+import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
 import { appSession, fetchSale, fetchPurchase } from '@/services/api';
@@ -11,7 +12,6 @@ import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatUnitLabel } from './invento-ui';
 
 export type ReceiptData = {
   syncState?: 'pending' | 'conflict';
@@ -21,9 +21,9 @@ export type ReceiptData = {
   contactPhone?: string | null;
   id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
   subtotal?: string | number; taxTotal?: string | number; amountPaid?: string | number | null; dueDate?: string | null; payments?: PaymentRecord[];
-  items: { id: string; name: string; sku?: string; quantity: number; label: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
+  items: { id: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
 };
-const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
+const money = formatMoney;
 export function TransactionReceipt({ data: initialData, inModal = false, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; inModal?: boolean; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
   const { can } = usePermissions();
   const mayCreate = can(initialData.kind === 'sale' ? 'sales.create' : 'purchases.create');
@@ -52,7 +52,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   const share = async () => {
     setError('');
     try {
-      const message = [`${title} receipt · ${identifier}`, new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' }), `${data.kind === 'sale' ? 'Customer' : 'Supplier'}: ${data.contact}`, ...data.items.map((item) => `${item.name} · ${item.quantity} ${item.label}${item.price == null ? '' : ` × ${money(item.price)} = ${money(Number((item.quantity * item.price).toFixed(2)))}`}`), `Subtotal: ${data.subtotal == null ? 'Restricted' : money(Number(data.subtotal))}`, `GST: ${data.taxTotal == null ? 'Restricted' : money(Number(data.taxTotal))}`, `Total: ${total}`, ...(balance == null ? [] : [`Paid: ${money(Number(data.amountPaid))}`, `Balance: ${money(balance)}`]), ...(data.paymentMethod ? [`Payment method: ${data.paymentMethod.replaceAll('_', ' ')}`] : []) ].join('\n');
+      const message = [`${title} receipt · ${identifier}`, formatDate(data.date), `${data.kind === 'sale' ? 'Customer' : 'Supplier'}: ${data.contact}`, ...data.items.map((item) => `${item.name} · ${item.quantity} ${item.label}${item.price == null ? '' : ` × ${money(item.price)} = ${money(Number((item.quantity * item.price).toFixed(2)))}`}`), `Subtotal: ${data.subtotal == null ? 'Restricted' : money(Number(data.subtotal))}`, `GST: ${data.taxTotal == null ? 'Restricted' : money(Number(data.taxTotal))}`, `Total: ${total}`, ...(balance == null ? [] : [`Paid: ${money(Number(data.amountPaid))}`, `Balance: ${money(balance)}`]), ...(data.paymentMethod ? [`Payment method: ${data.paymentMethod.replaceAll('_', ' ')}`] : []) ].join('\n');
       if (data.kind === 'sale') {
         const raw = data.contactPhone?.trim() ?? '';
         let phone = raw.replace(/\D/g, '');
@@ -69,11 +69,11 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     } catch { setError('Could not share this receipt. Please try again.'); }
   };
   return <View style={[styles.screen, { paddingTop: inModal ? insets.top : 0, paddingLeft: inModal ? insets.left : 0, paddingRight: inModal ? insets.right : 0 }]}>
-    <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close receipt" onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View><Text style={styles.title}>{title} receipt</Text><Text style={styles.meta}>Invento · {new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</Text></View></View>
+    <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close receipt" onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View><Text style={styles.title}>{title} receipt</Text><Text style={styles.meta}>Invento · {formatDate(data.date)}</Text></View></View>
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>{data.syncState === 'conflict' ? 'Needs attention · Saved on device' : data.syncState ? LOCAL_ONLY ? 'Saved on device · Finalizing' : 'Saved on device · Pending sync' : `Saved · ${title} recorded`}</Text><Text style={styles.greenCopy}>{LOCAL_ONLY ? 'This bill and its stock changes are stored only on this device.' : data.syncState ? 'Provisional receipt. Stock is adjusted on this device; the server has not confirmed this transaction.' : 'This is a saved transaction. Inventory has been updated.'}</Text>{data.syncError ? <Text style={styles.error}>{data.syncError}</Text> : null}{data.syncState ? <Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.greenTitle}>View sync status →</Text></Pressable> : null}</View></View>
-      <View style={styles.card}><Text style={styles.caption}>{data.syncState ? 'PROVISIONAL DEVICE REFERENCE' : data.kind === 'sale' ? 'INVOICE / TRANSACTION IDENTIFIER' : 'INTERNAL PURCHASE IDENTIFIER'}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{data.kind === 'purchase' && data.invoice ? <View style={styles.row}><Text style={styles.meta}>Supplier invoice</Text><Text style={styles.bold}>{data.invoice}</Text></View> : null}<Text style={styles.meta}>{new Date(data.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text></View>
+      <View style={styles.card}><Text style={styles.caption}>{data.syncState ? 'PROVISIONAL DEVICE REFERENCE' : data.kind === 'sale' ? 'INVOICE / TRANSACTION IDENTIFIER' : 'INTERNAL PURCHASE IDENTIFIER'}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{data.kind === 'purchase' && data.invoice ? <View style={styles.row}><Text style={styles.meta}>Supplier invoice</Text><Text style={styles.bold}>{data.invoice}</Text></View> : null}<Text style={styles.meta}>{formatDate(data.date)} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text></View>
       <View style={[styles.card, styles.contact]}><View style={styles.contactIcon}><Ionicons name={data.kind === 'sale' ? 'person-outline' : 'cube-outline'} size={22} color="#176B50" /></View><View style={{ flex: 1 }}><Text style={styles.meta}>{data.kind === 'sale' ? 'Customer' : 'Supplier'}</Text><Text style={styles.bold}>{data.contact}</Text></View></View>
       <Text style={styles.section}>{data.kind === 'sale' ? 'Items' : 'Received items'} · {data.items.length}</Text>
       {data.items.map((item) => (
@@ -85,22 +85,22 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
             </Text>
           </View>
           <Text style={styles.meta}>
-            {item.sku ? `${item.sku} · ` : ''}{item.quantity} {item.label}{item.price == null ? '' : ` × ${money(item.price)}`}
+            {item.sku ? `${item.sku} · ` : ''}{item.unit ? formatQuantity(item.quantity, item.unit) : `${item.quantity} ${item.label}`}{item.price == null ? '' : ` × ${money(item.price)}`}
           </Text>
           {item.taxAmount != null ? (
             <Text style={styles.meta}>GST {Number(item.gstRate ?? 0)}% · {money(Number(item.taxAmount))}</Text>
           ) : null}
           {item.stockAfter !== undefined ? (
-            <Text style={styles.greenCopy}>{data.kind === 'sale' ? 'Stock remaining' : 'Stock after receipt'}: {Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text>
+            <Text style={styles.greenCopy}>{data.kind === 'sale' ? 'Stock remaining' : 'Stock after receipt'}: {formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text>
           ) : null}
         </View>
       ))}
       <View style={styles.card}>{data.subtotal != null ? <View style={styles.row}><Text style={styles.meta}>Subtotal · excluding GST</Text><Text style={styles.bold}>{money(Number(data.subtotal))}</Text></View> : null}{data.taxTotal != null ? <View style={styles.row}><Text style={styles.meta}>GST · saved item rates</Text><Text style={styles.bold}>{money(Number(data.taxTotal))}</Text></View> : null}<View style={styles.row}><Text style={styles.meta}>Total amount</Text><Text style={styles.total}>{total}</Text></View></View>
       <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{balance == null ? 'Payment history not confirmed' : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{!data.syncState && onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={onPayment} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
-      {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : payment.method.replaceAll('_', ' ')}</Text><Text style={styles.meta}>{new Date(payment.paidAt).toLocaleDateString('en-IN')}</Text></View><Text style={styles.bold}>{money(Number(payment.amount))}</Text></View>)}</View> : null}
+      {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : payment.method.replaceAll('_', ' ')}</Text><Text style={styles.meta}>{formatDate(payment.paidAt)}</Text></View><Text style={styles.bold}>{money(Number(payment.amount))}</Text></View>)}</View> : null}
       {data.paymentMethod ? <View style={styles.card}><Text style={styles.meta}>Payment method</Text><Text style={styles.bold}>{data.paymentMethod.replaceAll('_', ' ')}</Text></View> : null}
       {data.note ? <View style={styles.card}><Text style={styles.meta}>Note</Text><Text style={styles.bold}>{data.note}</Text></View> : null}
-      {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{Math.max(0, item.stockAfter).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
+      {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
     <SaleReferencePhoto value={data.referenceImage} />
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>

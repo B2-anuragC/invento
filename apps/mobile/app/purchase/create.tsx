@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
+import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import {
   appSession, type FileAttachment,
   createPurchase,
@@ -29,9 +30,6 @@ import {
 type RouteParams = { supplierId?: string | string[] };
 const paramValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-}
 
 export default function CreatePurchaseScreen() {
   const router = useRouter();
@@ -285,7 +283,7 @@ export default function CreatePurchaseScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ syncState: savedPurchase.syncState, syncError: savedPurchase.syncError, attachment: savedPurchase.attachment, id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ syncState: savedPurchase.syncState, syncError: savedPurchase.syncError, attachment: savedPurchase.attachment, id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, contact: savedPurchase.supplier.name, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -341,7 +339,7 @@ export default function CreatePurchaseScreen() {
         </View>
         <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
-          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
+          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {formatDateTime(draftCandidate.updatedAt)}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
           <TransactionSaveNotice kind="purchase" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedSupplier && !showSupplierPicker ? (
             <View style={styles.selectedSupplier}>
@@ -407,7 +405,7 @@ export default function CreatePurchaseScreen() {
                     </View>
                     <View style={styles.productFacts}>
                       <View style={styles.stockFact}>
-                        <Text style={styles.stockValue}>{(stock[product.id] ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.stockValue}>{formatQuantity(stock[product.id] ?? 0, product.unit)}</Text>
                         <Text style={styles.factLabel}>Current stock</Text>
                       </View>
                       <View style={styles.priceFact}>
@@ -415,7 +413,7 @@ export default function CreatePurchaseScreen() {
                         <Text style={styles.priceValue}>{product.purchasePrice == null ? 'Hidden' : formatMoney(Number(product.purchasePrice))}</Text>
                       </View>
                     </View>
-                    {selected ? <Text style={styles.addedText}>Added · {quantity} {formatUnitLabel(product.unit)}</Text> : null}
+                    {selected ? <Text style={styles.addedText}>Added · {formatQuantity(quantity, product.unit)}</Text> : null}
                   </Pressable>
                 );
               })}
@@ -437,7 +435,7 @@ export default function CreatePurchaseScreen() {
                     <View style={styles.productTop}>
                       <View style={styles.productCopy}>
                         <Text style={styles.productName}>{product.name}</Text>
-                        <Text style={styles.productMeta}>{product.sku} · Stock {stock[product.id] ?? 0} {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.productMeta}>{product.sku} · Stock {formatQuantity(stock[product.id] ?? 0, product.unit)}</Text>
                       </View>
                       <Pressable onPress={() => toggleProduct(product)}><Text style={styles.removeText}>×</Text></Pressable>
                     </View>
@@ -485,10 +483,10 @@ export default function CreatePurchaseScreen() {
                   <Text style={styles.productName}>{product.name}</Text>
                   <Text style={styles.productMeta}>{product.sku}</Text>
                   <View style={styles.reviewLine}>
-                    <Text style={styles.reviewQuantity}>{quantity} {formatUnitLabel(product.unit)} × {formatMoney(price)} / {formatUnitLabel(product.unit)}</Text>
+                    <Text style={styles.reviewQuantity}>{formatQuantity(quantity, product.unit)} × {formatMoney(price)} / {formatUnitLabel(product.unit)}</Text>
                     <Text style={styles.reviewTotal}>{formatMoney(quantity * price)}</Text>
                   </View>
-                  <Text style={styles.projectedStock}>Stock after saving: {(stock[product.id] ?? 0) + quantity} {formatUnitLabel(product.unit)}</Text>
+                  <Text style={styles.projectedStock}>Stock after saving: {formatQuantity((stock[product.id] ?? 0) + quantity, product.unit)}</Text>
                 </View>
               ))}
               <View style={styles.invoiceCard}>

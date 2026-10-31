@@ -12,6 +12,7 @@ import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, StyleSheet, 
 
 import { ActionButton, AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, fetchSales, type InventoryRecord, type ProductRecord, type SaleRecord } from '@/services/api';
+import { formatMoney, formatQuantity, plural } from '@/services/format';
 
 type StockFilter = 'all' | 'low' | 'out';
 type ProductSection = 'frequent' | 'recent' | 'favorites';
@@ -147,7 +148,7 @@ export default function ProductsScreen() {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Catalog</Text>
-            <Text style={styles.subtitle}>{products.length} PRODUCTS · {Math.max(0, categories.length - 1)} CATEGORIES</Text>
+            <Text style={styles.subtitle}>{plural(products.length, 'product').toUpperCase()} · {plural(Math.max(0, categories.length - 1), 'category', 'categories').toUpperCase()}</Text>
           </View>
           <Pressable disabled={!can('products.create')} style={[styles.addIcon, !can('products.create') && { display: 'none' }]} onPress={() => router.push('/product/new')} accessibilityLabel="Add product">
             <Text style={styles.addIconText}>+</Text>
@@ -170,7 +171,7 @@ export default function ProductsScreen() {
           ))}
         </ScrollView>
         <View style={styles.resultsBar}>
-          <Text style={styles.resultCount}>{loading ? 'Loading products…' : `${filteredProducts.length} products`}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
+          <Text style={styles.resultCount}>{loading ? 'Loading products…' : plural(filteredProducts.length, 'product')}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Change product grouping and sort" onPress={openFilters} style={styles.browseButton}><Text style={styles.linkText}>{sortByPrice ? 'Price ↑' : section === 'frequent' ? 'Frequent' : sectionLabels[section]}</Text><Ionicons name="chevron-down" size={14} color="#176B50" /></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={isGrid ? 'Show list view' : 'Show grid view'} onPress={() => setListingView(isGrid ? 'list' : 'grid')} style={styles.viewButton}><Ionicons name={isGrid ? 'list-outline' : 'grid-outline'} size={21} color="#176B50" /></Pressable>
         </View>
@@ -218,7 +219,7 @@ export default function ProductsScreen() {
                 <View style={[styles.productFacts, isGrid && styles.gridFacts]}>
                   <View style={[styles.stockFact, isGrid && styles.gridFact]}>
                     {isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
-                    <Text numberOfLines={isGrid ? 1 : undefined} style={[styles.stockValue, low && styles.stockLow]}>{quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}</Text>
+                    <Text numberOfLines={isGrid ? 1 : undefined} style={[styles.stockValue, low && styles.stockLow]}>{formatQuantity(quantity, product.unit)}</Text>
                     {!isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
                   </View>
                   <View style={[styles.priceFact, isGrid && styles.gridFact]}>
@@ -279,7 +280,7 @@ export default function ProductsScreen() {
           </View>
 
             </ScrollView>
-            <View style={[styles.sheetFooter, { paddingBottom: Math.max(12, insets.bottom) }]}><ActionButton fullWidth title={`Show ${filteredProducts.length} products`} onPress={() => setShowFilters(false)} /></View>
+            <View style={[styles.sheetFooter, { paddingBottom: Math.max(12, insets.bottom) }]}><ActionButton fullWidth title={`Show ${plural(filteredProducts.length, 'product')}`} onPress={() => setShowFilters(false)} /></View>
           </View>
         </View>
       </Modal>
@@ -287,9 +288,6 @@ export default function ProductsScreen() {
   );
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-}
 
 const styles = StyleSheet.create({
   categoryList: { gap: 8, paddingTop: 10, paddingBottom: 2 },

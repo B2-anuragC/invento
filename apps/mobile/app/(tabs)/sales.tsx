@@ -8,14 +8,8 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
+import { formatDateTime, formatMoney } from '@/services/format';
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 export default function SalesScreen() {
   const router = useRouter();
@@ -107,7 +101,7 @@ export default function SalesScreen() {
                   {sale.syncState ? <Text style={styles.repeatText}>{sale.syncState === 'conflict' ? 'Needs attention · Saved on device' : 'Pending sync · Saved on device'}</Text> : null}
                   {(paymentBalance(sale) ?? 0) > 0 ? <Text style={styles.pendingLabel}>To collect {formatMoney(paymentBalance(sale)!)}{isOverdue(sale) ? ' · Overdue' : ''}{sale.syncState ? ' · Pending confirmation' : ''}</Text> : null}
                   <Text style={styles.time}>
-                    {new Date(sale.saleDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    {formatDateTime(sale.saleDate)}
                     {' · '}{sale.items.length} item{sale.items.length === 1 ? '' : 's'}
                   </Text>
                   <Pressable onPress={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} style={[styles.repeatButton, !can('sales.create') && { display: 'none' }]}>

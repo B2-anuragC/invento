@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen } from '@/components/invento-ui';
+import { formatMoney } from '@/services/format';
 
 type DimensionUnit = 'in' | 'cm' | 'mm';
 const unitOptions: DimensionUnit[] = ['in', 'cm', 'mm'];
@@ -86,9 +87,6 @@ export default function GlassCalculatorScreen() {
   );
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-}
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 600, alignSelf: 'center', backgroundColor: '#F5F5F5' },

@@ -34,6 +34,7 @@ import {
 import { TransactionFinanceFields } from "@/components/transaction-finance-fields";
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
 import { FormError } from "@/components/form-error";
+import { formatMoney as money, formatQuantity } from '@/services/format';
 import {
   TransactionReceipt,
   type ReceiptData,
@@ -63,10 +64,6 @@ type Line = {
   quantity: string;
   price: string;
 };
-const money = (value: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
-    value,
-  );
 
 export default function QuickBillScreen() {
   const router = useRouter();
@@ -468,7 +465,7 @@ export default function QuickBillScreen() {
             "Product",
           sku: products.find((p) => p.id === item.productId)?.sku,
           quantity: Number(item.quantity),
-          label: item.optionName ?? formatUnitLabel(item.unit ?? "PIECE"),
+          label: item.optionName ?? formatUnitLabel(item.unit ?? "PIECE"), unit: item.optionName ? undefined : item.unit ?? "PIECE",
           price: Number(item.sellingPrice),
           gstRate: item.gstRate,
           taxAmount: item.taxAmount,
@@ -774,7 +771,7 @@ export default function QuickBillScreen() {
                       </View>
                     </View>
                   </View>
-                  {!lineErrors[index] ? <Text style={styles.meta}>Available: {stock[item.productId] ?? 0} {formatUnitLabel(item.product.unit)}</Text> : null}
+                  {!lineErrors[index] ? <Text style={styles.meta}>Available: {formatQuantity(stock[item.productId] ?? 0, item.product.unit)}</Text> : null}
                   {lineErrors[index] ? (
                     <Text accessibilityRole="alert" style={styles.error}>
                       {lineErrors[index]}

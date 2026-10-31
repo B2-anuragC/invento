@@ -1,5 +1,6 @@
 import { usePermissions } from '@/services/permissions';
 import { FormError } from '@/components/form-error';
+import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useState } from 'react';
@@ -37,17 +38,7 @@ const productUnits = ['PIECE', 'KG', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'SQ
 const moneyPattern = /^\d{0,10}(?:\.\d{0,2})?$/;
 const quantityPattern = /^\d{0,9}(?:\.\d{0,3})?$/;
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
-function formatQuantity(value: number, unit: string) {
-  return `${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 }).format(value)} ${formatUnitLabel(unit)}`;
-}
 
 function decimalValue(value: string, precision: number) {
   const [whole = '0', fraction = ''] = (value || '0').split('.');
@@ -528,7 +519,7 @@ export default function ProductDetailsScreen() {
               <View key={transaction.id} style={styles.historyRow}>
                 <View style={styles.historyDetails}>
                   <Text style={styles.historyType}>{transaction.type.replaceAll('_', ' ').toLowerCase()}</Text>
-                  <Text style={styles.historyDate}>{new Date(transaction.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</Text>
+                  <Text style={styles.historyDate}>{formatDateTime(transaction.createdAt)}</Text>
                 </View>
                 <View style={styles.historyAmount}>
                   <Text style={styles.historyQuantity}>{formatQuantity(Number(transaction.quantity), product?.unit ?? 'PIECE')}</Text>

@@ -27,6 +27,7 @@ import {
 } from '@/services/api';
 import { phoneError } from '@/services/contact-validation';
 import { FormError } from '@/components/form-error';
+import { formatDate, formatMoney } from '@/services/format';
 
 type Contact = CustomerRecord | SupplierRecord;
 
@@ -369,7 +370,7 @@ export default function ContactDetailsScreen() {
               <Pressable key={sale.id} accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
                   <Text style={styles.historyTitle}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text>
-                  <Text style={styles.historyMeta}>{new Date(sale.saleDate).toLocaleDateString([], { dateStyle: 'medium' })} · {sale.items.length} items</Text>
+                  <Text style={styles.historyMeta}>{formatDate(sale.saleDate)} · {sale.items.length} items</Text>
                 </View>
                 <Text style={styles.historyAmount}>{formatMoney(Number(sale.total))} ›</Text>
               </Pressable>
@@ -377,7 +378,7 @@ export default function ContactDetailsScreen() {
               <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel="View purchase details" onPress={() => router.push(`/purchase/${purchase.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
                   <Text style={styles.historyTitle}>{purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}</Text>
-                  <Text style={styles.historyMeta}>{new Date(purchase.purchaseDate).toLocaleDateString([], { dateStyle: 'medium' })} · {purchase.items.length} items</Text>
+                  <Text style={styles.historyMeta}>{formatDate(purchase.purchaseDate)} · {purchase.items.length} items</Text>
                 </View>
                 <Text style={styles.purchaseAmount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))} ›</Text>
               </Pressable>
@@ -399,9 +400,6 @@ export default function ContactDetailsScreen() {
   );
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-}
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
@@ -442,9 +440,6 @@ const styles = StyleSheet.create({
   newTransactionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 });
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 const customerStyles = StyleSheet.create({
   screen: { backgroundColor: '#F3F5F4' },

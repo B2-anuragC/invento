@@ -1,7 +1,7 @@
 import { DatePicker } from './date-picker';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { moneyValue, validDueDate } from '@/services/transaction-accounting';
-const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
+import { formatMoney as money } from '@/services/format';
 export function TransactionFinanceFields({ kind, total, subtotal, tax, mode, onMode, paid, onPaid, dueDate, onDueDate, method, onMethod }: {
   kind: 'sale' | 'purchase'; total: number; subtotal: number; tax: number; mode: 'full' | 'partial' | 'credit'; onMode: (value: 'full' | 'partial' | 'credit') => void; paid: string; onPaid: (value: string) => void; dueDate: string; onDueDate: (value: string) => void; method: string; onMethod: (value: string) => void;
 }) {

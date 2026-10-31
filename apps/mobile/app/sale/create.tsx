@@ -10,6 +10,7 @@ import { TransactionReceipt, type ReceiptData } from '@/components/transaction-r
 import { TransactionSaveNotice } from '@/components/transaction-save-notice';
 import { FormError } from '@/components/form-error';
 import { transactionSaveLabel } from '@/services/save-label';
+import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -208,7 +209,7 @@ export default function CreateSaleScreen() {
     if (!conversion) return 'This option needs a valid stock conversion. Edit the product.';
     const movement = quantity * (conversion.perOption ? 1 : Number(option?.quantity ?? 1)) * conversion.numerator / conversion.denominator;
     const stockQuantity = movement / (conversion.unit === 'PIECE' ? product.piecesPerUnit ?? 1 : 1);
-    if (stockQuantity > (stock[product.id] ?? 0) + 1e-9) return `Only ${stock[product.id] ?? 0} ${formatUnitLabel(product.unit)} available.`;
+    if (stockQuantity > (stock[product.id] ?? 0) + 1e-9) return `Only ${formatQuantity(stock[product.id] ?? 0, product.unit)} available.`;
     const pieces = movement * (conversion.unit === 'PIECE' ? 1 : product.piecesPerUnit ?? 1);
     if ((product.piecesPerUnit || product.unit === 'PIECE') && Math.abs(pieces - Math.round(pieces)) > 1e-8) return 'Enter a quantity representing whole pieces.';
     if (Math.abs(movement * 1000 - Math.round(movement * 1000)) > 1e-7) return 'This quantity needs more precision than the stock unit supports.';
@@ -322,7 +323,7 @@ export default function CreateSaleScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, total: savedSale.total, subtotal: savedSale.subtotal, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, total: savedSale.total, subtotal: savedSale.subtotal, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -418,7 +419,7 @@ export default function CreateSaleScreen() {
 
         <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
-          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
+          {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {formatDateTime(draftCandidate.updatedAt)}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
           <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(1)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedCustomer && !showCustomerPicker ? (
             <View style={styles.selectedCustomer}>
@@ -482,7 +483,7 @@ export default function CreateSaleScreen() {
                     const added = Object.prototype.hasOwnProperty.call(quantities, product.id);
                     return <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Select ${product.name}`} onPress={() => { if (!added) toggleProduct(product); else setQuantities((current) => { const next = { ...current }; const quantity = next[product.id]; delete next[product.id]; return { ...next, [product.id]: quantity }; }); setProductSearch(''); }} style={styles.suggestionRow}>
                       <ProductThumbnail uri={product.imageThumbnail} />
-                      <View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productMeta}>{product.sku} · {(stock[product.id] ?? 0).toLocaleString('en-IN')} {formatUnitLabel(product.unit)} available</Text></View>
+                      <View style={{ flex: 1 }}><Text style={styles.productName}>{product.name}</Text><Text style={styles.productMeta}>{product.sku} · {formatQuantity(stock[product.id] ?? 0, product.unit)} available</Text></View>
                       <Text style={styles.changeText}>{added ? 'Added ✓' : formatMoney(Number(product.sellingPrice))}</Text>
                     </Pressable>;
                   })}
@@ -508,7 +509,7 @@ export default function CreateSaleScreen() {
                       <ProductThumbnail uri={product.imageThumbnail} />
                       <View style={styles.productCopy}>
                         <Text style={styles.productName}>{product.name}</Text>
-                        <Text style={styles.productMeta}>{product.sku} · {stock[product.id] ?? 0} {formatUnitLabel(product.unit)} available</Text>
+                        <Text style={styles.productMeta}>{product.sku} · {formatQuantity(stock[product.id] ?? 0, product.unit)} available</Text>
                       </View>
                       <Pressable accessibilityRole="button" accessibilityLabel={`${selected ? "Remove" : "Add"} ${product.name}`} onPress={() => toggleProduct(product)} style={{ minHeight: 44, justifyContent: "center" }}><Text style={styles.changeText}>{selected ? "Remove" : "Add"}</Text></Pressable>
                     </View>
@@ -517,9 +518,9 @@ export default function CreateSaleScreen() {
                       <View style={styles.sellingOptionList}>
                         {product.sellingOptions.map((entry) => {
                           const selected = option?.id === entry.id;
-                          return <Pressable key={entry.id} accessibilityRole="button" accessibilityLabel={`${entry.name}, ${entry.quantity} ${formatUnitLabel(entry.unit)}, ${formatMoney(Number(entry.sellingPrice))}`} accessibilityState={{ selected }} onPress={() => { setSelectedOptions((current) => ({ ...current, [product.id]: entry.id })); changeQuantity(product.id, '1'); }} style={[styles.sellingOptionCard, selected && styles.sellingOptionSelected]}>
+                          return <Pressable key={entry.id} accessibilityRole="button" accessibilityLabel={`${entry.name}, ${formatQuantity(entry.quantity, entry.unit)}, ${formatMoney(Number(entry.sellingPrice))}`} accessibilityState={{ selected }} onPress={() => { setSelectedOptions((current) => ({ ...current, [product.id]: entry.id })); changeQuantity(product.id, '1'); }} style={[styles.sellingOptionCard, selected && styles.sellingOptionSelected]}>
                             <View style={[styles.optionRadio, selected && styles.optionRadioSelected]}>{selected ? <View style={styles.optionRadioDot} /> : null}</View>
-                            <View style={{ flex: 1 }}><Text style={styles.sellingOptionName}>{entry.name}</Text><Text style={styles.sellingOptionQuantity}>{entry.quantity} {formatUnitLabel(entry.unit)} included</Text></View>
+                            <View style={{ flex: 1 }}><Text style={styles.sellingOptionName}>{entry.name}</Text><Text style={styles.sellingOptionQuantity}>{formatQuantity(entry.quantity, entry.unit)} included</Text></View>
                             <Text style={styles.sellingOptionPrice}>{formatMoney(Number(entry.sellingPrice))}</Text>
                           </Pressable>;
                         })}
@@ -588,11 +589,11 @@ export default function CreateSaleScreen() {
                   <Text style={styles.reviewProductName}>{product.name}</Text>
                   <Text style={styles.productMeta}>{product.sku}</Text>
                   <View style={styles.reviewLine}>
-                    <Text style={styles.reviewQuantity}>{quantity} {option?.name ?? formatUnitLabel(unit)} × {formatMoney(price)} / {formatUnitLabel(unit)}</Text>
+                    <Text style={styles.reviewQuantity}>{option ? `${quantity} ${option.name}` : formatQuantity(quantity, unit)} × {formatMoney(price)} / {formatUnitLabel(unit)}</Text>
                     <Text style={styles.reviewTotal}>{formatMoney(quantity * price)}</Text>
                   </View>
                   <Text style={styles.projectedStock}>
-                    Projected stock after saving: {Math.max(0, (stock[product.id] ?? 0) - stockUsed(product, quantity, option, unit)).toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(product.unit)}
+                    Projected stock after saving: {formatQuantity(Math.max(0, (stock[product.id] ?? 0) - stockUsed(product, quantity, option, unit)), product.unit)}
                     {product.unit === 'PIECE' ? ' · Whole units confirmed' : ''}
                   </Text>
                 </View>
@@ -633,9 +634,6 @@ export default function CreateSaleScreen() {
   );
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
-}
 
 const styles = StyleSheet.create({
   sellingOptionList: { gap: 8, marginTop: 8, marginBottom: 14 },

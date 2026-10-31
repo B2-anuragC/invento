@@ -6,6 +6,7 @@ import { AppScreen, ConfirmationDialog } from '@/components/invento-ui';
 import { appSession, getApiServerUrl } from '@/services/api';
 import { getSyncStatus, prepareOfflineTransactionReview, applyOfflineTransactionReview, offlineCommands, retryOfflineConflict, subscribeSyncStatus, syncOffline } from '@/services/offline-catalog';
 import type { OfflineCommand } from '@/services/offline-model';
+import { formatDateTime } from '@/services/format';
 export default function SyncScreen() {
   const router = useRouter();
   const status = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
@@ -24,7 +25,7 @@ export default function SyncScreen() {
     <Text selectable style={styles.meta}>{LOCAL_ONLY ? "Local-only mode · All business data stays on this device. No server connection is used." : `API server: ${getApiServerUrl()}`}</Text>
     <Text>{LOCAL_ONLY ? 'Local storage ready' : status.online ? 'API available' : 'Working offline'} · {status.pending} pending changes</Text>
     <Text style={styles.meta}>{LOCAL_ONLY ? 'Changes stay in this app’s private device storage. Nothing is uploaded.' : status.message || 'Catalog, contacts, opening stock, sales and purchases save on this device and upload automatically.'}</Text>
-    <Text style={styles.meta}>Last downloaded: {status.lastSync ? new Date(status.lastSync).toLocaleString() : 'Not downloaded yet'}</Text>
+    <Text style={styles.meta}>Last downloaded: {status.lastSync ? formatDateTime(status.lastSync) : 'Not downloaded yet'}</Text>
     <Pressable accessibilityRole="button" disabled={status.syncing} onPress={() => { if (appSession.current) void syncOffline(appSession.current, true); }} style={styles.primary}><Text style={{ color: '#FFFFFF' }}>{status.syncing ? 'Working…' : LOCAL_ONLY ? 'Refresh local records' : 'Sync now'}</Text></Pressable>
     {error ? <Text accessibilityRole="alert">{error}</Text> : null}
     {commands.map((command) => <View key={command.operationId} style={styles.card}>

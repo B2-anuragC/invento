@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
+import { formatQuantity } from '@/services/format';
 
 type StockItem = {
   id: string;
@@ -148,7 +149,7 @@ export default function InventoryScreen() {
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={styles.name}>{item.name}</Text>
                 <Text style={styles.meta}>
-                  {item.quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {formatUnitLabel(item.unit)} available / min {item.minimumStock}
+                  {formatQuantity(item.quantity, item.unit)} available / min {formatQuantity(item.minimumStock, item.unit)}
                 </Text>
               </View>
               <View style={[styles.badge, item.quantity <= 0 ? styles.danger : item.quantity < item.minimumStock ? styles.warning : styles.safe]}>

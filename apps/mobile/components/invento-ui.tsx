@@ -6,23 +6,11 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
+import { unitLabel } from '@/services/format';
 
-const unitLabels: Record<string, string> = {
-  PIECE: 'piece',
-  KG: 'kg',
-  GRAM: 'g',
-  LITRE: 'litre',
-  MILLILITRE: 'ml',
-  METRE: 'm',
-  SQUARE_FOOT: 'sq ft',
-  FOOT: 'feet',
-  PACK: 'pack',
-  BOX: 'box',
-  DOZEN: 'dozen',
-};
-
-export function formatUnitLabel(unit: string) {
-  return unitLabels[unit] ?? unit.replaceAll('_', ' ').toLowerCase();
+/** Unit name for display; pass the quantity to make it agree ("0 pieces", "1 piece"). */
+export function formatUnitLabel(unit: string, quantity?: number) {
+  return unitLabel(unit, quantity);
 }
 
 export function AppScreen({ children, style }: { children: ReactNode; style?: any }) {

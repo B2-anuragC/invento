@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen, appColors } from '@/components/invento-ui';
+import { formatMoney, plural } from '@/services/format';
 import {
   appSession,
   fetchDashboardSummary,
@@ -15,11 +16,6 @@ import {
 
 type RecentTransaction = { syncState?: SaleRecord['syncState']; id: string; kind: 'Sale'; name: string; date: string; itemCount: number; total: number; route: `/sale/${string}` };
 
-function formatMoney(value: string | number | undefined) {
-  const numeric = typeof value === 'number' ? value : Number(value ?? 0);
-  if (!Number.isFinite(numeric)) return '₹0';
-  return `₹${numeric.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-}
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -119,7 +115,7 @@ export default function DashboardScreen() {
             <Text adjustsFontSizeToFit numberOfLines={1} style={styles.salesValue}>
               {loading ? '—' : formatMoney(summary?.todaySales)}
             </Text>
-            <Text style={styles.salesCount}>{summary?.saleCount ?? 0} sales</Text>
+            <Text style={styles.salesCount}>{plural(summary?.saleCount ?? 0, 'sale')}</Text>
           </View>
 
         </View>
