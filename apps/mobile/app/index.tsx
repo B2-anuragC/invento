@@ -1,9 +1,10 @@
 import { useIsFocused, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
+import { signInError } from '@/services/auth-validation';
 import { appSession, fetchBusinesses, loginWithEmail, persistSession, loadSession, hasOfflineBusiness, syncOffline, type AppSession } from '@/services/api';
 
 export default function LoginScreen() {
@@ -13,6 +14,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState('');
+  const passwordRef = useRef<TextInput>(null);
   // On web this screen is mounted beneath deep links as the stack's initial route.
   // It must not navigate away from them, so it only routes once it is shown.
   const isFocused = useIsFocused();
@@ -59,6 +61,11 @@ export default function LoginScreen() {
 
   const handleSignIn = async () => {
     if (loading) return;
+    const missing = signInError({ email, password });
+    if (missing) {
+      setError(missing);
+      return;
+    }
     try {
       setLoading(true);
       setError('');
@@ -67,8 +74,8 @@ export default function LoginScreen() {
       appSession.current = session;
       await persistSession(session);
       router.replace('/business/setup');
-    } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : 'Unable to sign in right now.');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unable to sign in right now.');
     } finally {
       setLoading(false);
     }
@@ -103,7 +110,8 @@ Your day, simplified.</Text>
             style={styles.input}
             placeholder="name@business.com"
             placeholderTextColor="#9CA3AF"
-            autoCapitalize="none" keyboardType="email-address" autoComplete="email"
+            autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress"
+            returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordRef.current?.focus()}
           />
 
           <Text style={styles.label}>Password</Text>
@@ -114,9 +122,12 @@ Your day, simplified.</Text>
             placeholder="Enter your password"
             placeholderTextColor="#9CA3AF"
             secureTextEntry
+            ref={passwordRef}
+            autoComplete="current-password" textContentType="password"
+            returnKeyType="go" onSubmitEditing={handleSignIn}
           />
 
-          <ActionButton fullWidth title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} disabled={loading || !email.trim() || !password} />
+          <ActionButton fullWidth title={loading ? 'Signing in...' : 'Sign in'} onPress={handleSignIn} disabled={loading} />
 
           <View style={styles.secondaryRow}>
             <ActionButton title="Create account" variant="secondary" onPress={() => router.push('/auth/register')} />

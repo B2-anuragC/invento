@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
 import { appSession, persistSession, registerWithEmail } from '@/services/api';
+import { registerError } from '@/services/auth-validation';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -13,6 +14,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const clearErrorOnEdit = () => {
     if (error) setError('');
@@ -20,6 +23,11 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (loading) return;
+    const missing = registerError({ name, email, password });
+    if (missing) {
+      setError(missing);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -54,6 +62,8 @@ export default function RegisterScreen() {
             placeholder="Name"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="words"
+            autoComplete="name" textContentType="name"
+            returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => emailRef.current?.focus()}
             style={styles.input}
             maxLength={100}
           />
@@ -67,7 +77,9 @@ export default function RegisterScreen() {
             placeholder="name@example.com"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
-            keyboardType="email-address" autoComplete="email"
+            keyboardType="email-address" autoComplete="email" textContentType="emailAddress"
+            ref={emailRef}
+            returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordRef.current?.focus()}
             style={styles.input}
           />
           <Text style={styles.label}>Password</Text>
@@ -80,12 +92,15 @@ export default function RegisterScreen() {
             placeholder="Create a strong password"
             placeholderTextColor="#9CA3AF"
             secureTextEntry
+            ref={passwordRef}
+            autoComplete="new-password" textContentType="newPassword"
+            returnKeyType="go" onSubmitEditing={handleRegister}
             style={styles.input}
           />
           <Text style={styles.passwordHint}>
             At least 8 characters, with uppercase and lowercase letters, a number, and a symbol.
           </Text>
-          <ActionButton fullWidth title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading || name.trim().length < 2 || !email.trim() || !password} />
+          <ActionButton fullWidth title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading} />
         </View>
 
         <Text style={styles.footer} onPress={() => router.replace('/auth/login')}>
