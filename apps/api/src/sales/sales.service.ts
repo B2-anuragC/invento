@@ -172,7 +172,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { invoiceNumber: { contains: query.search, mode: 'insensitive' } } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }

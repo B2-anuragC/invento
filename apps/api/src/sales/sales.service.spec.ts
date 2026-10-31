@@ -199,6 +199,8 @@ describe('SalesService', () => {
     const service = new SalesService(prisma as never, {} as never);
     await service.list('user-a', 'business-a', { customerId: 'customer-a', search: 'INV' });
     expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { businessId: 'business-a', customerId: 'customer-a', invoiceNumber: { contains: 'INV', mode: 'insensitive' } } }));
+    // History screens summarise every method used to pay, in order, so the list carries them.
+    expect(prisma.sale.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({ payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } }) }));
     await expect(service.get('user-a', 'business-a', 'sale-b')).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.sale.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'sale-b', businessId: 'business-a' } }));
   });
