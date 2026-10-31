@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -18,7 +19,7 @@ import {
   fetchEffectiveAccess,
   subscribeAuthorizationInvalidation,
 } from "./api";
-import { isServerUnreachable } from "./access-fallback";
+import { isServerUnreachable, sameAccess } from "./access-fallback";
 const Context = createContext<{
   access?: EffectiveAccess;
   error?: string;
@@ -47,7 +48,8 @@ export function PermissionsProvider({
           appSession.current?.businessId === session.businessId &&
           appSession.current?.user.id === session.user.id
         ) {
-          setAccess(a);
+          // Same grants keep the same object, so the periodic refresh re-renders nothing.
+          setAccess((current) => (sameAccess(current, a) ? current : a));
           setError(undefined);
         }
       })
@@ -69,7 +71,8 @@ export function PermissionsProvider({
     [],
   );
   useEffect(() => {
-    setAccess(undefined);
+    // Permissions are rechecked on navigation without clearing them first: can()
+    // already rejects permissions that belong to another account or business.
     refresh();
     const timer = setInterval(refresh, 15000);
     const listener = AppState.addEventListener("change", (state) => {
@@ -80,19 +83,17 @@ export function PermissionsProvider({
       listener.remove();
     };
   }, [path, refresh]);
+  const can = useCallback(
+    (p: Permission) =>
+      !!access &&
+      access.businessId === appSession.current?.businessId &&
+      access.userId === appSession.current?.user.id &&
+      access.permissions.includes(p),
+    [access],
+  );
+  const value = useMemo(() => ({ access, error, refresh, can }), [access, error, refresh, can]);
   return (
-    <Context.Provider
-      value={{
-        access,
-        error,
-        refresh,
-        can: (p) =>
-          !!access &&
-          access.businessId === appSession.current?.businessId &&
-          access.userId === appSession.current?.user.id &&
-          access.permissions.includes(p),
-      }}
-    >
+    <Context.Provider value={value}>
       {children}
     </Context.Provider>
   );

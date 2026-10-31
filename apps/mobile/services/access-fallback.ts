@@ -31,3 +31,16 @@ export async function liveOrCachedAccess(
     throw Object.assign(new Error(OFFLINE_WITHOUT_DOWNLOAD_MESSAGE), { cause: error });
   }
 }
+
+/**
+ * Whether a refreshed access record grants exactly what the current one does.
+ * The provider keeps the existing object in that case, so the periodic refresh
+ * does not re-render or reload every screen that depends on permissions.
+ */
+export function sameAccess(current: EffectiveAccess | undefined, next: EffectiveAccess): boolean {
+  if (!current) return false;
+  if (current.userId !== next.userId || current.businessId !== next.businessId || current.role !== next.role || current.platformAccess !== next.platformAccess) return false;
+  if (current.permissions.length !== next.permissions.length) return false;
+  const granted = new Set(current.permissions);
+  return next.permissions.every((permission) => granted.has(permission));
+}

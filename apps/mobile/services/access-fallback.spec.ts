@@ -1,7 +1,7 @@
 import type { EffectiveAccess } from '@invento/shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { isServerUnreachable, liveOrCachedAccess, OFFLINE_WITHOUT_DOWNLOAD_MESSAGE } from './access-fallback';
+import { isServerUnreachable, liveOrCachedAccess, OFFLINE_WITHOUT_DOWNLOAD_MESSAGE, sameAccess } from './access-fallback';
 
 const access = (role: string): EffectiveAccess => ({ userId: 'u', businessId: 'b', role, permissions: ['sales.create'], platformAccess: false });
 const httpError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
@@ -45,5 +45,23 @@ describe('liveOrCachedAccess', () => {
     const offline = () => Promise.reject(new TypeError('fetch failed: java.net.ConnectException'));
     await expect(liveOrCachedAccess(offline, async () => null)).rejects.toThrow(OFFLINE_WITHOUT_DOWNLOAD_MESSAGE);
     await expect(liveOrCachedAccess(offline, () => Promise.reject(new Error('storage unavailable')))).rejects.toThrow(OFFLINE_WITHOUT_DOWNLOAD_MESSAGE);
+  });
+});
+
+describe('sameAccess', () => {
+  const base: EffectiveAccess = { userId: 'u', businessId: 'b', role: 'OWNER', permissions: ['sales.view', 'sales.create'], platformAccess: false };
+
+  it('treats the same grants in any order as unchanged', () => {
+    expect(sameAccess(base, { ...base, permissions: ['sales.create', 'sales.view'] })).toBe(true);
+  });
+
+  it('detects any change in what is granted or to whom', () => {
+    expect(sameAccess(undefined, base)).toBe(false);
+    expect(sameAccess(base, { ...base, permissions: ['sales.view'] })).toBe(false);
+    expect(sameAccess(base, { ...base, permissions: ['sales.view', 'purchases.view'] })).toBe(false);
+    expect(sameAccess(base, { ...base, role: 'ADMIN' })).toBe(false);
+    expect(sameAccess(base, { ...base, businessId: 'other' })).toBe(false);
+    expect(sameAccess(base, { ...base, userId: 'other' })).toBe(false);
+    expect(sameAccess(base, { ...base, platformAccess: true })).toBe(false);
   });
 });
