@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
-import { transactionTitle } from '@/services/transaction-labels';
+import { transactionSearchText, transactionTitle } from '@/services/transaction-labels';
 
 
 export default function PurchasesScreen() {
@@ -58,7 +58,7 @@ export default function PurchasesScreen() {
   const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id).filter(Boolean)).size;
 
   const filteredRecords = purchases.filter((record) =>
-    [record.invoiceNumber, record.id, record.supplier?.name].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase())),
+    transactionSearchText({ ...record, name: record.supplier?.name }).includes(search.trim().toLowerCase()),
   ).sort((left, right) => right.purchaseDate.localeCompare(left.purchaseDate));
 
   return (

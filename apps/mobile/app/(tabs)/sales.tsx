@@ -9,7 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
-import { transactionTitle } from '@/services/transaction-labels';
+import { transactionSearchText, transactionTitle } from '@/services/transaction-labels';
 
 
 export default function SalesScreen() {
@@ -64,7 +64,7 @@ export default function SalesScreen() {
   const pendingSales = sales.filter((record) => (paymentBalance(record) ?? 0) > 0);
   const pendingTotal = pendingSales.reduce((sum, record) => sum + (paymentBalance(record) ?? 0), 0);
   const filteredRecords = sales.filter((record) => (!pendingOnly || (paymentBalance(record) ?? 0) > 0)).filter((record) =>
-    [record.invoiceNumber, record.id, record.customer?.name].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase())),
+    transactionSearchText({ ...record, name: record.customer?.name }).includes(search.trim().toLowerCase()),
   ).sort((left, right) => right.saleDate.localeCompare(left.saleDate));
 
   return (
