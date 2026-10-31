@@ -26,6 +26,7 @@ import {
   type SupplierRecord,
 } from '@/services/api';
 import { phoneError } from '@/services/contact-validation';
+import { FormError } from '@/components/form-error';
 
 type Contact = CustomerRecord | SupplierRecord;
 
@@ -289,7 +290,7 @@ export default function ContactDetailsScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')} style={styles.back}><Text style={styles.backText}>‹  People</Text></Pressable>
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.state} /> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error && !editing ? <Text style={styles.error}>{error}</Text> : null}
         {!loading && contact ? (
           <>
             <Text style={styles.eyebrow}>{contactKind === 'customers' ? 'CUSTOMER PROFILE' : 'SUPPLIER PROFILE'}</Text>
@@ -334,10 +335,13 @@ export default function ContactDetailsScreen() {
               )}
               {canEdit ? (
                 editing ? (
+                  <>
+                  <FormError message={error} />
                   <View style={styles.editActions}>
                     <ActionButton title={saving ? 'Saving…' : 'Save changes'} onPress={() => void saveContact()} disabled={saving || photoBusy || !form.name.trim()} />
                     <ActionButton title="Cancel" variant="secondary" onPress={() => setEditing(false)} disabled={saving} />
                   </View>
+                  </>
                 ) : (
                   <Pressable onPress={() => setEditing(true)} style={styles.editButton}><Text style={styles.editText}>Edit contact</Text></Pressable>
                 )

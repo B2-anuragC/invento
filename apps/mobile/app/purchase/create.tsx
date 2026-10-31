@@ -8,6 +8,8 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
 import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
 import { TransactionSaveNotice } from '@/components/transaction-save-notice';
+import { FormError } from '@/components/form-error';
+import { transactionSaveLabel } from '@/services/save-label';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -338,7 +340,6 @@ export default function CreatePurchaseScreen() {
           </View>
         </View>
         <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {error && !saveOutcome ? <Text style={styles.error}>{error}</Text> : null}
           {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
           {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
           <TransactionSaveNotice kind="purchase" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
@@ -501,13 +502,14 @@ export default function CreatePurchaseScreen() {
           ) : null}
         </ScrollView>
         <View style={styles.footer}>
+          <FormError message={saving ? '' : error} />
           {step === 1 ? (
             <Pressable onPress={continueToQuantity} style={styles.submitButton}><Text style={styles.submitText}>Continue · {purchaseItems.length} item{purchaseItems.length === 1 ? '' : 's'}</Text></Pressable>
           ) : step === 2 ? (
             <Pressable onPress={continueToReview} style={styles.submitButton}><Text style={styles.submitText}>Review purchase · {formatMoney(total)}</Text></Pressable>
           ) : (
             <Pressable disabled={!linesValid || saving || attachmentBusy || !supplierId || !paymentValid || Boolean(draftCandidate)} onPress={() => void savePurchase()} style={[styles.submitButton, (!linesValid || saving || attachmentBusy || !supplierId || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
-              <Text style={styles.submitText}>{attachmentBusy ? 'Preparing file…' : saving ? 'Saving purchase…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save purchase · ${formatMoney(total)}`}</Text>
+              <Text style={styles.submitText}>{transactionSaveLabel({ busy: attachmentBusy ? 'Preparing file…' : undefined, saving, outcome: saveOutcome, savingLabel: 'Saving purchase…', saveLabel: `Save purchase · ${formatMoney(total)}` })}</Text>
             </Pressable>
           )}
         </View>

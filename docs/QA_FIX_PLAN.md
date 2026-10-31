@@ -16,7 +16,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | 1 | Refreshing or opening a deep link no longer redirects to Overview | Done |
 | 2 | Phone numbers validated (shared rule, API DTOs, mobile and admin forms) | Done |
 | 3 | Offline: a network failure keeps the last known permissions instead of locking every screen; only a server refusal removes access | Done |
-| 4 | Enter submits login/register on web; browser autofill enables Sign in; form errors shown next to the button and scrolled into view; validation errors no longer say "Retry" | |
+| 4 | Enter submits login/register on web; browser autofill enables Sign in; form errors shown next to the button and scrolled into view; validation errors no longer say "Retry" | Done |
 | 5 | Correct singular/plural and unit labels; one money and date formatter across mobile | |
 | 6 | Receipt lists every payment method used | |
 | 7 | Access screen stops re-rendering mid-task during the 15-second permission refresh | |

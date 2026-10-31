@@ -33,6 +33,7 @@ import {
 } from "@/components/invento-ui";
 import { TransactionFinanceFields } from "@/components/transaction-finance-fields";
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
+import { FormError } from "@/components/form-error";
 import {
   TransactionReceipt,
   type ReceiptData,
@@ -834,11 +835,6 @@ export default function QuickBillScreen() {
             onEdit={() => setOutcome(null)}
             onActivity={() => router.push("/(tabs)/sales")}
           />
-          {error && !outcome ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
-          ) : null}
           {reviewing ? <View style={styles.summary}>
             <View style={styles.row}>
               <Text style={styles.bold}>Total amount</Text>
@@ -896,6 +892,7 @@ export default function QuickBillScreen() {
               <Text style={styles.green}>← Back to products</Text>
             </Pressable>
           ) : null}
+          <FormError message={saving || outcome ? "" : error} />
           <ActionButton fullWidth
             title={
               !reviewing

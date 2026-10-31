@@ -1,4 +1,5 @@
 import { usePermissions } from '@/services/permissions';
+import { FormError } from '@/components/form-error';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useState } from 'react';
@@ -306,7 +307,7 @@ export default function ProductDetailsScreen() {
           ) : null}
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error && !editing ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
         <ProductPhoto value={editing ? photo : { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }} onChange={editing ? setPhoto : undefined} onEdit={!editing && can('products.update') ? (next) => { setPhoto(next ?? { images: product?.images, imageThumbnail: product?.imageThumbnail ?? null, imageOriginal: product?.imageOriginal ?? null }); setEditing(true); } : undefined} onBusy={setPhotoBusy} disabled={saving} />
@@ -476,6 +477,7 @@ export default function ProductDetailsScreen() {
             />
 
             </View>
+            <FormError message={error} />
             <Pressable disabled={saving || photoBusy} onPress={() => void saveProduct()} style={[styles.primaryButton, (saving || photoBusy) && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}</Text>
             </Pressable>

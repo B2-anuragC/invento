@@ -8,6 +8,8 @@ import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
 import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
 import { TransactionSaveNotice } from '@/components/transaction-save-notice';
+import { FormError } from '@/components/form-error';
+import { transactionSaveLabel } from '@/services/save-label';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -415,7 +417,6 @@ export default function CreateSaleScreen() {
         </View>
 
         <ScrollView pointerEvents={saving ? 'none' : 'auto'} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {error && !saveOutcome ? <Text style={styles.error}>{error}</Text> : null}
           {draftStorageError ? <Text accessibilityRole="alert" style={styles.error}>{draftStorageError}</Text> : null}
           {draftCandidate ? <View style={styles.reviewCard}><Text style={styles.sectionTitle}>Continue your saved draft?</Text><Text style={styles.productMeta}>{draftCandidate.contactName || 'No contact selected'} · {Object.keys(draftCandidate.quantities).length} items · {new Date(draftCandidate.updatedAt).toLocaleString('en-IN')}</Text><View style={{ flexDirection: 'row', gap: 18, marginTop: 12 }}><Pressable accessibilityRole="button" onPress={restoreDraft} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Restore draft</Text></Pressable><Pressable accessibilityRole="button" onPress={() => void discardStoredDraft()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.changeText}>Discard saved draft</Text></Pressable></View></View> : null}
           <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(1)} onActivity={() => router.push('/(tabs)/activity')} />
@@ -603,13 +604,14 @@ export default function CreateSaleScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
+          <FormError message={saving ? '' : error} />
           {step !== 3 ? (
             <Pressable onPress={continueToReview} style={styles.submitButton}>
               <Text style={styles.submitText}>Review sale · {saleItems.length} items · {formatMoney(total)}</Text>
             </Pressable>
           ) : (
             <Pressable disabled={!quantitiesValid || saving || photoBusy || !paymentValid || Boolean(draftCandidate)} onPress={() => void saveSale()} style={[styles.submitButton, (!quantitiesValid || saving || photoBusy || !paymentValid || Boolean(draftCandidate)) && styles.disabled]}>
-              <Text style={styles.submitText}>{photoBusy ? 'Preparing photo…' : saving ? 'Saving sale…' : saveOutcome === 'unknown' ? 'Retry the same save safely' : saveOutcome === 'rejected' ? 'Retry saving this draft' : `Save sale · ${formatMoney(total)}`}</Text>
+              <Text style={styles.submitText}>{transactionSaveLabel({ busy: photoBusy ? 'Preparing photo…' : undefined, saving, outcome: saveOutcome, savingLabel: 'Saving sale…', saveLabel: `Save sale · ${formatMoney(total)}` })}</Text>
             </Pressable>
           )}
         </View>
