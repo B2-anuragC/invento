@@ -16,7 +16,9 @@ const day = (value: string) => { const date = new Date(value); return `${date.ge
 
 export default function ActivityScreen() {
   const router = useRouter();
-  const { can } = usePermissions();
+  const { can, access } = usePermissions();
+  // Load once permissions are known: on a direct visit they arrive after the screen gains focus.
+  const permissionKey = access?.permissions.join(',') ?? '';
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
@@ -32,6 +34,7 @@ export default function ActivityScreen() {
     let active = true;
     const session = appSession.current;
     if (!session) { setLoading(false); setError('Sign in to view activity.'); return; }
+    if (!permissionKey) return;
     setLoading(true); setError('');
     Promise.all([can('sales.view') ? fetchSales(session) : [], can('purchases.view') ? fetchPurchases(session) : [], can('sales.create') ? readDraft(session, 'sale') : null, can('purchases.create') ? readDraft(session, 'purchase') : null, can('sales.create') ? readDraft(session, 'sale', 'quick') : null]).then(async ([saleData, purchaseData, saleDraft, purchaseDraft, quickDraft]) => {
       const pending: TransactionDraft[] = [];
@@ -45,7 +48,7 @@ export default function ActivityScreen() {
     return () => { active = false; };
     // Retry intentionally reruns this request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retry, sync.syncing]));
+  }, [retry, sync.syncing, permissionKey]));
   const records = useMemo(() => [
     ...sales.map((record) => ({ id: record.id, syncState: record.syncState, kind: 'Sale' as const, name: record.customer.name, date: record.saleDate, total: record.total, invoice: record.invoiceNumber, items: record.items.length, amountPaid: record.amountPaid, dueDate: record.dueDate, note: record.paymentMethod.replaceAll('_', ' ') })),
     ...purchases.map((record) => ({ id: record.id, syncState: record.syncState, kind: 'Purchase' as const, name: record.supplier.name, date: record.purchaseDate, total: record.total, invoice: record.invoiceNumber, items: record.items.length, amountPaid: record.amountPaid, dueDate: record.dueDate, note: record.invoiceNumber ? `Supplier invoice ${record.invoiceNumber}` : 'Purchase recorded' })),
