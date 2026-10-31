@@ -10,8 +10,9 @@ import { TransactionReceipt, type ReceiptData } from '@/components/transaction-r
 import { TransactionSaveNotice } from '@/components/transaction-save-notice';
 import { FormError } from '@/components/form-error';
 import { transactionSaveLabel } from '@/services/save-label';
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { receiveMeasurement } from '@/services/measurement-handoff';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
@@ -182,6 +183,12 @@ export default function CreatePurchaseScreen() {
     const timer = setTimeout(persist, 350);
     return () => { clearTimeout(timer); persist(); };
   }, [attachment, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
+
+  // Applies a glass-calculator result when returning from the calculator.
+  useFocusEffect(useCallback(() => {
+    const measurement = receiveMeasurement('purchase');
+    if (measurement) setQuantities((current) => ({ ...current, [measurement.productId]: measurement.quantity }));
+  }, []));
 
   const changeQuantity = (productId: string, value: string) => {
     if (!/^\d*(?:\.\d{0,3})?$/.test(value)) return;
@@ -452,7 +459,7 @@ export default function CreatePurchaseScreen() {
                     {invalidQuantity ? <Text style={styles.invalidText}>{quantity <= 0 ? 'Enter a quantity greater than zero.' : 'Enter a whole number of pieces.'}</Text> : null}
                     {invalidPrice ? <Text style={styles.invalidText}>Enter a valid purchase price.</Text> : null}
                     {product.unit === 'SQUARE_FOOT' ? (
-                      <Pressable onPress={() => router.push(`/calculator/glass?productId=${encodeURIComponent(product.id)}`)} style={styles.measureLink}>
+                      <Pressable onPress={() => router.push(`/calculator/glass?productId=${encodeURIComponent(product.id)}&for=purchase`)} style={styles.measureLink}>
                         <Text style={styles.measureText}>Calculate from glass dimensions ›</Text>
                       </Pressable>
                     ) : null}

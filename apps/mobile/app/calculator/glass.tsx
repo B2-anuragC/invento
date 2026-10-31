@@ -4,13 +4,15 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { ActionButton, AppScreen } from '@/components/invento-ui';
 import { formatMoney } from '@/services/format';
+import { measurementQuantity, measurementTarget, sendMeasurement } from '@/services/measurement-handoff';
 
 type DimensionUnit = 'in' | 'cm' | 'mm';
 const unitOptions: DimensionUnit[] = ['in', 'cm', 'mm'];
 
 export default function GlassCalculatorScreen() {
   const router = useRouter();
-  const { productId } = useLocalSearchParams<{ productId?: string }>();
+  const { productId, for: opener } = useLocalSearchParams<{ productId?: string; for?: string }>();
+  const target = measurementTarget(opener);
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
   const [unit, setUnit] = useState<DimensionUnit>('in');
@@ -27,7 +29,14 @@ export default function GlassCalculatorScreen() {
 
   const useMeasurement = () => {
     if (!productId || squareFeet <= 0) return;
-    router.replace(`/sale/create?productId=${encodeURIComponent(productId)}&quantity=${squareFeet.toFixed(3)}`);
+    const quantity = measurementQuantity(squareFeet);
+    if (router.canGoBack()) {
+      // Return to the sale or purchase that opened the calculator, keeping its state.
+      sendMeasurement({ target, productId, quantity });
+      router.back();
+    } else {
+      router.replace(`/${target}/create?productId=${encodeURIComponent(productId)}&quantity=${quantity}`);
+    }
   };
 
   return (
@@ -40,7 +49,7 @@ export default function GlassCalculatorScreen() {
             <Text style={styles.headerSubtitle}>QUICK MEASURE</Text>
           </View>
         </View>
-        <Text style={styles.subtitle}>Enter the glass dimensions to calculate the sale quantity in square feet.</Text>
+        <Text style={styles.subtitle}>Enter the glass dimensions to calculate the {target} quantity in square feet.</Text>
 
         <View style={styles.card}>
           <Text style={styles.label}>Dimension unit</Text>
@@ -70,16 +79,16 @@ export default function GlassCalculatorScreen() {
             <Text style={styles.formula}>Converted area in square inches ÷ 144</Text>
           </View>
 
-          <Text style={styles.label}>Selling price per sq ft · optional</Text>
+          <Text style={styles.label}>{target === 'purchase' ? 'Buying' : 'Selling'} price per sq ft · optional</Text>
           <TextInput value={pricePerSquareFoot} onChangeText={setPricePerSquareFoot} style={styles.input} placeholder="₹ 0.00" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
           <View style={styles.estimate}>
             <Text style={styles.estimateLabel}>Estimated line total</Text>
             <Text style={styles.estimateValue}>{formatMoney(total)}</Text>
           </View>
           {productId ? (
-            <ActionButton title="Use quantity in sale" onPress={useMeasurement} />
+            <ActionButton title={`Use quantity in ${target}`} onPress={useMeasurement} />
           ) : (
-            <Text style={styles.hint}>Open this calculator from a square-foot product in a sale to use the result directly.</Text>
+            <Text style={styles.hint}>Open this calculator from a square-foot product in a sale or purchase to use the result directly.</Text>
           )}
         </View>
       </ScrollView>
