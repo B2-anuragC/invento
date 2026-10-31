@@ -1,3 +1,5 @@
+import { discountAmountFor, discountError, splitDiscount, type DiscountInput } from "@invento/shared";
+
 export type SaleProduct = {
   id: string;
   name: string;
@@ -18,9 +20,19 @@ export type SaleLine = {
   price: string;
   optionId?: string;
 };
-export function saleTotals(lines: SaleLine[]) {
+const paise = (value: string) => BigInt(value.replace(".", ""));
+const decimal = (value: bigint) =>
+  `${value / 100n}.${String(value % 100n).padStart(2, "0")}`;
+
+/**
+ * Bill totals exactly as the API computes them: each line rounded half-up,
+ * a bill discount split across the lines before GST, GST rounded per line.
+ */
+export function saleTotals(lines: SaleLine[], discount: DiscountInput = {}) {
   let subtotal = 0n,
     tax = 0n;
+  const amounts: bigint[] = [];
+  const rates: bigint[] = [];
   for (const line of lines) {
     if (
       !/^\d{1,9}(?:\.\d{1,3})?$/.test(line.quantity) ||
@@ -39,14 +51,23 @@ export function saleTotals(lines: SaleLine[]) {
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(rate))
       throw new Error("This product has an invalid tax rate.");
     subtotal += amount;
-    tax += (amount * scaled(rate, 2) + 5000n) / 10000n;
+    amounts.push(amount);
+    rates.push(scaled(rate, 2));
   }
-  if (subtotal + tax > 99999999999999n)
-    throw new Error("This sale total is too large.");
+  const invalid = discountError(decimal(subtotal), discount);
+  if (invalid) throw new Error(invalid);
+  const discountTotal = discountAmountFor(decimal(subtotal), discount);
+  const shares = splitDiscount(amounts.map(decimal), discountTotal);
+  amounts.forEach((amount, index) => {
+    tax += ((amount - paise(shares[index])) * rates[index] + 5000n) / 10000n;
+  });
+  const total = subtotal - paise(discountTotal) + tax;
+  if (total > 99999999999999n) throw new Error("This sale total is too large.");
   return {
     subtotal: Number(subtotal) / 100,
+    discount: Number(paise(discountTotal)) / 100,
     tax: Number(tax) / 100,
-    total: Number(subtotal + tax) / 100,
+    total: Number(total) / 100,
   };
 }
 export function paymentAmount(mode: string, total: number, paid: string) {

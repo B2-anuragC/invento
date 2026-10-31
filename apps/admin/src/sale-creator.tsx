@@ -33,15 +33,24 @@ export function SaleCreator({
   const [paid, setPaid] = useState("");
   const [method, setMethod] = useState("CASH");
   const [dueDate, setDueDate] = useState("");
+  const [discountMode, setDiscountMode] = useState<"amount" | "percent">("amount");
+  const [discountValue, setDiscountValue] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const submitting = useRef(false);
   const form = useRef<HTMLFormElement>(null);
-  let totals = { subtotal: 0, tax: 0, total: 0 },
+  // An unfinished "10." counts as 10 while it is typed.
+  const discountText = discountValue.replace(/\.$/, "");
+  const discount = discountText
+    ? discountMode === "percent"
+      ? { discountPercent: discountText }
+      : { discountAmount: discountText }
+    : {};
+  let totals = { subtotal: 0, discount: 0, tax: 0, total: 0 },
     validation = "";
   try {
-    totals = saleTotals(lines);
+    totals = saleTotals(lines, discount);
   } catch (e) {
     validation = (e as Error).message;
   }
@@ -78,6 +87,7 @@ export function SaleCreator({
           expectedTotal: totals.total.toFixed(2),
           amountPaid: paymentAmount(mode, totals.total, paid),
           ...(mode !== "full" && dueDate ? { dueDate } : {}),
+          ...discount,
           ...(values.get("invoiceNumber")
             ? { invoiceNumber: values.get("invoiceNumber") }
             : {}),
@@ -108,6 +118,8 @@ export function SaleCreator({
       setMode("full");
       setPaid("");
       setDueDate("");
+      setDiscountMode("amount");
+      setDiscountValue("");
       setMethod("CASH");
       setSearch("");
       setCustomerSearch("");
@@ -364,6 +376,34 @@ export function SaleCreator({
                     </span>
                   </div>
                 ))}
+                <div className="shop-fields">
+                  <label>
+                    Discount (before GST)
+                    <select
+                      aria-label="Discount type"
+                      value={discountMode}
+                      onChange={(e) => {
+                        setDiscountMode(e.target.value as "amount" | "percent");
+                        setDiscountValue("");
+                      }}
+                    >
+                      <option value="amount">Amount (₹)</option>
+                      <option value="percent">Percent (%)</option>
+                    </select>
+                  </label>
+                  <label>
+                    {discountMode === "percent" ? "Discount (%)" : "Discount (₹)"}
+                    <input
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={discountValue}
+                      onChange={(e) => {
+                        if (/^\d{0,12}(?:\.\d{0,2})?$/.test(e.target.value))
+                          setDiscountValue(e.target.value);
+                      }}
+                    />
+                  </label>
+                </div>
                 <h3 className="payment-title">Payment</h3>
                 <div
                   className="payment-options"
@@ -462,7 +502,9 @@ export function SaleCreator({
           <div className="sale-total">
             <div>
               <small>
-                Subtotal {money(totals.subtotal)} · GST {money(totals.tax)}
+                Subtotal {money(totals.subtotal)}
+                {totals.discount > 0 && ` · Discount −${money(totals.discount)}`} ·
+                GST {money(totals.tax)}
               </small>
               <strong>Total {money(totals.total)}</strong>
               <small>
