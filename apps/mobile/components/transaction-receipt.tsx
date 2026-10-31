@@ -8,6 +8,8 @@ import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
 import { receiptIdentity } from '@/services/transaction-labels';
 import { lineTaxText, receiptTitle, saleGstDetails, stateLabel, taxTotalRows, type SaleGstDetails } from '@/services/gst';
+import { invoiceFileName, invoiceHtml } from '@/services/invoice-document';
+import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
 import { appSession, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
@@ -22,6 +24,7 @@ export type ReceiptData = {
   referenceImage?: string | null;
   attachment?: FileAttachment | null;
   contactPhone?: string | null;
+  contactAddress?: string | null;
   /** GST details the sale was issued with; absent on purchases and older sales. */
   gst?: SaleGstDetails | null;
   id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; documentNumber?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
@@ -58,6 +61,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     return () => { active = false; };
   }, [initialData, sync.syncing, sync.pending, sync.conflicts]);
   const [error, setError] = useState('');
+  const [preparing, setPreparing] = useState<'print' | 'pdf' | null>(null);
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
   const heading = receiptTitle(data.kind, data.gst, data.documentNumber);
   const shopName = shop?.name ?? appSession.current?.businessName ?? '';
@@ -85,6 +89,21 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
         else { try { await Linking.openURL(`whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`); } catch { await Linking.openURL(webUrl); } }
       } else await Share.share({ message });
     } catch { setError('Could not share this receipt. Please try again.'); }
+  };
+  // The A4 invoice waits for the bill's number, so a provisional bill is never printed or sent.
+  const runDocument = async (action: 'print' | 'pdf') => {
+    if (preparing || data.syncState) return;
+    setPreparing(action);
+    setError('');
+    try {
+      const html = invoiceHtml(data, shop ?? { name: shopName });
+      if (action === 'print') await printInvoice(html);
+      else await shareInvoicePdf(html, invoiceFileName(data));
+    } catch {
+      setError(action === 'print' ? 'Could not open printing. Please try again.' : 'Could not create the PDF. Please try again.');
+    } finally {
+      setPreparing(null);
+    }
   };
   return <View style={[styles.screen, { paddingTop: inModal ? insets.top : 0, paddingLeft: inModal ? insets.left : 0, paddingRight: inModal ? insets.right : 0 }]}>
     <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close receipt" onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View style={{ flex: 1 }}><Text style={styles.title}>{heading}</Text><Text style={styles.meta} numberOfLines={1}>{[shopName, formatDate(data.date)].filter(Boolean).join(' · ')}</Text></View></View>
@@ -123,7 +142,20 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     <SaleReferencePhoto value={data.referenceImage} />
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>
-    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}><View style={styles.actions}><Pressable accessibilityRole="button" disabled={!!data.syncState} accessibilityState={{ disabled: !!data.syncState }} onPress={() => void share()} style={[styles.secondary, data.syncState && { opacity: 0.45 }]}><Text style={styles.buttonText}>{data.syncState ? 'Share after sync' : data.kind === 'sale' ? 'Share on WhatsApp' : 'Share receipt'}</Text></Pressable>{mayCreate && onRepeat && !data.syncState ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View><Pressable accessibilityRole="button" onPress={onNew} style={[styles.primary, !mayCreate && { display: 'none' }]}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable></View>
+    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
+      <View style={styles.actions}>
+        {data.syncState ? (
+          <Pressable accessibilityRole="button" disabled accessibilityState={{ disabled: true }} style={[styles.secondary, { opacity: 0.45 }]}><Text style={styles.buttonText}>Print and share after sync</Text></Pressable>
+        ) : (
+          <>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Print ${heading.toLowerCase()}`} disabled={!!preparing} accessibilityState={{ disabled: !!preparing, busy: preparing === 'print' }} onPress={() => void runDocument('print')} style={[styles.secondary, !!preparing && { opacity: 0.6 }]}><Text style={styles.buttonText}>{preparing === 'print' ? 'Opening…' : 'Print'}</Text></Pressable>
+            {canSharePdf ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${heading.toLowerCase()} as PDF`} disabled={!!preparing} accessibilityState={{ disabled: !!preparing, busy: preparing === 'pdf' }} onPress={() => void runDocument('pdf')} style={[styles.secondary, !!preparing && { opacity: 0.6 }]}><Text style={styles.buttonText}>{preparing === 'pdf' ? 'Preparing PDF…' : 'Share PDF'}</Text></Pressable> : null}
+            <Pressable accessibilityRole="button" onPress={() => void share()} style={styles.secondary}><Text style={styles.buttonText}>{data.kind === 'sale' ? 'Share on WhatsApp' : 'Share as text'}</Text></Pressable>
+          </>
+        )}
+      </View>
+      {mayCreate ? <View style={styles.actions}><Pressable accessibilityRole="button" onPress={onNew} style={styles.primary}><Text style={styles.primaryText}>Start new {data.kind}</Text></Pressable>{onRepeat && !data.syncState ? <Pressable accessibilityRole="button" onPress={onRepeat} style={styles.secondary}><Text style={styles.buttonText}>Repeat sale</Text></Pressable> : null}</View> : null}
+    </View>
   </View>;
 }
 const styles = StyleSheet.create({

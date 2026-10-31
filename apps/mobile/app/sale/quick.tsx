@@ -428,6 +428,7 @@ export default function QuickBillScreen() {
         invoice: saved.invoiceNumber, documentNumber: saved.documentNumber,
         contact: saved.customer.name,
         contactPhone: saved.customer.phone,
+        contactAddress: saved.customer.address,
         total: saved.total,
         subtotal: saved.subtotal,
         taxTotal: saved.taxTotal,

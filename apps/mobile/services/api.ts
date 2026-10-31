@@ -167,7 +167,7 @@ export type SaleRecord = {
   total: string | number;
   paymentMethod: string;
   note?: string | null;
-  customer: { id: string; name: string; phone?: string | null };
+  customer: { id: string; name: string; phone?: string | null; address?: string | null };
   items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
@@ -219,7 +219,7 @@ export type PurchaseRecord = {
   purchaseDate: string;
   note?: string | null;
   total?: string | number;
-  supplier: { id: string; name: string };
+  supplier: { id: string; name: string; phone?: string | null; address?: string | null };
   items: Array<{ id: string; productId: string; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; purchasePrice?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
