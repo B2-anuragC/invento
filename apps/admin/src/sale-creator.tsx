@@ -469,8 +469,10 @@ export function SaleCreator({
                 The server confirms final prices, tax and stock when saving.
               </small>
             </div>
+            {/* Separate keys: reusing one element would turn the Review click into a submit. */}
             {!review ? (
               <button
+                key="review"
                 type="button"
                 className="primary"
                 disabled={!customer || !lines.length || !!validation}
@@ -482,7 +484,7 @@ export function SaleCreator({
                 Review sale →
               </button>
             ) : (
-              <button className="primary" disabled={busy || !!validation}>
+              <button key="create" className="primary" disabled={busy || !!validation}>
                 {busy
                   ? "Creating sale…"
                   : pending
