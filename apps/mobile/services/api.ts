@@ -145,6 +145,10 @@ export type InventoryTransactionRecord = {
 
 export type PaymentRecord = { id: string; amount: string | number; method: string; kind: string; paidAt: string };
 export type SaleRecord = {
+  /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
+  status?: string;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
   syncState?: 'pending' | 'conflict';
   syncError?: string;
   referenceImage?: string | null;
@@ -210,6 +214,10 @@ export type SupplierRecord = {
 export type FileAttachment = { name: string; mimeType: string; url?: string; thumbnailUrl?: string; base64?: string };
 
 export type PurchaseRecord = {
+  /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
+  status?: string;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
   syncState?: 'pending' | 'conflict';
   syncError?: string;
   attachment?: FileAttachment | null;
@@ -531,8 +539,9 @@ export async function fetchDashboardSummary(session: AppSession): Promise<Dashbo
     const view = await offlineView(session);
     const today = new Date(Date.now() + 19800000).toISOString().slice(0, 10);
     const dateOf = (value: string) => new Date(new Date(value).getTime() + 19800000).toISOString().slice(0, 10);
-    const sales = view.sales.filter((sale) => dateOf(sale.saleDate) === today);
-    const purchases = view.purchases.filter((purchase) => dateOf(purchase.purchaseDate) === today);
+    // Like the server's summary: completed bills only.
+    const sales = view.sales.filter((sale) => dateOf(sale.saleDate) === today && sale.status !== 'CANCELLED');
+    const purchases = view.purchases.filter((purchase) => dateOf(purchase.purchaseDate) === today && purchase.status !== 'CANCELLED');
     const canViewCosts = !!view.access.permissions?.includes('pricing.view');
     return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.reduce((sum, sale) => sum + Number(sale.total), 0), todayPurchases: canViewCosts ? purchases.reduce((sum, purchase) => sum + Number(purchase.total ?? 0), 0) : null, saleCount: sales.length, purchaseCount: purchases.length, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
   }
@@ -823,6 +832,23 @@ export async function fetchReceiptShop(session: AppSession): Promise<BusinessDet
 }
 
 /** Saves shop details online and refreshes the device copy used by offline receipts. */
+/**
+ * Cancels a saved bill: the server reverses its stock and refunds what was
+ * paid. It needs a connection; the device copy is refreshed afterwards.
+ */
+export async function cancelBill(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { reason: string; refundMethod?: string }): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.cancel' : 'purchases.cancel');
+  let record: SaleRecord | PurchaseRecord;
+  try {
+    record = await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify(input) }, session);
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Cancelling a bill needs a connection. Try again when you are online.');
+    throw error;
+  }
+  if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
+  return record;
+}
+
 export async function updateBusinessDetails(session: AppSession, input: BusinessDetailsInput): Promise<BusinessDetails> {
   await assertClientPermission(session, 'business.update');
   const updated = await request<BusinessDetails>(`/businesses/${encodeURIComponent(session.businessId)}`, { method: 'PATCH', body: JSON.stringify(input) }, session);

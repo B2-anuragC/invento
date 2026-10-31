@@ -30,4 +30,7 @@ describe('paymentMethodsSummary', () => {
   it('is empty when nothing is known', () => {
     expect(paymentMethodsSummary(null, null)).toBe('');
   });
+  it('leaves refunds out of the methods used', () => {
+    expect(paymentMethodsSummary([{ method: 'CASH', kind: 'PAYMENT' }, { method: 'UPI', kind: 'REFUND' }])).toBe('Cash');
+  });
 });

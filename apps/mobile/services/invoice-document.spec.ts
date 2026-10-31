@@ -82,6 +82,12 @@ describe('invoiceHtml', () => {
     expect(invoiceHtml(intraState, shop)).not.toContain('Discount');
   });
 
+  it('stamps a cancelled bill with its escaped reason', () => {
+    const html = invoiceHtml({ ...intraState, status: 'CANCELLED', cancelReason: 'Returned <all>' }, shop);
+    expect(html).toContain('<div class="cancelled">Cancelled · Returned &lt;all&gt;</div>');
+    expect(invoiceHtml(intraState, shop)).not.toContain('class="cancelled"');
+  });
+
   it('shows the HSN column only when a line has a code', () => {
     expect(invoiceHtml(intraState, shop)).toContain('<th>HSN</th>');
     expect(invoiceHtml({ ...intraState, items: [{ ...glass, hsnCode: null }] }, shop)).not.toContain('<th>HSN</th>');

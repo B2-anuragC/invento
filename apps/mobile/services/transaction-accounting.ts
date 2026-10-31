@@ -27,8 +27,9 @@ export function saleDiscountInput(mode: 'amount' | 'percent', value: string): { 
   return mode === 'percent' ? { discountPercent: text } : { discountAmount: text };
 }
 export const requestKey = () => `req_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
-export const paymentBalance = (record: { total?: string | number | null; amountPaid?: string | number | null }) => record.total == null || record.amountPaid == null ? null : Math.max(0, moneyValue(Number(record.total) - Number(record.amountPaid)));
-export function isOverdue(record: { total?: string | number | null; amountPaid?: string | number | null; dueDate?: string | null }) {
+/** What is still owed; none for a cancelled bill, whose payments were refunded. */
+export const paymentBalance = (record: { total?: string | number | null; amountPaid?: string | number | null; status?: string }) => record.status === 'CANCELLED' || record.total == null || record.amountPaid == null ? null : Math.max(0, moneyValue(Number(record.total) - Number(record.amountPaid)));
+export function isOverdue(record: { total?: string | number | null; amountPaid?: string | number | null; dueDate?: string | null; status?: string }) {
   const today = new Date();
   const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   return Boolean((paymentBalance(record) ?? 0) > 0 && record.dueDate && record.dueDate.slice(0, 10) < date);

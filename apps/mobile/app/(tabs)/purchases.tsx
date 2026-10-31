@@ -54,7 +54,7 @@ export default function PurchasesScreen() {
   );
 
   const restrictedPrice = purchases.some((purchase) => purchase.total == null);
-  const totalPurchases = purchases.reduce((total, purchase) => total + Number(purchase.total ?? 0), 0);
+  const totalPurchases = purchases.filter((purchase) => purchase.status !== 'CANCELLED').reduce((total, purchase) => total + Number(purchase.total ?? 0), 0);
   const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id).filter(Boolean)).size;
 
   const filteredRecords = purchases.filter((record) =>
@@ -90,6 +90,7 @@ export default function PurchasesScreen() {
                     {transactionTitle('purchase', purchase)}
                   </Text>
                   <Text style={styles.supplier}>{purchase.supplier?.name ?? 'Supplier'}</Text>
+                  {purchase.status === 'CANCELLED' ? <Text style={styles.cancelledLabel}>Cancelled</Text> : null}
                   <Text style={styles.date}>
                     {purchase.syncState ? `${purchase.syncState === 'conflict' ? 'Needs attention' : 'Pending sync'} · ` : ''}{formatDateTime(purchase.purchaseDate)}
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
@@ -108,6 +109,7 @@ export default function PurchasesScreen() {
 }
 
 const styles = StyleSheet.create({
+  cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
   content: {
     padding: 20,
     paddingBottom: 32,

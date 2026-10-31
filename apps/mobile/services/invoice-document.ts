@@ -19,6 +19,8 @@ export type InvoiceSource = {
   invoice?: string | null;
   documentNumber?: string | null;
   syncState?: string;
+  status?: string;
+  cancelReason?: string | null;
   contact: string;
   contactPhone?: string | null;
   contactAddress?: string | null;
@@ -105,6 +107,7 @@ body { margin: 0; color: #1f2a24; font: 9.5pt/1.45 -apple-system, "Segoe UI", Ro
 h1 { font-size: 15pt; margin: 0 0 2px; }
 h2 { font-size: 13pt; margin: 0 0 4px; color: #176b50; text-transform: uppercase; letter-spacing: 0.5px; }
 .doc { text-align: right; }
+.cancelled { display: inline-block; border: 2px solid #a74737; color: #a74737; font-weight: 700; padding: 2px 8px; margin-bottom: 4px; text-transform: uppercase; }
 .muted, .rate { color: #5b6660; }
 .rate { display: block; font-size: 7.5pt; }
 .parties { display: flex; gap: 12px; margin: 12px 0; }
@@ -134,6 +137,7 @@ ${lines(escapeHtml(shop.address), [shop.phone, shop.email].filter(Boolean).map(e
 </div>
 <div class="doc">
 <h2>${escapeHtml(title)}</h2>
+${source.status === 'CANCELLED' ? `<div class="cancelled">Cancelled${source.cancelReason ? ` · ${escapeHtml(source.cancelReason)}` : ''}</div>` : ''}
 ${lines(`${escapeHtml(sentenceCase(identity.caption))}: <strong>${escapeHtml(identity.value)}</strong>`, identity.note && escapeHtml(identity.note), `Date: ${escapeHtml(formatDate(source.date))}`, taxInvoice && gst?.placeOfSupply && `Place of supply: ${escapeHtml(stateLabel(gst.placeOfSupply))}`, taxInvoice && 'Tax payable on reverse charge: No')}
 </div>
 </header>

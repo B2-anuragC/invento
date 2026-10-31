@@ -5,6 +5,7 @@ describe('Transaction accounting preview', () => {
     expect(transactionTotals([{ quantity: 0.8, price: 50, product: { gstRate: '18' } }, { quantity: 2, price: 40, product: { gstRate: '5' } }])).toEqual({ subtotal: 120, discount: 0, tax: 11.2, total: 131.2 });
     expect(paymentBalance({ total: '100', amountPaid: null })).toBeNull();
     expect(paymentBalance({ total: '100', amountPaid: '30' })).toBe(70);
+    expect(paymentBalance({ total: '100', amountPaid: '0', status: 'CANCELLED' })).toBeNull();
     expect(validDueDate('2026-02-30')).toBe(false);
   });
 

@@ -59,7 +59,7 @@ export default function SalesScreen() {
     }, [retry, sync.syncing]),
   );
 
-  const totalSales = sales.reduce((total, sale) => total + Number(sale.total), 0);
+  const totalSales = sales.filter((sale) => sale.status !== 'CANCELLED').reduce((total, sale) => total + Number(sale.total), 0);
 
   const pendingSales = sales.filter((record) => (paymentBalance(record) ?? 0) > 0);
   const pendingTotal = pendingSales.reduce((sum, record) => sum + (paymentBalance(record) ?? 0), 0);
@@ -99,6 +99,7 @@ export default function SalesScreen() {
                 <View style={styles.saleDetails}>
                   <Pressable accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)}><Text style={styles.saleId}>{transactionTitle('sale', sale)}</Text><Text style={styles.repeatText}>View details ›</Text></Pressable>
                   <Text style={styles.customer}>{sale.customer?.name ?? 'Customer'}</Text>
+                  {sale.status === 'CANCELLED' ? <Text style={styles.cancelledLabel}>Cancelled</Text> : null}
                   {sale.syncState ? <Text style={styles.repeatText}>{sale.syncState === 'conflict' ? 'Needs attention · Saved on device' : 'Pending sync · Saved on device'}</Text> : null}
                   {(paymentBalance(sale) ?? 0) > 0 ? <Text style={styles.pendingLabel}>To collect {formatMoney(paymentBalance(sale)!)}{isOverdue(sale) ? ' · Overdue' : ''}{sale.syncState ? ' · Pending confirmation' : ''}</Text> : null}
                   <Text style={styles.time}>
@@ -124,6 +125,7 @@ export default function SalesScreen() {
 const styles = StyleSheet.create({
   pendingCard: { padding: 12, borderRadius: 12, backgroundColor: '#FFF5D8', borderWidth: 1, borderColor: '#EBDDAB', marginBottom: 12, gap: 4, minHeight: 44 },
   pendingLabel: { color: '#795A24', fontSize: 12, fontWeight: '700', marginTop: 4 },
+  cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
   content: {
     padding: 20,
     paddingBottom: 32,
