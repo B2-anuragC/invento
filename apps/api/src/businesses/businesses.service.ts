@@ -1,4 +1,4 @@
-import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, GST_STATES, gstinStateCode, isValidDocumentPrefix, normalizeDocumentPrefix } from '@invento/shared';
+import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, GST_STATES, gstinStateCode, isValidDocumentPrefix, normalizeDocumentPrefix, WALK_IN_CUSTOMER_NAME } from '@invento/shared';
 import { storedGstin } from '../common/validators/is-gstin.js';
 import { AccessManagementService, lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
 import { requireBusinessMembership, requireBusinessPermission } from '../auth/business-access.js';
@@ -17,6 +17,7 @@ export class BusinessesService {
       if (!account?.isActive) throw new ForbiddenException('Account is inactive.');
       const business = await tx.business.create({ data: { name: input.name.trim(), slug: input.slug.trim().toLowerCase(), email: input.email?.trim().toLowerCase(), phone: input.phone?.trim(), address: input.address?.trim() } });
       await tx.businessRole.createMany({ data: Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([key, permissions]) => ({ businessId: business.id, key, name: key[0] + key.slice(1).toLowerCase(), permissions: [...permissions], isSystem: true })) });
+      await tx.customer.create({ data: { id: `walkin_${business.id}`, businessId: business.id, name: WALK_IN_CUSTOMER_NAME, isWalkIn: true } });
       await tx.businessUser.create({ data: { businessId: business.id, userId, role: 'OWNER' } });
       await tx.platformAuditLog.create({ data: { actorId: userId, businessId: business.id, action: 'BUSINESS_OWNER_CREATED', targetType: 'membership', targetId: userId, reason: 'Business creation', previous: {}, next: { role: 'OWNER', isActive: true } } });
       return business;

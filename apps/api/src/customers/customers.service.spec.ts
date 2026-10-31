@@ -1,5 +1,5 @@
 import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CustomersService } from './customers.service.js';
 
 const customerInput = {
@@ -123,6 +123,18 @@ describe('CustomersService', () => {
 
     await expect(new CustomersService(prisma as never).get('user-a', 'business-a', 'customer-b'))
       .rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('never changes or deactivates the built-in walk-in customer', async () => {
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] } }) },
+      customer: { findFirst: vi.fn().mockResolvedValue({ id: 'walkin_business-a', businessId: 'business-a', status: 'ACTIVE', isWalkIn: true }), update: vi.fn() },
+    };
+    const service = new CustomersService(prisma as never);
+    await expect(service.update('user-a', 'business-a', 'walkin_business-a', { gstin: '27AAPFU0939F1ZV' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.deactivate('user-a', 'business-a', 'walkin_business-a')).rejects.toThrow('built in');
+    expect(prisma.customer.update).not.toHaveBeenCalled();
   });
 
   it('deactivates a customer instead of deleting it, preserving historical sale data', async () => {

@@ -513,7 +513,8 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const sale = await api('post', '/sales').send(input()).expect(201);
     await api('patch', `/customers/${customerId}`).send({ name: 'Renamed Customer' }).expect(200);
     await api('delete', `/customers/${customerId}`).expect(200);
-    expect((await api('get', '/customers').expect(200)).body.data).toEqual([]);
+    // Only the built-in walk-in customer stays active.
+    expect((await api('get', '/customers').expect(200)).body.data.map((customer: any) => customer.isWalkIn)).toEqual([true]);
     expect((await api('get', '/customers?status=INACTIVE').expect(200)).body.data).toHaveLength(1);
     expect((await api('get', `/customers/${customerId}`).expect(200)).body.data.status).toBe('INACTIVE');
     await api('post', '/sales').send(input()).expect(409);
@@ -692,6 +693,29 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const top = (await api('get', `/dashboard/top-products?${range}`).expect(200)).body.data.items;
     expect(top.find((row: any) => row.productId === products[0]).revenue).toBe('900');
     expect(top.find((row: any) => row.productId === products[1]).revenue).toBe('180');
+  });
+
+  it('gives every shop one walk-in customer for paid counter sales', async () => {
+    const customers = (await api('get', '/customers').expect(200)).body.data;
+    const walkIn = customers.find((customer: any) => customer.isWalkIn);
+    expect(walkIn).toMatchObject({ id: `walkin_${businessId}`, name: 'Walk-in customer', status: 'ACTIVE', isWalkIn: true });
+    expect(customers.filter((customer: any) => customer.isWalkIn)).toHaveLength(1);
+    expect(customers.find((customer: any) => customer.id === customerId).isWalkIn).toBeNull();
+
+    // Built in: no edits, no deactivation, also when sent from a device.
+    await api('patch', `/customers/${walkIn.id}`).send({ name: 'Cash' }).expect(409);
+    await api('delete', `/customers/${walkIn.id}`).expect(409);
+    await api('post', '/sync/push').send({ operationId: randomUUID(), entityId: walkIn.id, entity: 'customers', action: 'update', baseRevision: 1, payload: { gstin: '27AAPFU0939F1ZV' } }).expect(409);
+    await api('post', '/customers').send({ name: 'Sneaky', isWalkIn: true }).expect(422);
+
+    // Paid in full only; a counter sale in the shop's state.
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
+    await api('post', '/sales').send({ ...input('1'), customerId: walkIn.id }).expect(400);
+    await api('post', '/sales').send({ ...input('1'), customerId: walkIn.id, amountPaid: '10' }).expect(400);
+    const sale = (await api('post', '/sales').send({ ...input('1'), customerId: walkIn.id, amountPaid: '50' }).expect(201)).body.data;
+    expect(sale).toMatchObject({ amountPaid: '50', buyerGstin: null, placeOfSupply: '27', taxType: 'INTRA_STATE' });
+
+    expect((await api('get', '/sync/snapshot').expect(200)).body.data.customers.filter((customer: any) => customer.isWalkIn)).toHaveLength(1);
   });
 
   it('sells a pack and loose pieces of one product on separate lines', async () => {

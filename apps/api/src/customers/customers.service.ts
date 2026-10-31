@@ -6,6 +6,7 @@ import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { customerStatuses } from './dto/customer.dto.js';
 import { storedGstin } from '../common/validators/is-gstin.js';
+import { WALK_IN_LOCKED_MESSAGE } from '@invento/shared';
 
 type CustomerInput = {
   imageOriginal?: string | null;
@@ -71,7 +72,7 @@ export class CustomersService {
   async update(userId: string, businessId: string, customerId: string, input: CustomerInput) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'customers.update');
     if (input.status === 'INACTIVE') await requireBusinessPermission(this.prisma, userId, businessId, 'customers.delete');
-    await this.requireCustomer(businessId, customerId);
+    await this.requireChangeableCustomer(businessId, customerId);
     const images = await this.images(businessId, input);
     return this.prisma.customer.update({
       where: { id: customerId },
@@ -92,7 +93,7 @@ export class CustomersService {
   /** Deactivates a customer without deleting it, preserving historical sale records. */
   async deactivate(userId: string, businessId: string, customerId: string) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'customers.delete');
-    await this.requireCustomer(businessId, customerId);
+    await this.requireChangeableCustomer(businessId, customerId);
     return this.prisma.customer.update({ where: { id: customerId }, data: { revision: { increment: 1 }, status: CustomerStatus.INACTIVE } });
   }
 
@@ -124,6 +125,13 @@ export class CustomersService {
   }
 
 
+
+  /** Every customer but the built-in walk-in one can be edited or deactivated. */
+  private async requireChangeableCustomer(businessId: string, customerId: string) {
+    const customer = await this.requireCustomer(businessId, customerId);
+    if (customer.isWalkIn) throw new ConflictException(WALK_IN_LOCKED_MESSAGE);
+    return customer;
+  }
 
   private toStatus(status: (typeof customerStatuses)[number]) {
     return status === 'ACTIVE' ? CustomerStatus.ACTIVE : CustomerStatus.INACTIVE;

@@ -6,3 +6,4 @@ export * from './invoicing.js';
 export * from './gstin.js';
 export * from './gst-invoice.js';
 export * from './discount.js';
+export * from './walk-in.js';

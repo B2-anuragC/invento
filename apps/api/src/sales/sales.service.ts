@@ -1,5 +1,5 @@
 import { FilesService } from '../files/files.service.js';
-import { discountAmountFor, discountError, invoiceTaxContext, sellingUnitConversion, splitDiscount } from '@invento/shared';
+import { discountAmountFor, discountError, invoiceTaxContext, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
@@ -129,6 +129,8 @@ export class SalesService {
     assertNotFutureDated(saleDate, 'Sale');
 
     const amountPaid = paidAmount(input.amountPaid, total);
+    // Credit needs a customer to collect from.
+    if (customer.isWalkIn && !amountPaid?.equals(total)) throw new BadRequestException(WALK_IN_PAYMENT_MESSAGE);
     const dueDate = dueDateFor(input.dueDate, saleDate);
     try {
     return await this.prisma.$transaction(async (tx) => {

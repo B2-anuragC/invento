@@ -10,7 +10,7 @@ function createFakeEnvironment(
   options: {
     role?: string;
     isActive?: boolean;
-    customer?: { id: string; businessId: string; status: string; gstin?: string | null } | null;
+    customer?: { id: string; businessId: string; status: string; gstin?: string | null; isWalkIn?: boolean | null } | null;
     shop?: { gstin: string | null; stateCode: string | null };
     products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number; hsnCode?: string | null; gstRate?: string }[];
     openingStock?: Record<string, string>;
@@ -85,6 +85,7 @@ function createFakeEnvironment(
           return data;
         }),
       },
+      transactionPayment: { create: vi.fn(async ({ data }: { data: unknown }) => data) },
     };
   }
 
@@ -424,6 +425,21 @@ describe('SalesService', () => {
       const { service } = createFakeEnvironment({ shop: { gstin: null, stateCode: '29' } });
       const sale = await service.create('user-a', 'business-a', taxed);
       expect(sale).toMatchObject({ sellerGstin: null, sellerStateCode: '29', placeOfSupply: '29', taxType: 'UNREGISTERED' });
+    });
+  });
+
+  describe('walk-in customer', () => {
+    const walkIn = { id: 'walkin_business-a', businessId: 'business-a', status: 'ACTIVE', gstin: null, isWalkIn: true };
+    const line = { items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] };
+
+    it('sells to the walk-in customer only when paid in full', async () => {
+      const { service, store } = createFakeEnvironment({ customer: walkIn });
+      for (const amountPaid of ['0', '10.00', undefined]) {
+        await expect(service.create('user-a', 'business-a', { ...saleInput, ...line, amountPaid })).rejects.toThrow('paid in full');
+      }
+      expect(store.sales).toEqual({});
+      const sale = await service.create('user-a', 'business-a', { ...saleInput, ...line, amountPaid: '40.00' });
+      expect(String(sale.amountPaid)).toBe('40');
     });
   });
 
