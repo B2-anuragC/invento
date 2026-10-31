@@ -562,4 +562,26 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     await api('post', '/sales').send(input()).expect(409);
     expect(await prisma.sale.count({ where: { businessId } })).toBe(0);
   });
+
+  it('sells a pack and loose pieces of one product on separate lines', async () => {
+    const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
+      { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },
+    ] }).expect(201)).body.data;
+    await api('post', '/inventory/opening-stock').send({ productId: product.id, quantity: '12' }).expect(201);
+    const lines = (loose: string) => [
+      { productId: product.id, quantity: '1', sellingPrice: '1700', sellingOptionId: 'pack' },
+      { productId: product.id, quantity: loose, sellingPrice: '180', unit: 'PIECE' },
+    ];
+
+    const oversell = await api('post', '/sales').send({ ...input(), items: lines('3') });
+    expect(oversell.status).toBeGreaterThanOrEqual(400);
+    expect((await api('get', `/inventory/${product.id}`).expect(200)).body.data.quantity).toBe('12');
+
+    const sale = (await api('post', '/sales').send({ ...input(), items: lines('2') }).expect(201)).body.data;
+    expect(sale.items).toHaveLength(2);
+    expect(sale.total).toBe('2060');
+    expect((await api('get', `/inventory/${product.id}`).expect(200)).body.data.quantity).toBe('0');
+
+    await api('post', '/sales').send({ ...input(), items: [lines('1')[0], lines('1')[0]] }).expect(400);
+  });
 });

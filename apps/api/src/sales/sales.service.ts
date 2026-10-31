@@ -55,10 +55,13 @@ export class SalesService {
     if (input.items.length === 0) throw new BadRequestException('At least one sale item is required.');
     if (!Object.values(PaymentMethod).includes(input.paymentMethod)) throw new BadRequestException('Invalid payment method.');
 
+    // A product may appear on separate lines when they are sold differently,
+    // e.g. one pack plus loose pieces; an identical line must be merged instead.
     const seen = new Set<string>();
     const lines = input.items.map((item) => {
-      if (seen.has(item.productId)) throw new BadRequestException('Duplicate product in sale items.');
-      seen.add(item.productId);
+      const lineKey = `${item.productId}|${item.sellingOptionId ?? ''}|${item.unit ?? ''}`;
+      if (seen.has(lineKey)) throw new BadRequestException('Duplicate sale line: combine the quantity into one line.');
+      seen.add(lineKey);
 
       if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(item.quantity) || !/^\d{1,10}(?:\.\d{1,2})?$/.test(item.sellingPrice)) {
         throw new BadRequestException('Invalid sale quantity or selling price precision.');

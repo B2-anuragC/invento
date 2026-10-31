@@ -309,6 +309,46 @@ describe('SalesService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('accepts a pack and loose pieces of one product as separate lines and deducts both', async () => {
+    const handle = { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Handle', unit: 'PIECE', sellingOptions: [{ id: 'pack-10', name: 'Pack of 10', unit: 'PACK', quantity: '1', sellingPrice: '1700.00', piecesPerUnit: 10 }] };
+    const { service, store } = createFakeEnvironment({ products: [handle as never], openingStock: { 'product-a': '200' } });
+
+    await service.create('user-a', 'business-a', {
+      ...saleInput,
+      items: [
+        { productId: 'product-a', sellingOptionId: 'pack-10', quantity: '1', sellingPrice: '1700.00' },
+        { productId: 'product-a', quantity: '3', sellingPrice: '180.00' },
+      ],
+    });
+
+    expect(store.saleItems).toHaveLength(2);
+    expect(store.inventory['product-a'].quantity.toString()).toBe('187');
+  });
+
+  it('checks stock across all lines of the same product and rolls back on oversell', async () => {
+    const handle = { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Handle', unit: 'PIECE', sellingOptions: [{ id: 'pack-10', name: 'Pack of 10', unit: 'PACK', quantity: '1', sellingPrice: '1700.00', piecesPerUnit: 10 }] };
+    const { service, store } = createFakeEnvironment({ products: [handle as never], openingStock: { 'product-a': '12' } });
+
+    await expect(service.create('user-a', 'business-a', {
+      ...saleInput,
+      items: [
+        { productId: 'product-a', sellingOptionId: 'pack-10', quantity: '1', sellingPrice: '1700.00' },
+        { productId: 'product-a', quantity: '3', sellingPrice: '180.00' },
+      ],
+    })).rejects.toThrow();
+    expect(store.inventory['product-a'].quantity.toString()).toBe('12');
+    expect(store.saleItems).toHaveLength(0);
+  });
+
+  it('rejects two lines that sell a product the same way', async () => {
+    const handle = { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Handle', unit: 'PIECE', sellingOptions: [{ id: 'pack-10', name: 'Pack of 10', unit: 'PACK', quantity: '1', sellingPrice: '1700.00', piecesPerUnit: 10 }] };
+    const { service, store } = createFakeEnvironment({ products: [handle as never], openingStock: { 'product-a': '200' } });
+    const packLine = { productId: 'product-a', sellingOptionId: 'pack-10', quantity: '1', sellingPrice: '1700.00' };
+
+    await expect(service.create('user-a', 'business-a', { ...saleInput, items: [packLine, packLine] })).rejects.toThrow('combine the quantity');
+    expect(store.inventory['product-a'].quantity.toString()).toBe('200');
+  });
+
   it('rejects a member without manager permissions from creating a sale', async () => {
     const { service } = createFakeEnvironment({ role: 'MEMBER' });
 
