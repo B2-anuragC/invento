@@ -38,6 +38,7 @@ export function operationPermission(
     if (handler === 'update') return `${domain}.update` as Permission;
     if (handler === 'deactivate') return `${domain}.delete` as Permission;
     if (handler === 'recordPayment') return `${domain}.payments` as Permission;
+    if (handler === 'cancel') return `${domain}.cancel` as Permission;
     if (['stock', 'transactions', 'history', 'activity'].includes(handler))
       return 'inventory.view';
     if (['openingStock', 'adjust'].includes(handler)) return 'inventory.adjust';

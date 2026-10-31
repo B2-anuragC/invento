@@ -284,7 +284,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
       await api('post', '/sales').send({ ...input(quantity), saleDate: date }).expect(201);
     }
     const excludedSale = await api('post', '/sales').send({ ...input('1'), saleDate: '2026-09-20' }).expect(201);
-    await prisma.sale.update({ where: { id: excludedSale.body.data.id }, data: { status: 'CANCELLED' } });
+    await prisma.sale.update({ where: { id: excludedSale.body.data.id }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: userId, cancelReason: 'Excluded from reports' } });
     const excludedPurchase = await api('post', '/purchases').send({ supplierId: supplier.body.data.id, purchaseDate: '2026-09-20', items: [{ productId: products[0], quantity: '1', purchasePrice: '10' }] }).expect(201);
     await prisma.purchase.update({ where: { id: excludedPurchase.body.data.id }, data: { status: 'DRAFT' } });
     const range = 'from=2026-09-20&to=2026-09-20';
@@ -716,6 +716,43 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(sale).toMatchObject({ amountPaid: '50', buyerGstin: null, placeOfSupply: '27', taxType: 'INTRA_STATE' });
 
     expect((await api('get', '/sync/snapshot').expect(200)).body.data.customers.filter((customer: any) => customer.isWalkIn)).toHaveLength(1);
+  });
+
+  it('cancels sales and purchases: stock reversed, payments refunded, numbers kept', async () => {
+    const now = new Date().toISOString();
+    const stock = async () => (await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity;
+    const sale = (await api('post', '/sales').send({ ...input('20'), saleDate: now, paymentMethod: 'UPI', amountPaid: '300' }).expect(201)).body.data;
+    expect(await stock()).toBe('80');
+
+    await api('post', `/sales/${sale.id}/cancel`).send({ reason: '  ' }).expect(422);
+    const cancelled = (await api('post', `/sales/${sale.id}/cancel`).send({ reason: 'Customer returned the goods' }).expect(201)).body.data;
+    expect(cancelled).toMatchObject({ status: 'CANCELLED', cancelReason: 'Customer returned the goods', amountPaid: '0', documentNumber: sale.documentNumber });
+    expect(cancelled.cancelledAt).toBeTruthy();
+    expect(cancelled.payments.map((payment: any) => [payment.kind, payment.amount, payment.method])).toEqual([['PAYMENT', '300', 'UPI'], ['REFUND', '300', 'UPI']]);
+    expect(await stock()).toBe('100');
+    expect((await api('get', `/inventory/${products[0]}/history`).expect(200)).body.data.map((row: any) => row.type)).toContain('RETURN_IN');
+
+    // A retry changes nothing; a cancelled bill takes no edits or payments and leaves the totals.
+    await api('post', `/sales/${sale.id}/cancel`).send({ reason: 'Again' }).expect(201);
+    expect((await api('get', `/sales/${sale.id}`).expect(200)).body.data.payments).toHaveLength(2);
+    expect(await stock()).toBe('100');
+    await api('patch', `/sales/${sale.id}`).send({ note: 'late note' }).expect(409);
+    await api('post', `/sales/${sale.id}/payments`).send({ amount: '1', method: 'CASH', requestId: randomUUID() }).expect(409);
+    expect((await api('get', '/dashboard/summary').expect(200)).body.data).toMatchObject({ todaySales: '0', saleCount: 0 });
+
+    // A purchase whose stock was sold cannot be cancelled; it can once that sale is cancelled.
+    const supplier = (await api('post', '/suppliers').send({ name: 'Cancel supplier' }).expect(201)).body.data;
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, purchaseDate: now, items: [{ productId: products[0], quantity: '10', purchasePrice: '40' }] }).expect(201)).body.data;
+    const bigSale = (await api('post', '/sales').send({ ...input('105'), saleDate: now }).expect(201)).body.data;
+    expect(await stock()).toBe('5');
+    expect((await api('post', `/purchases/${purchase.id}/cancel`).send({ reason: 'Wrong supplier' }).expect(409)).body.error.message).toMatch(/already been sold/);
+    expect(await stock()).toBe('5');
+    await api('post', `/sales/${bigSale.id}/cancel`).send({ reason: 'Entered by mistake' }).expect(201);
+    const cancelledPurchase = (await api('post', `/purchases/${purchase.id}/cancel`).send({ reason: 'Wrong supplier' }).expect(201)).body.data;
+    expect(cancelledPurchase).toMatchObject({ status: 'CANCELLED', documentNumber: purchase.documentNumber, payments: [] });
+    expect(await stock()).toBe('100');
+    await api('post', `/purchases/${purchase.id}/payments`).send({ amount: '1', method: 'CASH', requestId: randomUUID() }).expect(409);
+    expect((await api('get', '/sync/snapshot').expect(200)).body.data.sales.filter((row: any) => row.status === 'CANCELLED')).toHaveLength(2);
   });
 
   it('sells a pack and loose pieces of one product on separate lines', async () => {

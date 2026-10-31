@@ -52,7 +52,8 @@ describe.runIf(process.env.RUN_AUTHORIZATION_DATABASE_TESTS === '1')(
             expect(
               roles.find((r) => r.businessId === 'a' && r.key === 'OWNER')
                 ?.permissions,
-            ).toEqual([...PERMISSIONS]);
+              // The cancel permissions came later, with 20261031050000_cancel_bills.
+            ).toEqual(PERMISSIONS.filter((p) => !['sales.cancel', 'purchases.cancel'].includes(p)));
             expect(
               roles.find((r) => r.businessId === 'a' && r.key === 'MEMBER')
                 ?.permissions,

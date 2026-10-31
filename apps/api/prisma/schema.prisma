@@ -247,6 +247,10 @@ model Purchase {
   payments        TransactionPayment[]
   total           Decimal        @db.Decimal(14, 2)
   status          PurchaseStatus @default(COMPLETED)
+  /// Set together when the purchase is cancelled; the bill keeps its number.
+  cancelledAt     DateTime?
+  cancelledByUserId String?
+  cancelReason    String?
   note            String?
   createdByUserId String
   createdAt       DateTime       @default(now())
@@ -357,6 +361,10 @@ model Sale {
   payments        TransactionPayment[]
   total           Decimal       @db.Decimal(14, 2)
   status          SaleStatus    @default(COMPLETED)
+  /// Set together when the sale is cancelled; the bill keeps its number.
+  cancelledAt     DateTime?
+  cancelledByUserId String?
+  cancelReason    String?
   note            String?
   createdByUserId String
   createdAt       DateTime      @default(now())

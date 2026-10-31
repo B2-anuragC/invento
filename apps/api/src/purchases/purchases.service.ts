@@ -5,7 +5,8 @@ import {
   dueDateFor,
   recordTransactionPayment,
 } from '../common/transaction-accounting.js';
-import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import type { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import { cancelTransaction } from '../common/cancellation.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import {
@@ -353,6 +354,13 @@ export class PurchasesService {
     }
   }
 
+  /** Cancels a completed purchase: its stock goes out again (refused if already sold), money paid is refunded. */
+  async cancel(userId: string, businessId: string, id: string, input: CancelTransactionDto) {
+    await requireBusinessPermission(this.prisma, userId, businessId, 'purchases.cancel');
+    await cancelTransaction(this.prisma, this.inventory, 'purchase', businessId, userId, id, input);
+    return this.get(userId, businessId, id);
+  }
+
   async recordPayment(
     userId: string,
     businessId: string,
@@ -422,6 +430,8 @@ export class PurchasesService {
         requestId: true,
         total: true,
         status: true,
+        cancelledAt: true,
+        cancelReason: true,
         note: true,
         createdByUserId: true,
         createdAt: true,
@@ -471,6 +481,7 @@ export class PurchasesService {
       'purchases.update',
     );
     const existing = await this.requirePurchase(businessId, purchaseId);
+    if (existing.status === 'CANCELLED') throw new ConflictException('A cancelled purchase cannot be edited.');
 
     const purchaseDate = input.purchaseDate
       ? new Date(input.purchaseDate)

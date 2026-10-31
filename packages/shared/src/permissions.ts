@@ -22,10 +22,12 @@ export const PERMISSIONS = [
   "sales.create",
   "sales.update",
   "sales.payments",
+  "sales.cancel",
   "purchases.view",
   "purchases.create",
   "purchases.update",
   "purchases.payments",
+  "purchases.cancel",
   "reports.view",
   "members.view",
   "members.invite",
@@ -57,7 +59,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly Permission[]> = {
     (p) =>
       !p.startsWith("roles.") &&
       !p.startsWith("members.") &&
-      !["business.update", "pricing.manage", "audit.view"].includes(p),
+      // Cancelling issued bills stays with owners and admins.
+      !["business.update", "pricing.manage", "audit.view", "sales.cancel", "purchases.cancel"].includes(p),
   ),
   SALESPERSON: [
     "business.view",

@@ -2,7 +2,8 @@ import { FilesService } from '../files/files.service.js';
 import { discountAmountFor, discountError, invoiceTaxContext, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
-import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import type { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import { cancelTransaction } from '../common/cancellation.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InventoryTransactionType, PaymentMethod, Prisma, ProductStatus, CustomerStatus } from '@prisma/client';
@@ -186,6 +187,13 @@ export class SalesService {
     }
   }
 
+  /** Cancels a completed sale: stock comes back, money received is refunded. Owners and admins. */
+  async cancel(userId: string, businessId: string, id: string, input: CancelTransactionDto) {
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.cancel');
+    await cancelTransaction(this.prisma, this.inventory, 'sale', businessId, userId, id, input);
+    return this.requireSale(businessId, id);
+  }
+
   async recordPayment(userId: string, businessId: string, id: string, input: RecordPaymentDto) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.payments');
     await recordTransactionPayment(this.prisma, 'sale', businessId, userId, id, input);
@@ -200,7 +208,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, cancelledAt: true, cancelReason: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }
@@ -223,6 +231,7 @@ export class SalesService {
   async update(userId: string, businessId: string, saleId: string, input: UpdateSaleInput) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.update');
     const existing = await this.requireSale(businessId, saleId);
+    if (existing.status === 'CANCELLED') throw new ConflictException('A cancelled sale cannot be edited.');
 
     const saleDate = input.saleDate ? new Date(input.saleDate) : undefined;
     if (saleDate && Number.isNaN(saleDate.getTime())) throw new BadRequestException('Invalid sale date.');
