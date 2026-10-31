@@ -30,9 +30,28 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | # | Change | Status |
 |---|---|---|
 | 12 | Sequential per-business invoice numbers that restart each financial year: `INV/2026-27/0001` for sales, `PUR/2026-27/0001` for purchases, with a configurable prefix | |
-| 13 | Shop GSTIN, address and phone in settings; customer GSTIN | |
-| 14 | Receipt shows shop name and details, customer GSTIN and CGST/SGST split | |
-| 15 | Print / save as PDF from the receipt; share through the system share sheet, not only WhatsApp | |
+| 13 | Shop GSTIN, state, address and phone in settings (admin and a mobile Shop details screen); customer and supplier GSTIN | |
+| 14 | Receipt shows shop name and details, customer GSTIN, HSN codes and the CGST/SGST or IGST split | |
+| 15 | Print / save as PDF (A4) from the receipt; share through the system share sheet, not only WhatsApp | |
+
+### Phase 2 design
+
+Rules followed: CGST Rule 46 — a serial number of at most 16 characters (letters, digits, `-`, `/`), unique for a financial year; supplier name, address and GSTIN; recipient GSTIN if registered; HSN code; rate and amount of each tax head; place of supply for inter-state supplies.
+
+Decisions agreed on 31 October 2026:
+
+- **Numbers** live in new columns `documentNumber`, `financialYear`, `documentSeq` on sales and purchases. The existing `invoiceNumber` stays a free-text reference: for sales a manual reference, for purchases the supplier's invoice number. Numbers cannot be edited.
+- **Allocation** happens inside the existing create transaction, after stock movements, by incrementing a `document_counters` row (business, series, financial year) with `INSERT … ON CONFLICT DO UPDATE … RETURNING`. A rolled-back or duplicate request uses no number, so numbering has no gaps.
+- **Financial year** comes from the bill date in Asia/Kolkata (1 April–31 March). Bill dates more than a day in the future are rejected, and a numbered bill's date cannot move to another financial year.
+- **Prefix**: 1–3 letters or digits, separate for sales (default `INV`) and purchases (default `PUR`). Changing it continues the same sequence. From 10,000 bills in a year the year is shortened (`INV/26-27/10000`) to stay within 16 characters.
+- **Existing bills** stay unnumbered and keep their current labels.
+- **On phones** a bill gets its number when it syncs. Until then the receipt says so, and print, PDF and share stay disabled. Local-only mode numbers bills on the device with its own per-year counter.
+- **GST profile**: shop GSTIN (validated, including the check digit) and state; GSTIN for customers and suppliers. Clearing a field stores no value.
+- **Invoice details are copied onto each sale** when it is created: seller GSTIN and state, buyer GSTIN, place of supply and tax type, and each line's HSN code, so issued invoices never change.
+- **Tax split**: CGST = half of each line's stored tax (half-up to the paisa), SGST = the rest; IGST when the place of supply differs from the shop's state. Totals are unchanged, so queued offline bills still match.
+- **Title**: "Tax invoice" when the shop has a GSTIN, otherwise "Bill of supply".
+- **HSN**: an optional code on products (4–8 digits), copied to sale lines.
+- **Print**: an A4 HTML invoice with all user text escaped; `expo-print` makes a PDF on phones and the system share sheet sends it; web prints from a sandboxed frame (Save as PDF).
 
 ## Phase 3 — Billing
 
