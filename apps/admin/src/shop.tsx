@@ -9,6 +9,7 @@ import {
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
 import { api, type PanelAccess } from "./api";
+import { changedFields, istDateInput } from "./transaction-edit";
 import {
   display,
   label,
@@ -185,10 +186,12 @@ function Editor({
 function Records({
   rows,
   keys,
+  titles,
   edit,
 }: {
   rows: Row[];
   keys: string[];
+  titles?: Record<string, string>;
   edit?: (row: Row) => void;
 }) {
   return (
@@ -198,7 +201,7 @@ function Records({
           <thead>
             <tr>
               {keys.map((k) => (
-                <th key={k}>{k === "sku" ? "SKU" : label(k)}</th>
+                <th key={k}>{titles?.[k] ?? (k === "sku" ? "SKU" : label(k))}</th>
               ))}
               {edit && <th>Actions</th>}
             </tr>
@@ -482,6 +485,11 @@ function ShopSection({
     setEditing(null);
     setMessage("Saved successfully.");
   };
+  // Sale and purchase edits show and compare the bill's calendar date in India.
+  const dateKey = section === "sales" ? "saleDate" : "purchaseDate";
+  const editingInitial: Row = editing
+    ? { ...editing, [dateKey]: istDateInput(editing[dateKey]) }
+    : {};
   const businessPath = `/businesses/${encodeURIComponent(id)}`;
   const path =
     section === "overview"
@@ -619,20 +627,33 @@ function ShopSection({
           <Records
             rows={rows}
             keys={[
+              "documentNumber",
               "invoiceNumber",
               section === "sales" ? "saleDate" : "purchaseDate",
               "total",
               "status",
               "note",
             ]}
+            titles={
+              section === "sales"
+                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference" }
+                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice" }
+            }
             edit={can(`${section}.update`) ? setEditing : undefined}
           />
           {editing && (
             <Editor
               key={String(editing.id)}
-              title="Edit transaction details"
+              title={
+                editing.documentNumber
+                  ? `Edit ${String(editing.documentNumber)}`
+                  : "Edit transaction details"
+              }
               fields={[
-                field("invoiceNumber"),
+                {
+                  key: "invoiceNumber",
+                  title: section === "sales" ? "Reference" : "Supplier invoice",
+                },
                 {
                   key: section === "sales" ? "saleDate" : "purchaseDate",
                   type: "date",
@@ -640,18 +661,16 @@ function ShopSection({
                 },
                 field("note"),
               ]}
-              initial={{
-                ...editing,
-                [section === "sales" ? "saleDate" : "purchaseDate"]: String(
-                  editing[section === "sales" ? "saleDate" : "purchaseDate"],
-                ).slice(0, 10),
-              }}
+              initial={editingInitial}
               cancel={() => setEditing(null)}
               save={async (data) => {
                 await shopApi(
                   id,
                   `/${section}/${encodeURIComponent(String(editing.id))}`,
-                  { method: "PATCH", body: JSON.stringify(data) },
+                  {
+                    method: "PATCH",
+                    body: JSON.stringify(changedFields(data, editingInitial)),
+                  },
                 );
                 refresh();
               }}
@@ -680,6 +699,8 @@ function ShopSection({
               { key: "email", type: "email" },
               { key: "phone", type: "tel" },
               field("address"),
+              { key: "invoicePrefix", title: "Sales invoice prefix (e.g. INV)", max: 3 },
+              { key: "purchasePrefix", title: "Purchase number prefix (e.g. PUR)", max: 3 },
             ]}
             initial={result.data}
             save={async (data) => {

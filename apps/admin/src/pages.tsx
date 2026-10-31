@@ -152,14 +152,16 @@ const resources: Record<string, Column[]> = {
   ],
   sales: [
     { key: "id", label: "Sale" },
-    { key: "invoiceNumber", label: "Invoice" },
+    { key: "documentNumber", label: "Invoice no." },
+    { key: "invoiceNumber", label: "Reference" },
     { key: "saleDate", label: "Date", render: (r) => date(r.saleDate) },
     { key: "total", label: "Total" },
     { key: "status", label: "Status" },
   ],
   purchases: [
     { key: "id", label: "Purchase" },
-    { key: "invoiceNumber", label: "Invoice" },
+    { key: "documentNumber", label: "Purchase no." },
+    { key: "invoiceNumber", label: "Supplier invoice" },
     { key: "purchaseDate", label: "Date", render: (r) => date(r.purchaseDate) },
     { key: "total", label: "Total" },
     { key: "status", label: "Status" },

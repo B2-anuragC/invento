@@ -23,6 +23,7 @@ export function SaleCreator({
   saved: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [savedNumber, setSavedNumber] = useState("");
   const [review, setReview] = useState(false);
   const [customer, setCustomer] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
@@ -93,11 +94,12 @@ export function SaleCreator({
       submitting.current = true;
       setBusy(true);
       setPending(body);
-      await api("/sales", {
+      const sale = await api<{ documentNumber?: string | null }>("/sales", {
         method: "POST",
         headers: { "X-Business-Id": id },
         body,
       });
+      setSavedNumber(sale?.documentNumber ?? "");
       setPending(null);
       setLines([]);
       setCustomer("");
@@ -130,12 +132,20 @@ export function SaleCreator({
         </div>
         <button
           className="primary"
-          onClick={() => setOpen(!open)}
+          onClick={() => {
+            setSavedNumber("");
+            setOpen(!open);
+          }}
           disabled={busy || !!pending}
         >
           {open ? "Close new sale" : "+ New sale"}
         </button>
       </div>
+      {savedNumber && (
+        <p className="notice" role="status">
+          Sale saved · Invoice {savedNumber}
+        </p>
+      )}
       {open && (
         <form ref={form} className="panel sale-composer" onSubmit={submit}>
           <div className="sale-steps">
@@ -418,10 +428,10 @@ export function SaleCreator({
                   )}
                 </div>
                 <details className="sale-extras">
-                  <summary>Invoice number & note (optional)</summary>
+                  <summary>Reference & note (optional)</summary>
                   <div className="shop-fields">
                     <label>
-                      Invoice number
+                      Reference
                       <input name="invoiceNumber" maxLength={80} />
                     </label>
                     <label>
