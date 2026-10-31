@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import { api } from "./api";
 import { type Row } from "./components";
 import {
@@ -55,6 +56,9 @@ export function SaleCreator({
     validation = (e as Error).message;
   }
   const selectedCustomer = customers.find((c) => c.id === customer);
+  // Credit needs a named customer to collect from.
+  if (selectedCustomer?.isWalkIn && mode !== "full")
+    validation ||= WALK_IN_PAYMENT_MESSAGE;
   const updateLine = (index: number, patch: Partial<SaleLine>) => {
     setError("");
     setLines((current) =>

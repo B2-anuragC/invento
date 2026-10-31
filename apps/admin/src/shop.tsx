@@ -241,7 +241,11 @@ function Records({
                 ))}
                 {edit && (
                   <td>
-                    <button onClick={() => edit(row)}>Edit</button>
+                    {row.isWalkIn ? (
+                      <span className="muted">Built in</span>
+                    ) : (
+                      <button onClick={() => edit(row)}>Edit</button>
+                    )}
                   </td>
                 )}
               </tr>
