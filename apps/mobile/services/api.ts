@@ -3,10 +3,11 @@ import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 import { createSessionLoader } from './session-loader';
+import { isServerUnreachable, liveOrCachedAccess } from './access-fallback';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { configureOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+import { cachedAccess, configureOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
 
@@ -813,7 +814,9 @@ configureFileStorage(request, () => appSession.current, API_BASE_URL, async () =
 // Access management always uses the shared server identity and selected business.
 export async function fetchEffectiveAccess(session: AppSession): Promise<EffectiveAccess> {
   if (LOCAL_ONLY) throw new Error('Centralized permissions require server mode and a connection.');
-  return request<EffectiveAccess>(`/businesses/${encodeURIComponent(session.businessId)}/access/me`, {}, session);
+  const live = () => request<EffectiveAccess>(`/businesses/${encodeURIComponent(session.businessId)}/access/me`, {}, session);
+  // Native devices keep working offline with the permissions downloaded with the business.
+  return nativeOffline ? liveOrCachedAccess(live, () => cachedAccess(session)) : live();
 }
 export async function accessRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const session = appSession.current;
@@ -826,5 +829,9 @@ async function assertClientPermission(session: AppSession, permission: Permissio
   if (!access.permissions.includes(permission)) throw new ApiError(`Permission required: ${permission}`, 403);
   const scope = `${session.user.id}:${session.businessId}`;
   const signature = [...access.permissions].sort().join(',');
-  if (nativeOffline && accessSignatures.get(scope) !== signature) { await refreshOfflineAccess(session); accessSignatures.set(scope, signature); }
+  if (nativeOffline && accessSignatures.get(scope) !== signature) {
+    // Offline, the cached permissions are already in use; refresh the snapshot once reachable.
+    try { await refreshOfflineAccess(session); accessSignatures.set(scope, signature); }
+    catch (error) { if (!isServerUnreachable(error)) throw error; }
+  }
 }

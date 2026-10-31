@@ -1,3 +1,4 @@
+import type { EffectiveAccess } from '@invento/shared';
 import { randomUUID } from 'expo-crypto';
 import { readOfflineState, writeOfflineState } from './offline-storage';
 import { acknowledgeCommand, nextReadyCommand, isTransactionCommand, reconcileTransactions, offlineScope, projectOffline, type CatalogEntity, type LocalRecord, type OfflineCommand, type OfflineSnapshot, type OfflineState } from './offline-model';
@@ -70,6 +71,18 @@ async function ensure(session: AppSession): Promise<OfflineState> {
   })().finally(() => { bootstraps.delete(scope); }));
   return bootstraps.get(scope)!;
 }
+/**
+ * Permissions downloaded with the business, for use while the server cannot be
+ * reached. Null when nothing was downloaded or the server has revoked access.
+ */
+export async function cachedAccess(session: AppSession): Promise<EffectiveAccess | null> {
+  const state = await load(session);
+  if (!state || state.accessBlocked || state.snapshot.business.id !== session.businessId) return null;
+  const { role, permissions } = state.snapshot.access;
+  if (!permissions) return null;
+  return { userId: session.user.id, businessId: session.businessId, role, permissions: [...permissions], platformAccess: false };
+}
+
 export async function offlineView(session: AppSession) {
   const state = await ensure(session);
   if (state.accessBlocked) throw new Error('Business access was revoked. Reconnect to restore access. Your pending work is retained.');

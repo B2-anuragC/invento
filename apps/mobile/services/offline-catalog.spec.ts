@@ -13,15 +13,17 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => crypto.randomUUID() }));
 describe('Offline catalog synchronization', () => {
   const session = { user: { id: 'user-offline' }, businessId: 'business-offline' } as AppSession;
   let online: boolean;
+  let forbidden: boolean;
   let api: typeof import('./offline-catalog');
   let snapshot: OfflineSnapshot;
   let uploads: Record<string, unknown>[];
   beforeEach(async () => {
-    vi.resetModules(); durable.clear(); storageFault.fail = false; online = true; uploads = [];
+    vi.resetModules(); durable.clear(); storageFault.fail = false; online = true; forbidden = false; uploads = [];
     snapshot = { schemaVersion: 1, business: { id: session.businessId, name: 'Shop' }, access: { role: 'OWNER', permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER], membersCanViewPurchasePrice: true }, downloadedAt: '2026-10-10T00:00:00Z', products: [], customers: [], suppliers: [], inventory: [], inventoryActivity: [], sales: [], purchases: [] };
     api = await import('./offline-catalog');
     api.configureOffline(async <T>(path: string, options: RequestInit) => {
       if (!online) throw new TypeError('Network unavailable');
+      if (forbidden) throw Object.assign(new Error('Business access is unavailable.'), { status: 403 });
       if (path === '/sync/snapshot') return JSON.parse(JSON.stringify(snapshot)) as T;
       const command = JSON.parse(String(options.body)); uploads.push(command);
       const record = { ...command.payload, id: command.entityId, revision: (command.baseRevision ?? 0) + 1, updatedAt: '2026-10-10T12:00:00Z', status: 'ACTIVE' };
@@ -121,4 +123,20 @@ describe('Offline catalog synchronization', () => {
     await expect(api.saveOfflineCatalog(session, 'products', { name: 'Denied' })).rejects.toThrow('permission');
   });
 
+  it('provides downloaded permissions for offline use only for the same account and business', async () => {
+    expect(await api.cachedAccess(session)).toBeNull();
+    await api.offlineView(session);
+    expect(await api.cachedAccess(session)).toEqual({ userId: session.user.id, businessId: session.businessId, role: 'OWNER', permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER], platformAccess: false });
+    expect(await api.cachedAccess({ ...session, businessId: 'other' })).toBeNull();
+    expect(await api.cachedAccess({ ...session, user: { id: 'someone-else' } } as AppSession)).toBeNull();
+  });
+  it('withholds cached permissions once the server refuses business access', async () => {
+    await api.offlineView(session);
+    online = false;
+    await api.saveOfflineCatalog(session, 'customers', { name: 'Queued while offline' });
+    online = true; forbidden = true;
+    await api.syncOffline(session);
+    expect(await api.cachedAccess(session)).toBeNull();
+    expect(await api.offlineCommands(session)).toHaveLength(1);
+  });
 });

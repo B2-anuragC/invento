@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { AppState, Pressable, Text, View } from "react-native";
@@ -17,6 +18,7 @@ import {
   fetchEffectiveAccess,
   subscribeAuthorizationInvalidation,
 } from "./api";
+import { isServerUnreachable } from "./access-fallback";
 const Context = createContext<{
   access?: EffectiveAccess;
   error?: string;
@@ -30,6 +32,8 @@ export function PermissionsProvider({
 }) {
   const path = usePathname();
   const [access, setAccess] = useState<EffectiveAccess>();
+  const accessRef = useRef(access);
+  accessRef.current = access;
   const [error, setError] = useState<string>();
   const refresh = useCallback(() => {
     const session = appSession.current;
@@ -48,6 +52,8 @@ export function PermissionsProvider({
         }
       })
       .catch((e) => {
+        // A network blip keeps the last known permissions; only a refusal removes them.
+        if (isServerUnreachable(e) && accessRef.current) return;
         setAccess(undefined);
         setError(e.message);
       });
