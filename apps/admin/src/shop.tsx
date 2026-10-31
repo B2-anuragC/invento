@@ -1,3 +1,4 @@
+import { CancelBill } from "./cancel-bill";
 import { SaleCreator } from "./sale-creator";
 import { type SaleProduct } from "./sale-model";
 import { GST_STATES, type EffectiveAccess, type Permission } from "@invento/shared";
@@ -241,8 +242,8 @@ function Records({
                 ))}
                 {edit && (
                   <td>
-                    {row.isWalkIn ? (
-                      <span className="muted">Built in</span>
+                    {row.isWalkIn || row.status === "CANCELLED" ? (
+                      <span className="muted">{row.isWalkIn ? "Built in" : "—"}</span>
                     ) : (
                       <button onClick={() => edit(row)}>Edit</button>
                     )}
@@ -689,6 +690,18 @@ function ShopSection({
                     body: JSON.stringify(changedFields(data, editingInitial)),
                   },
                 );
+                refresh();
+              }}
+            />
+          )}
+          {editing && editing.status === "COMPLETED" && can(`${section}.cancel`) && (
+            <CancelBill
+              key={`cancel-${String(editing.id)}`}
+              shopId={id}
+              kind={section === "sales" ? "sale" : "purchase"}
+              bill={editing}
+              done={() => {
+                setEditing(null);
                 refresh();
               }}
             />

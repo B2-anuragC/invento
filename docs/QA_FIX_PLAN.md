@@ -59,7 +59,7 @@ Decisions agreed on 31 October 2026:
 |---|---|---|
 | 16 | Bill-level discount on sales | Done |
 | 17 | Walk-in customer so a quick bill can be saved without choosing a customer | Done |
-| 18 | Cancel a sale or purchase, reversing stock through the inventory engine | |
+| 18 | Cancel a sale or purchase, reversing stock through the inventory engine | Done |
 | 19 | Payment date when recording a payment; purchase date on review | |
 
 ### Phase 3 design
