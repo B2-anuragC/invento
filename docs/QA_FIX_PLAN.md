@@ -62,6 +62,15 @@ Decisions agreed on 31 October 2026:
 | 18 | Cancel a sale or purchase, reversing stock through the inventory engine | |
 | 19 | Payment date when recording a payment; purchase date on review | |
 
+### Phase 3 design
+
+Decisions agreed on 31 October 2026:
+
+- **Discount (16)**: a sale can take one bill-level discount, entered as an amount or as a percentage of the subtotal. A discount given at the time of sale lowers the taxable value, so it is split across the lines in proportion to their amounts (largest remainder, to the paisa) and each line's GST is charged on its discounted amount. Sales store the discount total and the percentage when one was entered; lines store their share. One shared function does the split for the API, phones (offline bills) and admin, so totals always match. Receipts and invoices show the discount; product revenue on the dashboard is net of it. Purchases are unchanged.
+- **Walk-in customer (17)**: every shop has one built-in "Walk-in customer", created for existing shops by the migration and for new shops on creation. Quick bills use it when no customer is chosen. It cannot be edited, deactivated or given a GSTIN, and a sale to it must be paid in full (credit needs a named customer). Its sales are counter sales, with the shop's state as the place of supply.
+- **Cancel (18)**: owners and admins can cancel a completed sale or purchase with a reason (new permissions `sales.cancel` and `purchases.cancel`). The bill keeps its number and stays in history as Cancelled; totals, dashboards and pending payments leave it out. Stock is reversed through the inventory engine: a sale's stock comes back; a purchase's stock goes out, and cancelling is refused when that stock has already been sold. Money already received or paid is refunded in the same step: a refund entry in the chosen method (default: how it was paid) brings the amount paid back to zero. Cancelling needs a connection. Credit notes for invoices already reported in a GST return are out of scope.
+- **Dates (19)**: Record payment takes the payment date (default today; not before the bill date and not in the future). The purchase review step shows and edits the purchase date, the supplier's bill date, which also sets the purchase number's financial year.
+
 ## Phase 4 — Mobile gaps
 
 | # | Change | Status |
