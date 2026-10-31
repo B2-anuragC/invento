@@ -110,7 +110,7 @@ export class DashboardService {
     await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const range = dashboardRange(query);
     const items = await this.prisma.$queryRaw<(Pick<LowStock, 'productId' | 'name' | 'sku' | 'unit'> & { quantity: Prisma.Decimal; revenue: Prisma.Decimal })[]>(Prisma.sql`
-      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN i.quantity * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE i.quantity * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal") AS revenue
+      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN i.quantity * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE i.quantity * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal" - i."discountAmount") AS revenue
       FROM sale_items i JOIN sales s ON s.id = i."saleId"
       JOIN products p ON p.id = i."productId" AND p."businessId" = s."businessId"
       WHERE s."businessId" = ${businessId} AND s.status = 'COMPLETED'

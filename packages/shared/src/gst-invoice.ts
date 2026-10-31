@@ -50,14 +50,14 @@ export function splitLineTax(taxAmount: number | string, taxType: GstTaxType): G
 
 export type GstRateSummary = { rate: number; taxableValue: number; cgst: number; sgst: number; igst: number };
 
-/** Tax by rate for the invoice footer, from each line's stored amounts. */
-export function gstRateSummary(lines: { gstRate: number | string; lineTotal: number | string; taxAmount: number | string }[], taxType: GstTaxType): GstRateSummary[] {
+/** Tax by rate for the invoice footer, from each line's stored amounts; the taxable value is net of any discount. */
+export function gstRateSummary(lines: { gstRate: number | string; lineTotal: number | string; taxAmount: number | string; discountAmount?: number | string }[], taxType: GstTaxType): GstRateSummary[] {
   const byRate = new Map<number, { taxable: number; cgst: number; sgst: number; igst: number }>();
   for (const line of lines) {
     const rate = Number(line.gstRate);
     const split = splitLineTax(line.taxAmount, taxType);
     const entry = byRate.get(rate) ?? { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
-    entry.taxable += toPaise(line.lineTotal);
+    entry.taxable += toPaise(line.lineTotal) - toPaise(line.discountAmount ?? 0);
     entry.cgst += toPaise(split.cgst);
     entry.sgst += toPaise(split.sgst);
     entry.igst += toPaise(split.igst);

@@ -343,6 +343,10 @@ model Sale {
   saleDate        DateTime
   paymentMethod   PaymentMethod
   subtotal        Decimal       @db.Decimal(14, 2)
+  /// Bill-level discount; split across the lines, it lowers their taxable value.
+  discountTotal   Decimal       @default(0) @db.Decimal(14, 2)
+  /// The percentage entered, when the discount was given as one.
+  discountPercent Decimal?      @db.Decimal(5, 2)
   taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
   amountPaid      Decimal?      @db.Decimal(14, 2)
   dueDate         DateTime?     @db.Date
@@ -379,6 +383,8 @@ model SaleItem {
   gstRate      Decimal @default(0) @db.Decimal(5, 2)
   taxAmount    Decimal @default(0) @db.Decimal(14, 2)
   lineTotal    Decimal  @db.Decimal(14, 2)
+  /// This line's share of the bill discount; GST is charged on lineTotal minus it.
+  discountAmount Decimal @default(0) @db.Decimal(14, 2)
   /// The product's HSN code when the sale was made.
   hsnCode      String?
   createdAt    DateTime @default(now())

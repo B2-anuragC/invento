@@ -1,5 +1,5 @@
 import { FilesService } from '../files/files.service.js';
-import { invoiceTaxContext, sellingUnitConversion } from '@invento/shared';
+import { discountAmountFor, discountError, invoiceTaxContext, sellingUnitConversion, splitDiscount } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
@@ -19,6 +19,8 @@ type SaleItemInput = {
 
 type CreateSaleInput = {
   expectedTotal?: string;
+  discountAmount?: string;
+  discountPercent?: string;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
@@ -79,7 +81,7 @@ export class SalesService {
       if (sellingPrice.lessThanOrEqualTo(0)) throw new BadRequestException('Sale item price must be greater than zero.');
 
       const lineTotal = quantity.times(sellingPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, hsnCode: null as string | null, unitsPerOption: new Prisma.Decimal(1), movementUnit: undefined as string | undefined, movementQuantity: undefined as Prisma.Decimal | undefined, gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
+      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, hsnCode: null as string | null, discountAmount: new Prisma.Decimal(0), unitsPerOption: new Prisma.Decimal(1), movementUnit: undefined as string | undefined, movementQuantity: undefined as Prisma.Decimal | undefined, gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
     });
 
     const products = await this.prisma.product.findMany({ where: { businessId, id: { in: lines.map((line) => line.productId) } } });
@@ -109,10 +111,17 @@ export class SalesService {
       if (line.unit === 'PIECE' && !line.quantity.times(line.unitsPerOption).isInteger()) throw new BadRequestException(`${product.name} must be sold in whole pieces.`);
     }
 
-    for (const line of lines) Object.assign(line, taxFor(line.lineTotal, productsById.get(line.productId)!.gstRate));
+    // A discount given at the time of sale lowers the taxable value: it is split
+    // across the lines and each line's GST is charged on what is left.
     const subtotal = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
+    const invalidDiscount = discountError(subtotal.toFixed(2), input);
+    if (invalidDiscount) throw new BadRequestException(invalidDiscount);
+    const discountTotal = new Prisma.Decimal(discountAmountFor(subtotal.toFixed(2), input));
+    const shares = splitDiscount(lines.map((line) => line.lineTotal.toFixed(2)), discountTotal.toFixed(2));
+    lines.forEach((line, index) => { line.discountAmount = new Prisma.Decimal(shares[index]); });
+    for (const line of lines) Object.assign(line, taxFor(line.lineTotal.minus(line.discountAmount), productsById.get(line.productId)!.gstRate));
     const taxTotal = lines.reduce((sum, line) => sum.plus(line.taxAmount), new Prisma.Decimal(0));
-    const total = lines.reduce((sum, line) => sum.plus(line.lineTotal).plus(line.taxAmount), new Prisma.Decimal(0));
+    const total = subtotal.minus(discountTotal).plus(taxTotal);
     if (input.expectedTotal !== undefined && (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) || !total.equals(input.expectedTotal))) throw new ConflictException('Item rates changed the bill total. Review this pending transaction before syncing.');
     if (total.greaterThan('999999999999.99')) throw new BadRequestException('Sale total exceeds the supported range.');
     const saleDate = new Date(input.saleDate);
@@ -130,7 +139,7 @@ export class SalesService {
           invoiceNumber: input.invoiceNumber,
           saleDate,
           paymentMethod: input.paymentMethod,
-          total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
+          total, subtotal, discountTotal, discountPercent: input.discountPercent ? new Prisma.Decimal(input.discountPercent) : null, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
           referenceImage,
           ...invoiceDetails,
@@ -155,7 +164,7 @@ export class SalesService {
           tx,
         );
         await tx.saleItem.create({
-          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, gstRate: line.gstRate, taxAmount: line.taxAmount, hsnCode: line.hsnCode },
+          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, discountAmount: line.discountAmount, gstRate: line.gstRate, taxAmount: line.taxAmount, hsnCode: line.hsnCode },
         });
       }
 
@@ -189,7 +198,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }

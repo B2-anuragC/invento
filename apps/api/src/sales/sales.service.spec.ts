@@ -12,7 +12,7 @@ function createFakeEnvironment(
     isActive?: boolean;
     customer?: { id: string; businessId: string; status: string; gstin?: string | null } | null;
     shop?: { gstin: string | null; stateCode: string | null };
-    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number; hsnCode?: string | null }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number; hsnCode?: string | null; gstRate?: string }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -424,6 +424,50 @@ describe('SalesService', () => {
       const { service } = createFakeEnvironment({ shop: { gstin: null, stateCode: '29' } });
       const sale = await service.create('user-a', 'business-a', taxed);
       expect(sale).toMatchObject({ sellerGstin: null, sellerStateCode: '29', placeOfSupply: '29', taxType: 'UNREGISTERED' });
+    });
+  });
+
+  describe('bill discount', () => {
+    const products = [
+      { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Glass', unit: 'KG', hsnCode: null, gstRate: '18' },
+      { id: 'product-b', businessId: 'business-a', status: 'ACTIVE', name: 'Putty', unit: 'KG', hsnCode: null, gstRate: '5' },
+    ];
+    const items = [{ productId: 'product-a', quantity: '1.000', sellingPrice: '1000.00' }, { productId: 'product-b', quantity: '1.000', sellingPrice: '200.00' }];
+    const environment = () => createFakeEnvironment({ products, openingStock: { 'product-a': '10', 'product-b': '10' } });
+    const line = (store: { saleItems: unknown[] }, productId: string) => {
+      const item = store.saleItems.find((entry) => (entry as { productId: string }).productId === productId) as { discountAmount: Prisma.Decimal; taxAmount: Prisma.Decimal };
+      return [item.discountAmount.toString(), item.taxAmount.toString()];
+    };
+
+    it('splits a percentage across the lines and charges GST on the discounted amounts', async () => {
+      const { service, store } = environment();
+      const sale = await service.create('user-a', 'business-a', { ...saleInput, items, discountPercent: '10' });
+      // 10% of 1200 is 120: 100 off the 18% line (GST 162) and 20 off the 5% line (GST 9).
+      expect([sale.subtotal, sale.discountTotal, sale.discountPercent, sale.taxTotal, sale.total].map(String)).toEqual(['1200', '120', '10', '171', '1251']);
+      expect(line(store, 'product-a')).toEqual(['100', '162']);
+      expect(line(store, 'product-b')).toEqual(['20', '9']);
+    });
+
+    it('gives an odd paisa of an amount discount to the line with the largest remainder', async () => {
+      const { service, store } = environment();
+      const sale = await service.create('user-a', 'business-a', { ...saleInput, items, discountAmount: '0.01' });
+      expect([sale.discountTotal, sale.discountPercent, sale.taxTotal, sale.total].map(String)).toEqual(['0.01', 'null', '190', '1389.99']);
+      expect(line(store, 'product-a')).toEqual(['0.01', '180']);
+      expect(line(store, 'product-b')).toEqual(['0', '10']);
+    });
+
+    it('rejects a discount above the subtotal or given both ways, without a sale or stock change', async () => {
+      const { service, store } = environment();
+      await expect(service.create('user-a', 'business-a', { ...saleInput, items, discountAmount: '1200.01' })).rejects.toThrow('up to the bill subtotal');
+      await expect(service.create('user-a', 'business-a', { ...saleInput, items, discountAmount: '10', discountPercent: '5' })).rejects.toThrow('not both');
+      expect(store.sales).toEqual({});
+      expect(store.inventory['product-a'].quantity.toString()).toBe('10');
+    });
+
+    it('confirms a queued bill against the discounted total', async () => {
+      const { service } = environment();
+      await expect(service.create('user-a', 'business-a', { ...saleInput, items, discountPercent: '10', expectedTotal: '1371.00' })).rejects.toBeInstanceOf(ConflictException);
+      expect(String((await service.create('user-a', 'business-a', { ...saleInput, items, discountPercent: '10', expectedTotal: '1251.00' })).total)).toBe('1251');
     });
   });
 

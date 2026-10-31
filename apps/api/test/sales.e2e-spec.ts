@@ -665,6 +665,35 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(snapshot.products.find((product: any) => product.id === products[0]).hsnCode).toBeNull();
   });
 
+  it('applies a bill discount before GST and reports revenue net of it', async () => {
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    await api('patch', `/products/${products[1]}`).send({ gstRate: '5' }).expect(200);
+    const now = new Date().toISOString();
+    const today = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+    const items = [{ productId: products[0], quantity: '20', sellingPrice: '50.00' }, { productId: products[1], quantity: '4', sellingPrice: '50.00' }];
+
+    // 10% of 1200 is 120: 100 off the 18% line and 20 off the 5% line.
+    const sale = (await api('post', '/sales').send({ ...input(), saleDate: now, items, discountPercent: '10' }).expect(201)).body.data;
+    expect(sale).toMatchObject({ subtotal: '1200', discountTotal: '120', discountPercent: '10', taxTotal: '171', total: '1251' });
+    expect(sale.items.find((item: any) => item.productId === products[0])).toMatchObject({ lineTotal: '1000', discountAmount: '100', taxAmount: '162' });
+    expect(sale.items.find((item: any) => item.productId === products[1])).toMatchObject({ lineTotal: '200', discountAmount: '20', taxAmount: '9' });
+    expect((await api('get', '/sales').expect(200)).body.data[0]).toMatchObject({ discountTotal: '120', discountPercent: '10' });
+
+    // Over the subtotal, over 100% and both ways are refused; a malformed value fails validation.
+    await api('post', '/sales').send({ ...input(), items, discountAmount: '1200.01' }).expect(400);
+    await api('post', '/sales').send({ ...input(), items, discountPercent: '101' }).expect(400);
+    await api('post', '/sales').send({ ...input(), items, discountAmount: '10', discountPercent: '5' }).expect(400);
+    await api('post', '/sales').send({ ...input(), items, discountPercent: '5.555' }).expect(422);
+
+    // A queued bill is confirmed against the discounted total.
+    await api('post', '/sales').send({ ...input(), items, discountAmount: '0.01', expectedTotal: '1389.99', requestId: randomUUID() }).expect(201);
+
+    const range = `from=${today}&to=${today}`;
+    const top = (await api('get', `/dashboard/top-products?${range}`).expect(200)).body.data.items;
+    expect(top.find((row: any) => row.productId === products[0]).revenue).toBe('900');
+    expect(top.find((row: any) => row.productId === products[1]).revenue).toBe('180');
+  });
+
   it('sells a pack and loose pieces of one product on separate lines', async () => {
     const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
       { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },

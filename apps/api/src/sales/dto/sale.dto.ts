@@ -1,4 +1,5 @@
 import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
+import { DISCOUNT_AMOUNT_RULE_MESSAGE, DISCOUNT_PERCENT_RULE_MESSAGE } from '@invento/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { PaymentMethod } from '@prisma/client';
@@ -22,6 +23,8 @@ export class CreateSaleDto extends TransactionFinanceDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;
   @ApiProperty({ example: '2026-01-15' }) @IsDateString({ strict: true }) saleDate!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(500) note?: string;
+  @ApiPropertyOptional({ description: 'Bill discount in rupees, up to the subtotal. It lowers the taxable value and is split across the lines.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @Matches(/^\d{1,12}(?:\.\d{1,2})?$/, { message: DISCOUNT_AMOUNT_RULE_MESSAGE }) discountAmount?: string;
+  @ApiPropertyOptional({ description: 'Bill discount as a percentage of the subtotal; send discountAmount or this, not both.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @Matches(/^\d{1,3}(?:\.\d{1,2})?$/, { message: DISCOUNT_PERCENT_RULE_MESSAGE }) discountPercent?: string;
   @ApiProperty({ type: [SaleItemDto] })
   @IsArray()
   @ArrayMinSize(1)

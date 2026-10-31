@@ -64,6 +64,10 @@ describe('gstRateSummary', () => {
     ]);
     expect(gstRateSummary(lines, 'INTER_STATE')[1]).toEqual({ rate: 18, taxableValue: 1980, cgst: 0, sgst: 0, igst: 356.4 });
   });
+
+  it('reports taxable value net of each line discount', () => {
+    expect(gstRateSummary([{ gstRate: '18', lineTotal: '1000.00', discountAmount: '100.00', taxAmount: '162.00' }], 'INTRA_STATE')).toEqual([{ rate: 18, taxableValue: 900, cgst: 81, sgst: 81, igst: 0 }]);
+  });
 });
 
 describe('helpers', () => {
