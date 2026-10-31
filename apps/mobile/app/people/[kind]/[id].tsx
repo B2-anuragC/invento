@@ -25,6 +25,7 @@ import {
   type SaleRecord,
   type SupplierRecord,
 } from '@/services/api';
+import { phoneError } from '@/services/contact-validation';
 
 type Contact = CustomerRecord | SupplierRecord;
 
@@ -94,6 +95,8 @@ export default function ContactDetailsScreen() {
   const saveContact = async () => {
     const session = appSession.current;
     if (!session || !contact || !form.name.trim() || saving || photoBusy) return;
+    const invalidPhone = phoneError(form.phone);
+    if (invalidPhone) { setError(invalidPhone); return; }
     setSaving(true);
     setError('');
     try {

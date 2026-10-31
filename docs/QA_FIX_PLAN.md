@@ -14,8 +14,8 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | # | Change | Status |
 |---|---|---|
 | 1 | Refreshing or opening a deep link no longer redirects to Overview | Done |
-| 2 | Phone numbers validated (shared rule, API DTOs, mobile and admin forms) | |
-| 3 | Enter submits login/register; form errors shown next to the button and scrolled into view | |
+| 2 | Phone numbers validated (shared rule, API DTOs, mobile and admin forms) | Done |
+| 3 | Enter submits login/register; browser autofill enables Sign in; form errors shown next to the button and scrolled into view | |
 | 4 | Correct singular/plural labels; one money and date formatter across mobile | |
 | 5 | Receipt lists every payment method used | |
 | 6 | Access screen stops re-rendering mid-task during the 15-second permission refresh | |

@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString, IsStrongPassword, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsPhone } from '../../common/validators/is-phone.js';
 
 export class RegisterDto {
   @ApiProperty() @IsString() @MinLength(2) @Matches(/\S/) @MaxLength(100) name!: string;
   @ApiProperty() @IsEmail() email!: string;
   @ApiProperty({ minLength: 8 }) @IsStrongPassword({ minLength: 8 }) password!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @IsPhone() @MaxLength(30) phone?: string;
 }
 
 export class LoginDto {
@@ -19,5 +20,5 @@ export class RefreshDto {
 
 export class UpdateProfileDto {
   @ApiProperty() @IsString() @MinLength(2) @Matches(/\S/) @MaxLength(100) name!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @IsPhone() @MaxLength(30) phone?: string;
 }

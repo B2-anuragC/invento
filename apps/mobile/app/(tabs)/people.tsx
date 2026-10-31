@@ -18,6 +18,7 @@ import {
   type CustomerRecord,
   type SupplierRecord,
 } from '@/services/api';
+import { phoneError } from '@/services/contact-validation';
 
 type PersonFilter = 'All' | 'Customers' | 'Suppliers';
 type ContactKind = 'customer' | 'supplier';
@@ -76,6 +77,8 @@ export default function PeopleDirectoryScreen() {
   const saveContact = async () => {
     const session = appSession.current;
     if (!session || !contact.name.trim() || saving || photoBusy) return;
+    const invalidPhone = phoneError(contact.phone);
+    if (invalidPhone) { setError(invalidPhone); return; }
     setSaving(true);
     setError('');
     try {

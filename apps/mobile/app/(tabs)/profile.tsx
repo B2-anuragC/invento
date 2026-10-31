@@ -6,6 +6,7 @@ import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 
 import { ActionButton, AppScreen, ListCard } from '@/components/invento-ui';
 import { appSession, logoutSession, persistSession, updateProfile } from '@/services/api';
+import { phoneError as validatePhone } from '@/services/contact-validation';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -54,6 +55,12 @@ export default function ProfileScreen() {
     }
     if (cleanName.length < 2) {
       setNameError('Name must contain at least 2 characters.');
+      setSubmitError('');
+      return;
+    }
+    const invalidPhone = validatePhone(phone);
+    if (invalidPhone) {
+      setPhoneError(invalidPhone);
       setSubmitError('');
       return;
     }

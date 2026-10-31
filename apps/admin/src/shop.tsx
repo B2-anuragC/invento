@@ -1,6 +1,11 @@
 import { SaleCreator } from "./sale-creator";
 import { type SaleProduct } from "./sale-model";
-import { type EffectiveAccess, type Permission } from "@invento/shared";
+import {
+  isValidPhone,
+  PHONE_RULE_MESSAGE,
+  type EffectiveAccess,
+  type Permission,
+} from "@invento/shared";
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
 import { api, type PanelAccess } from "./api";
@@ -30,7 +35,7 @@ const field = (key: string, required = false, options?: string[]): Field => ({
 const personFields = [
   field("name", true),
   field("contactName"),
-  field("phone"),
+  { key: "phone", type: "tel" },
   { key: "email", type: "email" },
   field("address"),
 ];
@@ -107,6 +112,16 @@ function Editor({
             ([key, value]) => value !== "" || initial[key] != null,
           ),
         );
+        const invalidPhone = fields.find(
+          (f) =>
+            f.type === "tel" &&
+            String(values[f.key] ?? "").trim() !== "" &&
+            !isValidPhone(String(values[f.key])),
+        );
+        if (invalidPhone) {
+          setError(PHONE_RULE_MESSAGE);
+          return;
+        }
         setBusy(true);
         setError("");
         try {
@@ -663,7 +678,7 @@ function ShopSection({
             fields={[
               field("name", true),
               { key: "email", type: "email" },
-              field("phone"),
+              { key: "phone", type: "tel" },
               field("address"),
             ]}
             initial={result.data}

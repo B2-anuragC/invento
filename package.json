@@ -36,7 +36,7 @@
     "build:api": "npm --workspace @invento/api run build",
     "build:mobile": "npm --workspace @invento/mobile run build",
     "build:admin": "npm --workspace @invento/admin run build",
-    "test": "npm run build:shared && npm run test:api && npm run test:mobile && npm run typecheck:admin && npm run lint:mobile",
+    "test": "npm run build:shared && npm run test:shared && npm run test:api && npm run test:mobile && npm run test:admin && npm run typecheck:admin && npm run lint:mobile",
     "test:api": "npm --workspace @invento/api test",
     "test:mobile": "npm --workspace @invento/mobile test",
     "typecheck": "npm run typecheck:api && npm run typecheck:mobile && npm run typecheck:admin",
@@ -58,7 +58,9 @@
     "test:frontend": "npm run test:mobile && npm run lint:mobile",
     "run:backend": "npm run dev:api",
     "run:frontend": "npm run dev:mobile",
-    "run": "npm run dev"
+    "run": "npm run dev",
+    "test:shared": "npm --workspace @invento/shared test",
+    "test:admin": "npm --workspace @invento/admin test"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -18,6 +18,12 @@
     "fallbackPolling": "dynamicPriority",
     "synchronousWatchDirectory": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/**/*.spec.ts"
+  ]
 }
