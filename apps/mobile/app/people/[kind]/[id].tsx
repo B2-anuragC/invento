@@ -27,8 +27,9 @@ import {
 } from '@/services/api';
 import { phoneError } from '@/services/contact-validation';
 import { FormError } from '@/components/form-error';
-import { formatDate, formatMoney } from '@/services/format';
+import { formatDate, formatMoney, plural } from '@/services/format';
 import { paymentMethodsSummary } from '@/services/payment-methods';
+import { transactionTitle } from '@/services/transaction-labels';
 
 type Contact = CustomerRecord | SupplierRecord;
 
@@ -203,7 +204,7 @@ export default function ContactDetailsScreen() {
           {!sales.length ? <Text style={styles.empty}>No transactions linked to this customer yet.</Text> : null}
           {[...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime()).map((sale) => (
             <View key={sale.id} style={customerStyles.card}>
-              <View style={customerStyles.between}><Text style={customerStyles.name}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={customerStyles.badge}>Saved</Text></View>
+              <View style={customerStyles.between}><Text style={customerStyles.name}>{transactionTitle('sale', sale)}</Text><Text style={customerStyles.badge}>Saved</Text></View>
               <Text style={customerStyles.meta}>Sale · {formatDate(sale.saleDate)} · {sale.items.length} items</Text>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Payment method</Text><Text style={customerStyles.name}>{paymentMethodsSummary(sale.payments, sale.paymentMethod)}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Invoice total</Text><Text style={customerStyles.link}>{formatMoney(Number(sale.total))}</Text></View>
@@ -264,8 +265,8 @@ export default function ContactDetailsScreen() {
           {!purchases.length ? <Text style={styles.empty}>No transactions linked to this supplier yet.</Text> : null}
           {[...purchases].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map((purchase) => (
             <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel={`View purchase ${purchase.invoiceNumber || purchase.id}`} onPress={() => router.push(`/purchase/${purchase.id}`)} style={customerStyles.card}>
-              <View style={customerStyles.between}><Text style={customerStyles.name}>{purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}</Text><Text style={customerStyles.badge}>Saved</Text></View>
-              <Text style={customerStyles.meta}>Purchase · {formatDate(purchase.purchaseDate)} · {purchase.items.length} items</Text>
+              <View style={customerStyles.between}><Text style={customerStyles.name}>{transactionTitle('purchase', purchase)}</Text><Text style={customerStyles.badge}>Saved</Text></View>
+              <Text style={customerStyles.meta}>Purchase · {formatDate(purchase.purchaseDate)} · {plural(purchase.items.length, 'item')}</Text>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Supplier invoice</Text><Text style={customerStyles.name}>{purchase.invoiceNumber || 'Not provided'}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>Purchase total</Text><Text style={customerStyles.link}>{purchase.total == null ? 'Restricted price' : formatMoney(Number(purchase.total))}</Text></View>
               <View style={customerStyles.between}><Text style={customerStyles.meta}>To pay</Text><Text style={customerStyles.link}>{paymentBalance(purchase) == null ? 'Not confirmed' : formatMoney(paymentBalance(purchase)!)}</Text></View>{purchase.dueDate ? <Text style={[customerStyles.meta, isOverdue(purchase) && { color: '#A74737' }]}>Due {purchase.dueDate.slice(0, 10)} · {isOverdue(purchase) ? 'Overdue' : 'Not overdue'}</Text> : null}
@@ -370,7 +371,7 @@ export default function ContactDetailsScreen() {
             {contactKind === 'customers' ? sales.map((sale) => (
               <Pressable key={sale.id} accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
-                  <Text style={styles.historyTitle}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text>
+                  <Text style={styles.historyTitle}>{transactionTitle('sale', sale)}</Text>
                   <Text style={styles.historyMeta}>{formatDate(sale.saleDate)} · {sale.items.length} items</Text>
                 </View>
                 <Text style={styles.historyAmount}>{formatMoney(Number(sale.total))} ›</Text>
@@ -378,7 +379,7 @@ export default function ContactDetailsScreen() {
             )) : purchases.map((purchase) => (
               <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel="View purchase details" onPress={() => router.push(`/purchase/${purchase.id}`)} style={styles.historyCard}>
                 <View style={styles.historyCopy}>
-                  <Text style={styles.historyTitle}>{purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}</Text>
+                  <Text style={styles.historyTitle}>{transactionTitle('purchase', purchase)}</Text>
                   <Text style={styles.historyMeta}>{formatDate(purchase.purchaseDate)} · {purchase.items.length} items</Text>
                 </View>
                 <Text style={styles.purchaseAmount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))} ›</Text>

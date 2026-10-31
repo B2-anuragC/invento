@@ -9,6 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
+import { transactionTitle } from '@/services/transaction-labels';
 
 
 export default function SalesScreen() {
@@ -96,7 +97,7 @@ export default function SalesScreen() {
             filteredRecords.map((sale) => (
               <View key={sale.id} style={styles.row}>
                 <View style={styles.saleDetails}>
-                  <Pressable accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)}><Text style={styles.saleId}>{sale.invoiceNumber || `Sale ${sale.id.slice(-8).toUpperCase()}`}</Text><Text style={styles.repeatText}>View details ›</Text></Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel="View sale details" onPress={() => router.push(`/sale/${sale.id}`)}><Text style={styles.saleId}>{transactionTitle('sale', sale)}</Text><Text style={styles.repeatText}>View details ›</Text></Pressable>
                   <Text style={styles.customer}>{sale.customer?.name ?? 'Customer'}</Text>
                   {sale.syncState ? <Text style={styles.repeatText}>{sale.syncState === 'conflict' ? 'Needs attention · Saved on device' : 'Pending sync · Saved on device'}</Text> : null}
                   {(paymentBalance(sale) ?? 0) > 0 ? <Text style={styles.pendingLabel}>To collect {formatMoney(paymentBalance(sale)!)}{isOverdue(sale) ? ' · Overdue' : ''}{sale.syncState ? ' · Pending confirmation' : ''}</Text> : null}

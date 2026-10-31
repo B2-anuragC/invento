@@ -71,7 +71,7 @@ it("starts a fresh local business without a login, server or network and persist
     { role: 'OWNER', business: { name: "My shop" } },
   ]);
 });
-it("records local sales and purchases once, updates stock, assigns a device invoice, and records later payments", async () => {
+it("records local sales and purchases once, updates stock, numbers them per financial year, and records later payments", async () => {
   await setup();
   const input = {
     requestId: "local_sale_request",
@@ -84,15 +84,17 @@ it("records local sales and purchases once, updates stock, assigns a device invo
   };
   const sale = await send<any>("/sales", input);
   await send("/sales", input);
-  expect(sale.invoiceNumber).toBe("LOCAL-000001");
+  expect(sale).toMatchObject({ documentNumber: "INV/2026-27/0001", financialYear: "2026-27", documentSeq: 1 });
+  expect(sale.invoiceNumber).toBeNull();
   expect(sale.syncState).toBeUndefined();
-  await send("/purchases", {
+  const purchase = await send<any>("/purchases", {
     requestId: "local_purchase_request",
     supplierId: "supplier",
     purchaseDate: input.saleDate,
     amountPaid: "0",
     items: [{ productId: "product", quantity: "4", purchasePrice: "5.00" }],
   });
+  expect(purchase.documentNumber).toBe("PUR/2026-27/0001");
   const payment = { requestId: "payment_1", amount: "13.60", method: "UPI" };
   await send(`/sales/${sale.id}/payments`, payment);
   await send(`/sales/${sale.id}/payments`, payment);
@@ -101,6 +103,22 @@ it("records local sales and purchases once, updates stock, assigns a device invo
   expect(view.sales[0].amountPaid).toBe(23.6);
   expect(view.sales[0].payments).toHaveLength(1);
   expect(view.inventory[0].quantity).toBe(12);
+});
+it("numbers device bills consecutively, by financial year, and keeps counting after a restart", async () => {
+  await setup();
+  const sale = (requestId: string, saleDate: string) => send<any>("/sales", {
+    requestId, customerId: "customer", saleDate, paymentMethod: "CASH", amountPaid: "0",
+    items: [{ productId: "product", quantity: "1", sellingPrice: "10" }],
+  });
+  expect((await sale("local_request_a", "2026-10-16T10:00:00Z")).documentNumber).toBe("INV/2026-27/0001");
+  expect((await sale("local_request_b", "2026-03-31T18:29:00Z")).documentNumber).toBe("INV/2025-26/0001");
+  vi.resetModules();
+  api = await import("./local-api");
+  expect((await sale("local_request_c", "2026-10-17T10:00:00Z")).documentNumber).toBe("INV/2026-27/0002");
+  fault.write = true;
+  await expect(sale("local_request_d", "2026-10-17T10:00:00Z")).rejects.toThrow("Storage full");
+  fault.write = false;
+  expect((await sale("local_request_e", "2026-10-17T10:00:00Z")).documentNumber).toBe("INV/2026-27/0003");
 });
 it("does not store a local transaction or stock movement when durable storage fails", async () => {
   await setup();

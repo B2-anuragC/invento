@@ -8,6 +8,7 @@ import { ActionButton, AppScreen, ListCard, formatUnitLabel } from '@/components
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { appSession, fetchPricingAccess, fetchProduct, fetchPurchase, type PurchaseRecord } from '@/services/api';
 import { formatDateTime, formatMoney as money } from '@/services/format';
+import { transactionTitle } from '@/services/transaction-labels';
 
 
 export default function PurchaseDetailsScreen() {
@@ -48,13 +49,13 @@ export default function PurchaseDetailsScreen() {
   }, [id, retry]));
 
     if (!loading && !error && purchase) {
-    return <><TransactionReceipt data={{ syncState: purchase.syncState, syncError: purchase.syncError, attachment: purchase.attachment, id: purchase.id, kind: 'purchase', date: purchase.purchaseDate, invoice: purchase.invoiceNumber, contact: purchase.supplier.name, total: purchase.total, subtotal: purchase.subtotal, taxTotal: purchase.taxTotal, amountPaid: purchase.amountPaid, dueDate: purchase.dueDate, payments: purchase.payments, note: purchase.note, items: purchase.items.map((item) => ({ id: item.id, name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: formatUnitLabel(item.product?.unit ?? 'PIECE'), unit: item.product?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/purchase/create')} onPayment={!purchase.syncState && canRecordPayment && purchase.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && purchase.total != null ? <RecordPaymentModal kind="purchase" id={purchase.id} total={purchase.total} amountPaid={purchase.amountPaid} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
+    return <><TransactionReceipt data={{ syncState: purchase.syncState, syncError: purchase.syncError, attachment: purchase.attachment, id: purchase.id, kind: 'purchase', date: purchase.purchaseDate, invoice: purchase.invoiceNumber, documentNumber: purchase.documentNumber, contact: purchase.supplier.name, total: purchase.total, subtotal: purchase.subtotal, taxTotal: purchase.taxTotal, amountPaid: purchase.amountPaid, dueDate: purchase.dueDate, payments: purchase.payments, note: purchase.note, items: purchase.items.map((item) => ({ id: item.id, name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: formatUnitLabel(item.product?.unit ?? 'PIECE'), unit: item.product?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/purchase/create')} onPayment={!purchase.syncState && canRecordPayment && purchase.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && purchase.total != null ? <RecordPaymentModal kind="purchase" id={purchase.id} total={purchase.total} amountPaid={purchase.amountPaid} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
   }
 
   return (
     <AppScreen>
       <ScrollView contentContainerStyle={screenStyles.content}>
-        <ScreenHeading title="Purchase details" subtitle={purchase?.invoiceNumber || (purchase ? `Purchase ${purchase.id.slice(-8).toUpperCase()}` : 'Invoice and items sold')} />
+        <ScreenHeading title="Purchase details" subtitle={purchase ? transactionTitle('purchase', purchase) : 'Purchase and items received'} />
         {loading ? <ActivityIndicator color="#176B50" /> : error ? (
           <View style={styles.section}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><ActionButton title="Try again" onPress={() => setRetry((value) => value + 1)} /></View>
         ) : purchase ? (

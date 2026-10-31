@@ -150,6 +150,9 @@ export type SaleRecord = {
   payments?: PaymentRecord[];
   id: string;
   invoiceNumber?: string | null;
+  documentNumber?: string | null;
+  financialYear?: string | null;
+  documentSeq?: number | null;
   saleDate: string;
   total: string | number;
   paymentMethod: string;
@@ -199,6 +202,9 @@ export type PurchaseRecord = {
   payments?: PaymentRecord[];
   id: string;
   invoiceNumber?: string | null;
+  documentNumber?: string | null;
+  financialYear?: string | null;
+  documentSeq?: number | null;
   purchaseDate: string;
   note?: string | null;
   total?: string | number;

@@ -9,6 +9,7 @@ import { ScreenHeading, screenStyles } from '@/components/screen-heading';
 import { appSession, fetchPricingAccess, fetchProduct, fetchSale, type SaleRecord } from '@/services/api';
 import { formatDateTime, formatMoney as money } from '@/services/format';
 import { paymentMethodsSummary } from '@/services/payment-methods';
+import { transactionTitle } from '@/services/transaction-labels';
 
 
 export default function SaleDetailsScreen() {
@@ -49,13 +50,13 @@ export default function SaleDetailsScreen() {
   }, [id, retry]));
 
     if (!loading && !error && sale) {
-    return <><TransactionReceipt data={{ syncState: sale.syncState, syncError: sale.syncError, referenceImage: sale.referenceImage, id: sale.id, kind: 'sale', date: sale.saleDate, invoice: sale.invoiceNumber, contact: sale.customer.name, contactPhone: sale.customer.phone, total: sale.total, subtotal: sale.subtotal, taxTotal: sale.taxTotal, amountPaid: sale.amountPaid, dueDate: sale.dueDate, payments: sale.payments, paymentMethod: sale.paymentMethod, note: sale.note, items: sale.items.map((item) => ({ id: item.id, name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: item.optionName ?? formatUnitLabel(item.unit ?? item.product?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? item.product?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/sale/quick')} onRepeat={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} onPayment={!sale.syncState && canRecordPayment && sale.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && sale.total != null ? <RecordPaymentModal kind="sale" id={sale.id} total={sale.total} amountPaid={sale.amountPaid} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
+    return <><TransactionReceipt data={{ syncState: sale.syncState, syncError: sale.syncError, referenceImage: sale.referenceImage, id: sale.id, kind: 'sale', date: sale.saleDate, invoice: sale.invoiceNumber, documentNumber: sale.documentNumber, contact: sale.customer.name, contactPhone: sale.customer.phone, total: sale.total, subtotal: sale.subtotal, taxTotal: sale.taxTotal, amountPaid: sale.amountPaid, dueDate: sale.dueDate, payments: sale.payments, paymentMethod: sale.paymentMethod, note: sale.note, items: sale.items.map((item) => ({ id: item.id, name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: item.optionName ?? formatUnitLabel(item.unit ?? item.product?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? item.product?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/sale/quick')} onRepeat={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} onPayment={!sale.syncState && canRecordPayment && sale.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && sale.total != null ? <RecordPaymentModal kind="sale" id={sale.id} total={sale.total} amountPaid={sale.amountPaid} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
   }
 
   return (
     <AppScreen>
       <ScrollView contentContainerStyle={screenStyles.content}>
-        <ScreenHeading title="Sale details" subtitle={sale?.invoiceNumber || (sale ? `Sale ${sale.id.slice(-8).toUpperCase()}` : 'Invoice and items sold')} />
+        <ScreenHeading title="Sale details" subtitle={sale ? transactionTitle('sale', sale) : 'Invoice and items sold'} />
         {loading ? <ActivityIndicator color="#176B50" /> : error ? (
           <View style={styles.section}><Text accessibilityRole="alert" style={styles.error}>{error}</Text><ActionButton title="Try again" onPress={() => setRetry((value) => value + 1)} /></View>
         ) : sale ? (

@@ -423,7 +423,7 @@ export default function QuickBillScreen() {
         id: saved.id,
         kind: "sale",
         date: saved.saleDate,
-        invoice: saved.invoiceNumber,
+        invoice: saved.invoiceNumber, documentNumber: saved.documentNumber,
         contact: saved.customer.name,
         contactPhone: saved.customer.phone,
         total: saved.total,

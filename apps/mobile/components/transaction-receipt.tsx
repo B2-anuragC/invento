@@ -6,6 +6,7 @@ import type { PaymentRecord, FileAttachment } from '@/services/api';
 import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
+import { receiptIdentity } from '@/services/transaction-labels';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
 import { appSession, fetchSale, fetchPurchase } from '@/services/api';
@@ -20,7 +21,7 @@ export type ReceiptData = {
   referenceImage?: string | null;
   attachment?: FileAttachment | null;
   contactPhone?: string | null;
-  id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
+  id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; documentNumber?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
   subtotal?: string | number; taxTotal?: string | number; amountPaid?: string | number | null; dueDate?: string | null; payments?: PaymentRecord[];
   items: { id: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
 };
@@ -41,13 +42,14 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     const load = initialData.kind === 'sale' ? fetchSale(session, initialData.id) : fetchPurchase(session, initialData.id);
     void load.then((record) => {
       if (!active) return;
-      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...initialData.items[index], id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal })) });
+      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...initialData.items[index], id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal })) });
     }).catch(() => {});
     return () => { active = false; };
   }, [initialData, sync.syncing, sync.pending, sync.conflicts]);
   const [error, setError] = useState('');
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
-  const identifier = data.syncState ? `Device bill · ${data.id.slice(-8).toUpperCase()}` : data.kind === 'sale' ? data.invoice || data.id : data.id;
+  const identity = receiptIdentity(data.kind, { id: data.id, documentNumber: data.documentNumber, invoiceNumber: data.invoice, syncState: data.syncState });
+  const identifier = identity.value;
   const balance = paymentBalance(data);
   const overdue = isOverdue(data);
   const total = data.total == null ? 'Restricted price' : money(Number(data.total));
@@ -75,7 +77,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>{data.syncState === 'conflict' ? 'Needs attention · Saved on device' : data.syncState ? LOCAL_ONLY ? 'Saved on device · Finalizing' : 'Saved on device · Pending sync' : `Saved · ${title} recorded`}</Text><Text style={styles.greenCopy}>{LOCAL_ONLY ? 'This bill and its stock changes are stored only on this device.' : data.syncState ? 'Provisional receipt. Stock is adjusted on this device; the server has not confirmed this transaction.' : 'This is a saved transaction. Inventory has been updated.'}</Text>{data.syncError ? <Text style={styles.error}>{data.syncError}</Text> : null}{data.syncState ? <Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.greenTitle}>View sync status →</Text></Pressable> : null}</View></View>
-      <View style={styles.card}><Text style={styles.caption}>{data.syncState ? 'PROVISIONAL DEVICE REFERENCE' : data.kind === 'sale' ? 'INVOICE / TRANSACTION IDENTIFIER' : 'INTERNAL PURCHASE IDENTIFIER'}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{data.kind === 'purchase' && data.invoice ? <View style={styles.row}><Text style={styles.meta}>Supplier invoice</Text><Text style={styles.bold}>{data.invoice}</Text></View> : null}<Text style={styles.meta}>{formatDate(data.date)} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text></View>
+      <View style={styles.card}><Text style={styles.caption}>{identity.caption}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{identity.note ? <Text style={styles.meta}>{identity.note}</Text> : null}<Text style={styles.meta}>{formatDate(data.date)} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text></View>
       <View style={[styles.card, styles.contact]}><View style={styles.contactIcon}><Ionicons name={data.kind === 'sale' ? 'person-outline' : 'cube-outline'} size={22} color="#176B50" /></View><View style={{ flex: 1 }}><Text style={styles.meta}>{data.kind === 'sale' ? 'Customer' : 'Supplier'}</Text><Text style={styles.bold}>{data.contact}</Text></View></View>
       <Text style={styles.section}>{data.kind === 'sale' ? 'Items' : 'Received items'} · {data.items.length}</Text>
       {data.items.map((item) => (

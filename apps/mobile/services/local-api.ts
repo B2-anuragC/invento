@@ -1,4 +1,4 @@
-import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
+import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, financialYearOf, formatDocumentNumber } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
 import { readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
@@ -12,6 +12,8 @@ type LocalDatabase = {
   businesses: { id: string; name: string; slug: string }[];
   snapshots: Record<string, OfflineSnapshot>;
   operations: Record<string, unknown>;
+  /** Last invoice number per business, series and financial year, saved with each bill. */
+  documentCounters?: Record<string, number>;
 };
 const key = "invento.standalone.v1";
 let writes: Promise<unknown> = Promise.resolve();
@@ -180,15 +182,23 @@ export function localRequest<T>(
               new Error("Item settings changed the total. Review this bill."),
               { status: 409 },
             );
+          // The device numbers its own bills. The counter is written in the same
+          // storage write as the bill, and a retried request returned above.
+          const series = kind === "sale" ? "SALE" : "PURCHASE";
+          const financialYear = financialYearOf(kind === "sale" ? input.saleDate : input.purchaseDate);
+          const counterKey = `${snapshot.business.id}|${series}|${financialYear}`;
+          state.documentCounters ??= {};
+          const documentSeq = (state.documentCounters[counterKey] ?? 0) + 1;
+          state.documentCounters[counterKey] = documentSeq;
+          const prefixes = snapshot.business as { invoicePrefix?: string; purchasePrefix?: string };
+          const prefix = (kind === "sale" ? prefixes.invoicePrefix : prefixes.purchasePrefix) ?? DEFAULT_DOCUMENT_PREFIX[series];
           const record = {
             ...built.record,
             id: randomUUID(),
             syncState: undefined,
-            ...(kind === "sale"
-              ? {
-                  invoiceNumber: `LOCAL-${String(snapshot.sales.length + 1).padStart(6, "0")}`,
-                }
-              : {}),
+            documentNumber: formatDocumentNumber(prefix, financialYear, documentSeq),
+            financialYear,
+            documentSeq,
           };
           if (kind === "sale") snapshot.sales.push(record as SaleRecord);
           else snapshot.purchases.push(record as PurchaseRecord);

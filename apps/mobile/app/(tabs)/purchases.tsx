@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
+import { transactionTitle } from '@/services/transaction-labels';
 
 
 export default function PurchasesScreen() {
@@ -86,7 +87,7 @@ export default function PurchasesScreen() {
               <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel="View purchase details" onPress={() => router.push(`/purchase/${purchase.id}`)} style={styles.row}>
                 <View style={styles.purchaseDetails}>
                   <Text style={styles.poId}>
-                    {purchase.invoiceNumber || `Purchase ${purchase.id.slice(-8).toUpperCase()}`}
+                    {transactionTitle('purchase', purchase)}
                   </Text>
                   <Text style={styles.supplier}>{purchase.supplier?.name ?? 'Supplier'}</Text>
                   <Text style={styles.date}>
