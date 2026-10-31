@@ -1,10 +1,10 @@
-import { useRouter } from 'expo-router';
+import { useIsFocused, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
-import { appSession, fetchBusinesses, loginWithEmail, persistSession, restoreSession, hasOfflineBusiness, syncOffline, type AppSession } from '@/services/api';
+import { appSession, fetchBusinesses, loginWithEmail, persistSession, loadSession, hasOfflineBusiness, syncOffline, type AppSession } from '@/services/api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -13,18 +13,20 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState('');
+  // On web this screen is mounted beneath deep links as the stack's initial route.
+  // It must not navigate away from them, so it only routes once it is shown.
+  const isFocused = useIsFocused();
 
   useEffect(() => {
+    if (!isFocused) return;
     let active = true;
     const restore = async () => {
-      const session = await restoreSession();
+      const session = await loadSession();
       if (!session) {
-        appSession.current = null;
         if (active) setCheckingSession(false);
         return;
       }
 
-      appSession.current = session;
       try {
         if (await hasOfflineBusiness(session)) {
           if (!active) return;
@@ -53,7 +55,7 @@ export default function LoginScreen() {
 
     void restore();
     return () => { active = false; };
-  }, [router]);
+  }, [router, isFocused]);
 
   const handleSignIn = async () => {
     if (loading) return;

@@ -13,7 +13,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 
 | # | Change | Status |
 |---|---|---|
-| 1 | Refreshing or opening a deep link no longer redirects to Overview | |
+| 1 | Refreshing or opening a deep link no longer redirects to Overview | Done |
 | 2 | Phone numbers validated (shared rule, API DTOs, mobile and admin forms) | |
 | 3 | Enter submits login/register; form errors shown next to the button and scrolled into view | |
 | 4 | Correct singular/plural labels; one money and date formatter across mobile | |

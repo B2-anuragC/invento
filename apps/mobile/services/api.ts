@@ -2,6 +2,7 @@ import { type EffectiveAccess, type Permission } from '@invento/shared';
 import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
+import { createSessionLoader } from './session-loader';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -290,6 +291,9 @@ export async function restoreSession(): Promise<AppSession | null> {
     return null;
   }
 }
+
+/** Restores the stored session once per app load; the root layout awaits it before rendering routes. */
+export const loadSession = createSessionLoader(restoreSession, appSession);
 
 export async function clearPersistedSession(): Promise<void> {
   if (Platform.OS === 'web') {

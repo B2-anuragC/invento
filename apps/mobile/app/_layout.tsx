@@ -1,10 +1,13 @@
 import { PermissionsProvider } from '@/services/permissions';
 import { CameraRecoveryNotice } from "@/components/camera-photo";
-import { DefaultTheme, ThemeProvider, Stack } from "expo-router";
+import { DefaultTheme, ThemeProvider, Stack, usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
+import { appSession, loadSession } from "@/services/api";
+import { requiresSignIn } from "@/services/session-loader";
+import { useEffect, useState } from "react";
 import "react-native-reanimated";
 
 export const unstable_settings = {
@@ -12,6 +15,20 @@ export const unstable_settings = {
 };
 
 export default function RootLayout() {
+  // Screens read the session synchronously, so restore it before any route
+  // renders. Without this a refreshed deep link starts signed out.
+  const [sessionReady, setSessionReady] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  useEffect(() => {
+    void loadSession().finally(() => setSessionReady(true));
+  }, []);
+  useEffect(() => {
+    // Opened while signed out: send protected deep links to sign in.
+    if (sessionReady && !appSession.current && requiresSignIn(pathname)) router.replace("/auth/login");
+  }, [sessionReady, pathname, router]);
+  if (!sessionReady) return null;
+
   return (
     <PermissionsProvider><ThemeProvider value={DefaultTheme}>
       {/* The root owns top/side system insets once, including global notices. */}
