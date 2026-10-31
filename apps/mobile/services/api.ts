@@ -147,6 +147,9 @@ export type SaleRecord = {
   syncError?: string;
   referenceImage?: string | null;
   subtotal?: string | number;
+  /** Bill-level discount, split across the lines before GST. */
+  discountTotal?: string | number;
+  discountPercent?: string | number | null;
   taxTotal?: string | number;
   amountPaid?: string | number | null;
   dueDate?: string | null;
@@ -168,11 +171,14 @@ export type SaleRecord = {
   paymentMethod: string;
   note?: string | null;
   customer: { id: string; name: string; phone?: string | null; address?: string | null };
-  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
   expectedTotal?: string;
+  /** One of these, or neither: rupees up to the subtotal, or a percentage. */
+  discountAmount?: string;
+  discountPercent?: string;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;

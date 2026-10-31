@@ -1,4 +1,4 @@
-import { sellingUnitConversion } from "@invento/shared";
+import { discountAmountFor, discountError, sellingUnitConversion, splitDiscount } from "@invento/shared";
 import type {
   CreateSaleInput,
   CreatePurchaseInput,
@@ -212,9 +212,7 @@ export function buildOfflineTransaction(
       scaled(line.quantity, 3) * scaled(price, 2),
       1000n,
     );
-    const tax = rounded(lineTotal * scaled(rate, 2), 10000n);
     subtotal += lineTotal;
-    taxTotal += tax;
     return {
       id: `${id}_${index}`,
       productId: product.id,
@@ -230,12 +228,24 @@ export function buildOfflineTransaction(
           }
         : { purchasePrice: price }),
       gstRate: rate,
-      taxAmount: decimal(tax),
+      taxAmount: "0.00",
       lineTotal: decimal(lineTotal),
       product: { name: product.name, sku: product.sku, unit: product.unit },
     };
   });
-  const total = subtotal + taxTotal;
+  // A sale's discount is split across the lines before GST, as the server does,
+  // so the provisional total matches the one the server confirms.
+  const discount = sale ? { discountAmount: sale.discountAmount, discountPercent: sale.discountPercent } : {};
+  const invalidDiscount = discountError(decimal(subtotal), discount);
+  if (invalidDiscount) throw new Error(invalidDiscount);
+  const discountTotal = discountAmountFor(decimal(subtotal), discount);
+  const shares = splitDiscount(items.map((item) => item.lineTotal), discountTotal);
+  for (const [index, item] of items.entries()) {
+    const tax = rounded((scaled(item.lineTotal, 2) - scaled(shares[index], 2)) * scaled(item.gstRate, 2), 10000n);
+    taxTotal += tax;
+    Object.assign(item, { taxAmount: decimal(tax) }, sale ? { discountAmount: shares[index] } : {});
+  }
+  const total = subtotal - scaled(discountTotal, 2) + taxTotal;
   if (total > 99999999999999n)
     throw new Error("Transaction total exceeds the supported range.");
   if (
@@ -264,6 +274,8 @@ export function buildOfflineTransaction(
           // The same GST details the server copies when this bill syncs.
           ...provisionalSaleGst(view.business, contact as CustomerRecord),
           referenceImage: sale.referenceImage,
+          discountTotal,
+          discountPercent: sale.discountPercent || null,
           customer: contact,
           saleDate: date,
           invoiceNumber: null,

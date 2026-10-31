@@ -456,6 +456,17 @@ describe("Durable offline transactions", () => {
     expect(await api.offlineCommands(session)).toHaveLength(0);
     expect(snapshot.sales).toHaveLength(1); expect(snapshot.inventory[0].quantity).toBe(8);
   });
+  it("splits a sale discount before GST exactly as the server does", () => {
+    snapshot.products.push({ ...snapshot.products[0], id: "putty", sku: "PUTTY", gstRate: "5" } as LocalRecord);
+    snapshot.inventory.push({ productId: "putty", quantity: 10 });
+    const items = [{ productId: "product", quantity: "1", sellingPrice: "1000.00" }, { productId: "putty", quantity: "1", sellingPrice: "200.00" }];
+    const record = buildOfflineTransaction(snapshot, "sale", { ...sale("request_discount"), amountPaid: "0", items, discountPercent: "10" }).record as SaleRecord;
+    // 10% of 1200 is 120: 100 off the 18% line (GST 162) and 20 off the 5% line (GST 9).
+    expect(record).toMatchObject({ subtotal: "1200.00", discountTotal: "120.00", discountPercent: "10", taxTotal: "171.00", total: "1251.00" });
+    expect(record.items.map((item) => [item.discountAmount, item.taxAmount])).toEqual([["100.00", "162.00"], ["20.00", "9.00"]]);
+    expect(() => buildOfflineTransaction(snapshot, "sale", { ...sale("request_discount_2"), amountPaid: "0", items, discountAmount: "1200.01" })).toThrow("up to the bill subtotal");
+    expect(buildOfflineTransaction(snapshot, "purchase", purchase()).record).not.toHaveProperty("discountTotal");
+  });
   it("uses exact half-up cents for fractional quantities and rejects fractional pieces", () => {
     snapshot.products[0] = {
       ...snapshot.products[0],

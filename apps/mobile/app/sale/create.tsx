@@ -1,8 +1,8 @@
 import { ProductThumbnail } from '@/components/product-photo';
 import { SaleReferencePhoto } from '@/components/sale-reference-photo';
-import { sellingUnitConversion } from '@invento/shared';
-import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
-import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
+import { discountError, sellingUnitConversion } from '@invento/shared';
+import { TransactionFinanceFields, type DiscountMode } from '@/components/transaction-finance-fields';
+import { saleDiscountInput, transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
@@ -73,6 +73,8 @@ export default function CreateSaleScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'full' | 'partial' | 'credit'>('full');
+  const [discountMode, setDiscountMode] = useState<DiscountMode>('amount');
+  const [discountValue, setDiscountValue] = useState('');
   const [paidInput, setPaidInput] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saveRequestId, setSaveRequestId] = useState(requestKey);
@@ -200,9 +202,11 @@ export default function CreateSaleScreen() {
     }),
     [prices, products, quantities, sellingUnits, selectedOptions],
   );
-  const { subtotal, tax: taxTotal, total } = transactionTotals(saleItems);
+  const discountInput = saleDiscountInput(discountMode, discountValue);
+  const { subtotal, discount: discountTotal, tax: taxTotal, total } = transactionTotals(saleItems, discountInput);
+  const discountProblem = discountError(subtotal.toFixed(2), discountInput);
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
-  const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
+  const paymentValid = !discountProblem && (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
   const quantityError = (product: ProductRecord, quantity: number) => {
     if (quantity <= 0) return 'Enter a quantity greater than zero.';
     const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
@@ -315,6 +319,7 @@ export default function CreateSaleScreen() {
     try {
       const savedSale = await createSale(session, {
         requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
+        ...discountInput,
         customerId,
         referenceImage,
         paymentMethod,
@@ -332,7 +337,7 @@ export default function CreateSaleScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, gst: saleGstDetails(savedSale), id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, documentNumber: savedSale.documentNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, contactAddress: savedSale.customer.address ?? selectedCustomer?.address, total: savedSale.total, subtotal: savedSale.subtotal, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, hsnCode: item.hsnCode, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, gst: saleGstDetails(savedSale), id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, documentNumber: savedSale.documentNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, contactAddress: savedSale.customer.address ?? selectedCustomer?.address, total: savedSale.total, subtotal: savedSale.subtotal, discountTotal: savedSale.discountTotal, discountPercent: savedSale.discountPercent, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: item.discountAmount, hsnCode: item.hsnCode, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -608,7 +613,7 @@ export default function CreateSaleScreen() {
                 </View>
               ))}
               <SaleReferencePhoto value={referenceImage} onBusy={setPhotoBusy} onChange={(value) => { setReferenceImage(value); clearErrorOnEdit(); }} disabled={saving} />
-              <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
+               <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} discount={{ mode: discountMode, value: discountValue, amount: discountTotal, error: discountProblem, onMode: (value) => { setDiscountMode(value); setDiscountValue(''); }, onValue: setDiscountValue }} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
             </>
           ) : null}
         </ScrollView>
@@ -627,7 +632,7 @@ export default function CreateSaleScreen() {
         </View>
 
         <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setShowAllProducts(false); setProductSearch(''); setCustomerId(''); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setDiscountMode('amount'); setDiscountValue(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setShowAllProducts(false); setProductSearch(''); setCustomerId(''); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}

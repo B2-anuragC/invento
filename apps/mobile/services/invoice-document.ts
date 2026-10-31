@@ -25,13 +25,15 @@ export type InvoiceSource = {
   gst?: SaleGstDetails | null;
   total?: string | number | null;
   subtotal?: string | number;
+  discountTotal?: string | number;
+  discountPercent?: string | number | null;
   taxTotal?: string | number;
   amountPaid?: string | number | null;
   dueDate?: string | null;
   payments?: { method?: string | null; kind?: string | null }[];
   paymentMethod?: string;
   note?: string | null;
-  items: { id: string; name: string; quantity: number; label: string; unit?: string; price?: number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; hsnCode?: string | null }[];
+  items: { id: string; name: string; quantity: number; label: string; unit?: string; price?: number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null }[];
 };
 
 const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -57,6 +59,7 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
   // A role that cannot see purchase prices gets quantities only.
   const restricted = source.total == null || source.items.some((item) => item.price == null);
   const heads = taxType === 'INTRA_STATE' ? ['CGST', 'SGST'] : [taxType === 'INTER_STATE' ? 'IGST' : 'GST'];
+  const discounted = Number(source.discountTotal ?? 0) > 0;
   // Purchases and products without a code have no HSN to show.
   const showHsn = source.items.some((item) => item.hsnCode);
 
@@ -64,19 +67,20 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
     const quantity = item.unit ? formatQuantity(item.quantity, item.unit) : `${item.quantity} ${item.label}`;
     const cells = [`<td class="num">${index + 1}</td>`, `<td>${escapeHtml(item.name)}</td>`, ...(showHsn ? [`<td>${escapeHtml(item.hsnCode ?? '')}</td>`] : []), `<td class="num">${escapeHtml(quantity)}</td>`];
     if (!restricted) {
-      const taxable = Number(item.lineTotal ?? ((item.quantity * (item.price ?? 0)).toFixed(2)));
+      const share = Number(item.discountAmount ?? 0);
+      const taxable = Number(item.lineTotal ?? ((item.quantity * (item.price ?? 0)).toFixed(2))) - share;
       const rate = Number(item.gstRate ?? 0);
       const split = splitLineTax(item.taxAmount ?? 0, 'INTRA_STATE');
       const taxCells = taxType === 'INTRA_STATE'
         ? [`${money(split.cgst)}<span class="rate">${halfRate(rate)}%</span>`, `${money(split.sgst)}<span class="rate">${halfRate(rate)}%</span>`]
         : [`${money(item.taxAmount)}<span class="rate">${rate}%</span>`];
-      cells.push(`<td class="num">${money(item.price)}</td>`, `<td class="num">${money(taxable)}</td>`, ...taxCells.map((cell) => `<td class="num">${cell}</td>`), `<td class="num">${money(taxable + Number(item.taxAmount ?? 0))}</td>`);
+      cells.push(`<td class="num">${money(item.price)}</td>`, ...(discounted ? [`<td class="num">${money(share)}</td>`] : []), `<td class="num">${money(taxable)}</td>`, ...taxCells.map((cell) => `<td class="num">${cell}</td>`), `<td class="num">${money(taxable + Number(item.taxAmount ?? 0))}</td>`);
     }
     return `<tr>${cells.join('')}</tr>`;
   });
-  const itemHead = ['<th class="num">#</th>', '<th>Item</th>', ...(showHsn ? ['<th>HSN</th>'] : []), '<th class="num">Qty</th>', ...(restricted ? [] : ['<th class="num">Rate</th>', '<th class="num">Taxable value</th>', ...heads.map((head) => `<th class="num">${head}</th>`), '<th class="num">Amount</th>'])];
+  const itemHead = ['<th class="num">#</th>', '<th>Item</th>', ...(showHsn ? ['<th>HSN</th>'] : []), '<th class="num">Qty</th>', ...(restricted ? [] : ['<th class="num">Rate</th>', ...(discounted ? ['<th class="num">Discount</th>'] : []), '<th class="num">Taxable value</th>', ...heads.map((head) => `<th class="num">${head}</th>`), '<th class="num">Amount</th>'])];
 
-  const rates = taxInvoice && !restricted ? gstRateSummary(source.items.map((item) => ({ gstRate: item.gstRate ?? 0, lineTotal: item.lineTotal ?? 0, taxAmount: item.taxAmount ?? 0 })), taxType === 'INTER_STATE' ? 'INTER_STATE' : 'INTRA_STATE') : [];
+  const rates = taxInvoice && !restricted ? gstRateSummary(source.items.map((item) => ({ gstRate: item.gstRate ?? 0, lineTotal: item.lineTotal ?? 0, discountAmount: item.discountAmount ?? 0, taxAmount: item.taxAmount ?? 0 })), taxType === 'INTER_STATE' ? 'INTER_STATE' : 'INTRA_STATE') : [];
   const rateSummary = rates.length > 1
     ? `<table class="summary"><thead><tr><th class="num">GST rate</th><th class="num">Taxable value</th>${heads.map((head) => `<th class="num">${head}</th>`).join('')}</tr></thead><tbody>${rates.map((row) => `<tr><td class="num">${row.rate}%</td><td class="num">${money(row.taxableValue)}</td>${(taxType === 'INTRA_STATE' ? [row.cgst, row.sgst] : [row.igst]).map((amount) => `<td class="num">${money(amount)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
     : '';
@@ -85,7 +89,7 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
   const methods = paymentMethodsSummary(source.payments, source.paymentMethod);
   const totals = restricted
     ? '<p class="muted">Prices are hidden for your role.</p>'
-    : `<table class="totals"><tbody><tr><td>Taxable value</td><td class="num">${money(source.subtotal)}</td></tr>${taxTotalRows(source.items, taxType, source.taxTotal ?? 0).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr></tbody></table>`;
+    : `<table class="totals"><tbody>${discounted ? `<tr><td>Subtotal</td><td class="num">${money(source.subtotal)}</td></tr><tr><td>Discount${Number(source.discountPercent ?? 0) > 0 ? ` (${Number(source.discountPercent)}%)` : ''}</td><td class="num">−${money(source.discountTotal)}</td></tr>` : ''}<tr><td>Taxable value</td><td class="num">${money(Number(source.subtotal ?? 0) - Number(source.discountTotal ?? 0))}</td></tr>${taxTotalRows(source.items, taxType, source.taxTotal ?? 0).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr></tbody></table>`;
 
   return `<!DOCTYPE html>
 <html lang="en">

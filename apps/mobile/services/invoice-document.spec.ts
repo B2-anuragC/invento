@@ -71,6 +71,17 @@ describe('invoiceHtml', () => {
     expect(body).not.toMatch(/₹|Rate|Taxable value|Authorised signatory/);
   });
 
+  it('shows a discount column, the discount and the taxable value net of it', () => {
+    const putty = { ...glass, id: 'line-2', name: 'Putty', hsnCode: '3214', gstRate: '5', quantity: 1, label: 'kg', unit: 'KG', price: 200, lineTotal: '200', taxAmount: '9', discountAmount: '20' };
+    const html = invoiceHtml({ ...intraState, subtotal: '1200', discountTotal: '120', discountPercent: '10', taxTotal: '171', total: '1251', amountPaid: '1251', items: [{ ...glass, quantity: 1, price: 1000, lineTotal: '1000', taxAmount: '162', discountAmount: '100' }, putty] }, shop);
+    const body = text(html);
+    expect(html).toContain('<th class="num">Discount</th>');
+    expect(body).toContain('Clear Float Glass 5mm 700529 1 sq ft ₹1,000.00 ₹100.00 ₹900.00 ₹81.00 9% ₹81.00 9% ₹1,062.00');
+    expect(body).toContain('Subtotal ₹1,200.00 Discount (10%) −₹120.00 Taxable value ₹1,080.00 CGST ₹85.50 SGST ₹85.50 Total ₹1,251.00');
+    expect(body).toContain('GST rate Taxable value CGST SGST 5% ₹180.00 ₹4.50 ₹4.50 18% ₹900.00 ₹81.00 ₹81.00');
+    expect(invoiceHtml(intraState, shop)).not.toContain('Discount');
+  });
+
   it('shows the HSN column only when a line has a code', () => {
     expect(invoiceHtml(intraState, shop)).toContain('<th>HSN</th>');
     expect(invoiceHtml({ ...intraState, items: [{ ...glass, hsnCode: null }] }, shop)).not.toContain('<th>HSN</th>');

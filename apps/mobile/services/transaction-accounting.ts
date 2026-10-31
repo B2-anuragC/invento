@@ -1,8 +1,30 @@
+import { discountAmountFor, discountError, splitDiscount, type DiscountInput } from '@invento/shared';
+
 export const moneyValue = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-export function transactionTotals(items: { quantity: number; price: number; product: { gstRate?: string | number } }[]) {
-  const subtotal = items.reduce((sum, item) => sum + moneyValue(item.quantity * item.price), 0);
-  const tax = items.reduce((sum, item) => sum + moneyValue(moneyValue(item.quantity * item.price) * Number(item.product.gstRate ?? 0) / 100), 0);
-  return { subtotal: moneyValue(subtotal), tax: moneyValue(tax), total: moneyValue(subtotal + tax) };
+
+// Whole units of 10^-digits; anything not a usable number counts as zero while it is typed.
+const scaled = (value: number, digits: number) => (Number.isFinite(value) && value > 0 ? BigInt(value.toFixed(digits).replace('.', '')) : 0n);
+const decimal = (paise: bigint) => `${paise / 100n}.${String(paise % 100n).padStart(2, '0')}`;
+
+/**
+ * Bill preview computed exactly as the API does: each line rounded half-up to
+ * the paisa, a sale's discount split across the lines before GST, and GST
+ * rounded per line on what is left. A discount that cannot apply counts as none.
+ */
+export function transactionTotals(items: { quantity: number; price: number; product: { gstRate?: string | number } }[], discount: DiscountInput = {}) {
+  const lines = items.map((item) => (scaled(item.quantity, 3) * scaled(item.price, 2) + 500n) / 1000n);
+  const subtotal = lines.reduce((sum, line) => sum + line, 0n);
+  const amount = discountError(decimal(subtotal), discount) ? '0.00' : discountAmountFor(decimal(subtotal), discount);
+  const shares = splitDiscount(lines.map(decimal), amount).map((share) => scaled(Number(share), 2));
+  const tax = lines.reduce((sum, line, index) => sum + ((line - shares[index]) * scaled(Number(items[index].product.gstRate ?? 0), 2) + 5000n) / 10000n, 0n);
+  const discountTotal = scaled(Number(amount), 2);
+  return { subtotal: Number(decimal(subtotal)), discount: Number(decimal(discountTotal)), tax: Number(decimal(tax)), total: Number(decimal(subtotal - discountTotal + tax)) };
+}
+/** The discount a sale screen sends for what was typed; an unfinished "10." counts as 10. */
+export function saleDiscountInput(mode: 'amount' | 'percent', value: string): { discountAmount?: string; discountPercent?: string } {
+  const text = value.replace(/\.$/, '');
+  if (!text) return {};
+  return mode === 'percent' ? { discountPercent: text } : { discountAmount: text };
 }
 export const requestKey = () => `req_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
 export const paymentBalance = (record: { total?: string | number | null; amountPaid?: string | number | null }) => record.total == null || record.amountPaid == null ? null : Math.max(0, moneyValue(Number(record.total) - Number(record.amountPaid)));

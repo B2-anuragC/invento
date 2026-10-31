@@ -7,7 +7,7 @@ import {
   type TransactionDraft,
 } from "@/services/transaction-drafts";
 import { Ionicons } from "@expo/vector-icons";
-import { sellingUnitConversion } from "@invento/shared";
+import { discountError, sellingUnitConversion } from "@invento/shared";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
@@ -31,7 +31,7 @@ import {
   ConfirmationDialog,
   formatUnitLabel,
 } from "@/components/invento-ui";
-import { TransactionFinanceFields } from "@/components/transaction-finance-fields";
+import { TransactionFinanceFields, type DiscountMode } from "@/components/transaction-finance-fields";
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
 import { FormError } from "@/components/form-error";
 import { paymentMethodLabel } from "@/services/payment-methods";
@@ -62,6 +62,7 @@ import {
 } from "@/services/api";
 import {
   requestKey,
+  saleDiscountInput,
   transactionTotals,
   validDueDate,
 } from "@/services/transaction-accounting";
@@ -106,6 +107,8 @@ export default function QuickBillScreen() {
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"full" | "partial" | "credit">("full");
+  const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
+  const [discountValue, setDiscountValue] = useState("");
   const [paid, setPaid] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [method, setMethod] =
@@ -218,7 +221,9 @@ export default function QuickBillScreen() {
       },
     ];
   });
-  const totals = transactionTotals(items);
+  const discountInput = saleDiscountInput(discountMode, discountValue);
+  const totals = transactionTotals(items, discountInput);
+  const discountProblem = discountError(totals.subtotal.toFixed(2), discountInput);
   const customer = customers.find((c) => c.id === customerId);
   const used: Record<string, number> = {};
   const lineErrors: string[] = items.map((item) => {
@@ -269,6 +274,7 @@ export default function QuickBillScreen() {
         `Only ${formatQuantity(stock[item.productId] ?? 0, item.product.unit)} available across all bill lines.`;
   });
   const paymentValid =
+    !discountProblem &&
     validDueDate(mode === "full" ? "" : dueDate) &&
     (mode !== "partial" || (Number(paid) > 0 && Number(paid) < totals.total));
   const valid =
@@ -407,6 +413,7 @@ export default function QuickBillScreen() {
             ? "0.00"
             : paid,
       ...(mode !== "full" && dueDate ? { dueDate } : {}),
+      ...discountInput,
       saleDate: new Date().toISOString(),
       items: items.map((item) => ({
         productId: item.productId,
@@ -436,6 +443,8 @@ export default function QuickBillScreen() {
         contactAddress: saved.customer.address,
         total: saved.total,
         subtotal: saved.subtotal,
+        discountTotal: saved.discountTotal,
+        discountPercent: saved.discountPercent,
         taxTotal: saved.taxTotal,
         amountPaid: saved.amountPaid,
         dueDate: saved.dueDate,
@@ -455,6 +464,7 @@ export default function QuickBillScreen() {
           gstRate: item.gstRate,
           taxAmount: item.taxAmount,
           lineTotal: item.lineTotal,
+          discountAmount: item.discountAmount,
           hsnCode: item.hsnCode,
         })),
       });
@@ -516,6 +526,8 @@ export default function QuickBillScreen() {
           setDueDate("");
           setMode("full");
           setMethod("CASH");
+          setDiscountMode("amount");
+          setDiscountValue("");
           requestId.current = requestKey();
           setRetry((n) => n + 1);
         }}
@@ -806,6 +818,7 @@ export default function QuickBillScreen() {
                       : mode === "partial"
                         ? "Partial"
                         : "Credit"}
+                    {totals.discount > 0 ? ` · ${money(totals.discount)} off` : ""}
                   </Text>
                   {!paymentValid ? (
                     <Text style={styles.error}>Check payment details</Text>
@@ -848,6 +861,12 @@ export default function QuickBillScreen() {
                   <Text style={styles.meta}>Subtotal (before GST)</Text>
                   <Text style={styles.body}>{money(totals.subtotal)}</Text>
                 </View>
+                {totals.discount > 0 ? (
+                  <View style={styles.row}>
+                    <Text style={styles.meta}>Discount (before GST)</Text>
+                    <Text style={styles.body}>−{money(totals.discount)}</Text>
+                  </View>
+                ) : null}
                 <View style={styles.row}>
                   <Text style={styles.meta}>GST</Text>
                   <Text style={styles.body}>{money(totals.tax)}</Text>
@@ -1010,6 +1029,17 @@ export default function QuickBillScreen() {
                       total={totals.total}
                       subtotal={totals.subtotal}
                       tax={totals.tax}
+                      discount={{
+                        mode: discountMode,
+                        value: discountValue,
+                        amount: totals.discount,
+                        error: discountProblem,
+                        onMode: (value) => {
+                          setDiscountMode(value);
+                          setDiscountValue("");
+                        },
+                        onValue: setDiscountValue,
+                      }}
                       mode={mode}
                       onMode={setMode}
                       paid={paid}
