@@ -7,8 +7,8 @@ import { formatDate } from '@/services/format';
 
 const parseDate = (value: string) => { const date = new Date(`${value}T12:00:00`); return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(date.getTime()) ? date : new Date(); };
 
-/** `minimumDate` (YYYY-MM-DD) disables earlier days, e.g. a due date before the bill's own date. */
-export function DatePicker({ value, onChange, title = 'Select date', placeholder = 'Select date', clearLabel = 'Clear date', style, minimumDate }: { value: string; onChange: (value: string) => void; title?: string; placeholder?: string; clearLabel?: string; style?: StyleProp<ViewStyle>; minimumDate?: string }) {
+/** `minimumDate` / `maximumDate` (YYYY-MM-DD) disable earlier / later days, e.g. a due date before the bill's own date. */
+export function DatePicker({ value, onChange, title = 'Select date', placeholder = 'Select date', clearLabel = 'Clear date', style, minimumDate, maximumDate }: { value: string; onChange: (value: string) => void; title?: string; placeholder?: string; clearLabel?: string; style?: StyleProp<ViewStyle>; minimumDate?: string; maximumDate?: string }) {
   const [visible, setVisible] = useState(false);
   const [month, setMonth] = useState(new Date());
   const start = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -19,7 +19,7 @@ export function DatePicker({ value, onChange, title = 'Select date', placeholder
   });
   const select = (date: string) => { onChange(date); setVisible(false); };
   const previousAllowed = canShowPreviousMonth(month, minimumDate);
-  const todayAllowed = isSelectableDay(dateKey(new Date()), minimumDate);
+  const todayAllowed = isSelectableDay(dateKey(new Date()), minimumDate, maximumDate);
   const fieldName = title.replace(/^Select /, '');
   const fieldLabel = fieldName.charAt(0).toUpperCase() + fieldName.slice(1);
   return <>
@@ -39,7 +39,7 @@ export function DatePicker({ value, onChange, title = 'Select date', placeholder
             <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} style={styles.button}><Ionicons name="chevron-forward" size={22} color="#176B50" /></Pressable>
           </View>
           <View style={styles.grid}>{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <Text key={day} style={styles.weekday}>{day}</Text>)}
-            {cells.map((date, index) => { if (!date) return <View key={index} style={styles.cell} />; const key = dateKey(date); const allowed = isSelectableDay(key, minimumDate); return <Pressable key={index} accessibilityRole="button" accessibilityLabel={date.toLocaleDateString('en-IN', { dateStyle: 'full' })} accessibilityState={{ selected: key === value, disabled: !allowed }} disabled={!allowed} onPress={() => select(key)} style={[styles.cell, key === value && styles.selected]}><Text style={[styles.day, !allowed && styles.unavailable, key === value && styles.selectedText]}>{date.getDate()}</Text></Pressable>; })}
+            {cells.map((date, index) => { if (!date) return <View key={index} style={styles.cell} />; const key = dateKey(date); const allowed = isSelectableDay(key, minimumDate, maximumDate); return <Pressable key={index} accessibilityRole="button" accessibilityLabel={date.toLocaleDateString('en-IN', { dateStyle: 'full' })} accessibilityState={{ selected: key === value, disabled: !allowed }} disabled={!allowed} onPress={() => select(key)} style={[styles.cell, key === value && styles.selected]}><Text style={[styles.day, !allowed && styles.unavailable, key === value && styles.selectedText]}>{date.getDate()}</Text></Pressable>; })}
           </View>
           <View style={styles.row}><Pressable accessibilityRole="button" onPress={() => select('')} style={styles.button}><Text style={styles.action}>{clearLabel}</Text></Pressable>{todayAllowed ? <Pressable accessibilityRole="button" onPress={() => select(dateKey(new Date()))} style={styles.button}><Text style={styles.action}>Today</Text></Pressable> : null}</View>
         </View>

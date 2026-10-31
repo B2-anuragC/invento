@@ -1,10 +1,14 @@
 import { useState } from 'react';
+import { DatePicker } from './date-picker';
+import { dateKey, dayToTimestamp } from '@/services/date-limits';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { appSession, recordTransactionPayment } from '@/services/api';
 import { requestKey } from '@/services/transaction-accounting';
 import { formatMoney } from '@/services/format';
 import { paymentMethodLabel } from '@/services/payment-methods';
-export function RecordPaymentModal({ kind, id, total, amountPaid, onClose, onSaved }: { kind: 'sale' | 'purchase'; id: string; total: string | number; amountPaid?: string | number | null; onClose: () => void; onSaved: () => void }) {
+export function RecordPaymentModal({ kind, id, total, amountPaid, billDate, onClose, onSaved }: { kind: 'sale' | 'purchase'; id: string; total: string | number; amountPaid?: string | number | null; billDate: string; onClose: () => void; onSaved: () => void }) {
+  const today = dateKey(new Date());
+  const [paidOn, setPaidOn] = useState(today);
   const [amount, setAmount] = useState('');
   const [opening, setOpening] = useState('');
   const [method, setMethod] = useState('CASH');
@@ -18,7 +22,7 @@ export function RecordPaymentModal({ kind, id, total, amountPaid, onClose, onSav
     if (!amount || Number(amount) <= 0 || Number(amount) > balance || (amountPaid == null && (!opening || Number(opening) < 0))) { setError('Enter a positive payment within the remaining balance. Confirm the earlier paid amount if requested.'); return; }
     setBusy(true); setError('');
     try {
-      await recordTransactionPayment(session, kind, id, { amount, method, requestId, ...(amountPaid == null ? { openingAmountPaid: opening } : {}) });
+      await recordTransactionPayment(session, kind, id, { amount, method, requestId, paidAt: dayToTimestamp(paidOn || today), ...(amountPaid == null ? { openingAmountPaid: opening } : {}) });
       onSaved();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not record payment. Retry uses the same payment request.'); } finally { setBusy(false); }
   };
@@ -28,6 +32,8 @@ export function RecordPaymentModal({ kind, id, total, amountPaid, onClose, onSav
     {amountPaid == null ? <><Text style={styles.meta}>Historical payment information is unknown. Enter the total paid before this payment, including 0 if none.</Text><TextInput accessibilityLabel="Previously paid amount" value={opening} editable={!busy} onChangeText={(value) => { if (/^\d{0,12}(?:\.\d{0,2})?$/.test(value)) setOpening(value); }} keyboardType="decimal-pad" placeholder="Previously paid (₹)" style={styles.input} /></> : null}
     <Text style={styles.meta}>Remaining balance: {formatMoney(Math.max(0, balance))}</Text>
     <TextInput accessibilityLabel="Payment amount" value={amount} editable={!busy} onChangeText={(value) => { if (/^\d{0,12}(?:\.\d{0,2})?$/.test(value)) setAmount(value); }} keyboardType="decimal-pad" placeholder="Payment amount (₹)" style={styles.input} />
+    <Text style={styles.meta}>{kind === 'sale' ? 'Received on' : 'Paid on'}</Text>
+    <DatePicker value={paidOn} onChange={setPaidOn} minimumDate={dateKey(new Date(billDate))} maximumDate={today} title={kind === 'sale' ? 'When was it received?' : 'When was it paid?'} clearLabel="Use today" />
     <View style={styles.chips}>{['CASH', 'UPI', 'CARD', 'BANK_TRANSFER', 'OTHER'].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: method === value, disabled: busy }} disabled={busy} onPress={() => setMethod(value)} style={[styles.chip, method === value && styles.selected]}><Text style={{ color: method === value ? '#FFFFFF' : '#24332A' }}>{paymentMethodLabel(value)}</Text></Pressable>)}</View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => void save()} style={styles.save}><Text style={styles.saveText}>{busy ? 'Recording payment…' : 'Record payment'}</Text></Pressable>

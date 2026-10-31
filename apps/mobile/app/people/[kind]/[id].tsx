@@ -168,7 +168,7 @@ export default function ContactDetailsScreen() {
   const outstanding = knownBalances.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   const unknownPayments = knownBalances.some((value) => value === null);
   const recordableTransactions = history.filter((record) => record.total != null && paymentBalance(record) !== 0);
-  const paymentModal = paymentTarget && paymentTarget.total != null ? <RecordPaymentModal kind={contactKind === 'customers' ? 'sale' : 'purchase'} id={paymentTarget.id} total={paymentTarget.total} amountPaid={paymentTarget.amountPaid} onClose={() => setPaymentTarget(null)} onSaved={() => { setPaymentTarget(null); loadDetails(); }} /> : null;
+  const paymentModal = paymentTarget && paymentTarget.total != null ? <RecordPaymentModal kind={contactKind === 'customers' ? 'sale' : 'purchase'} id={paymentTarget.id} total={paymentTarget.total} amountPaid={paymentTarget.amountPaid} billDate={'saleDate' in paymentTarget ? paymentTarget.saleDate : paymentTarget.purchaseDate} onClose={() => setPaymentTarget(null)} onSaved={() => { setPaymentTarget(null); loadDetails(); }} /> : null;
   if (contactKind === 'customers' && contact && !loading && !editing) {
     const latestSale = [...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())[0];
     return (

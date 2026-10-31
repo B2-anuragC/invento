@@ -891,7 +891,7 @@ export async function fetchPurchase(session: AppSession, purchaseId: string): Pr
   return request<PurchaseRecord>(`/purchases/${encodeURIComponent(purchaseId)}`, { method: 'GET' }, session);
 }
 
-export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string }): Promise<SaleRecord | PurchaseRecord> {
+export async function recordTransactionPayment(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { amount: string; method: string; requestId: string; openingAmountPaid?: string; paidAt?: string }): Promise<SaleRecord | PurchaseRecord> {
   await assertClientPermission(session, kind === 'sale' ? 'sales.payments' : 'purchases.payments');
   if (id.startsWith('local_')) throw new Error('Synchronize this transaction before recording another payment.');
   const saved = await request<SaleRecord | PurchaseRecord>(`/${kind}s/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(input) }, session);

@@ -1,3 +1,5 @@
+import { DatePicker } from '@/components/date-picker';
+import { dateKey, dayToTimestamp } from '@/services/date-limits';
 import { supplierOffersProduct } from '@/services/supplier-catalog';
 import { PurchaseAttachment } from '@/components/purchase-attachment';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
@@ -60,6 +62,8 @@ export default function CreatePurchaseScreen() {
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [paidInput, setPaidInput] = useState('');
   const [dueDate, setDueDate] = useState('');
+  // The supplier's bill date; it also sets the purchase number's financial year.
+  const [purchaseDay, setPurchaseDay] = useState(() => dateKey(new Date()));
   const [saveRequestId, setSaveRequestId] = useState(requestKey);
   const [draftCandidate, setDraftCandidate] = useState<TransactionDraft | null>(null);
   const [draftReady, setDraftReady] = useState(false);
@@ -278,7 +282,7 @@ export default function CreatePurchaseScreen() {
         supplierId,
         attachment,
         paymentMethod: paymentMethod as 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER',
-        purchaseDate: new Date().toISOString(),
+        purchaseDate: dayToTimestamp(purchaseDay || dateKey(new Date())),
         ...(invoiceNumber.trim() ? { invoiceNumber: invoiceNumber.trim() } : {}),
         items: purchaseItems.map(({ product, quantity, price }) => ({
           productId: product.id,
@@ -503,6 +507,8 @@ export default function CreatePurchaseScreen() {
                 <TextInput value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
               </View>
               <PurchaseAttachment value={attachment} onChange={(value) => { setAttachment(value); setError(''); }} onBusy={setAttachmentBusy} disabled={saving} />
+              <Text style={{ color: '#43554B', fontSize: 13, fontWeight: '700', marginTop: 12 }}>Purchase date · supplier&apos;s bill date</Text>
+              <DatePicker value={purchaseDay} onChange={setPurchaseDay} maximumDate={dateKey(new Date())} title="Select purchase date" clearLabel="Use today" />
               <TransactionFinanceFields kind="purchase" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as string)} />
             </>
           ) : null}
@@ -520,7 +526,7 @@ export default function CreatePurchaseScreen() {
           )}
         </View>
         <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setPurchaseDay(dateKey(new Date())); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
       </View>
     </AppScreen>

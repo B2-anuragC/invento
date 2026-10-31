@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canShowPreviousMonth, dateKey, isSelectableDay } from './date-limits';
+import { canShowPreviousMonth, dateKey, dayToTimestamp, isSelectableDay } from './date-limits';
 
 describe('dateKey', () => {
   it('uses the local calendar day', () => {
@@ -32,5 +32,19 @@ describe('canShowPreviousMonth', () => {
 
   it('is always allowed without a minimum', () => {
     expect(canShowPreviousMonth(new Date(2026, 9, 1))).toBe(true);
+  });
+});
+
+describe('later limits and chosen days', () => {
+  it('disables days after a maximum', () => {
+    expect(isSelectableDay('2026-10-31', '2026-10-01', '2026-10-31')).toBe(true);
+    expect(isSelectableDay('2026-11-01', '2026-10-01', '2026-10-31')).toBe(false);
+    expect(isSelectableDay('2026-09-30', '2026-10-01', '2026-10-31')).toBe(false);
+  });
+
+  it('sends now for today and noon in India for an earlier day', () => {
+    const now = new Date(2026, 9, 31, 15, 30);
+    expect(dayToTimestamp(dateKey(now), now)).toBe(now.toISOString());
+    expect(dayToTimestamp('2026-10-02', now)).toBe('2026-10-02T12:00:00+05:30');
   });
 });

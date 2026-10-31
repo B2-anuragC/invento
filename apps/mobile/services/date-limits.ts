@@ -4,8 +4,13 @@ export function dateKey(date: Date): string {
 }
 
 /** Whether a day can be picked; YYYY-MM-DD strings compare correctly as text. */
-export function isSelectableDay(day: string, minimum?: string): boolean {
-  return !minimum || day >= minimum;
+export function isSelectableDay(day: string, minimum?: string, maximum?: string): boolean {
+  return (!minimum || day >= minimum) && (!maximum || day <= maximum);
+}
+
+/** The moment sent for a chosen day: now for today, otherwise noon in India on that day. */
+export function dayToTimestamp(day: string, now = new Date()): string {
+  return day === dateKey(now) ? now.toISOString() : `${day}T12:00:00+05:30`;
 }
 
 /** Whether the month before `month` still contains a selectable day. */
