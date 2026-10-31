@@ -755,6 +755,18 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect((await api('get', '/sync/snapshot').expect(200)).body.data.sales.filter((row: any) => row.status === 'CANCELLED')).toHaveLength(2);
   });
 
+  it('records when a payment was made, within the bill date and today', async () => {
+    const sale = (await api('post', '/sales').send({ ...input('2'), saleDate: '2026-09-20T06:00:00Z', amountPaid: '0' }).expect(201)).body.data;
+    const pay = (paidAt: string) => api('post', `/sales/${sale.id}/payments`).send({ amount: '10', method: 'UPI', requestId: randomUUID(), paidAt });
+    expect((await pay('2026-09-19T12:00:00+05:30').expect(400)).body.error.message).toMatch(/before the bill date/);
+    expect((await pay(new Date(Date.now() + 3 * 86_400_000).toISOString()).expect(400)).body.error.message).toMatch(/in the future/);
+    await pay('20-09-2026').expect(422);
+    await pay('2026-09-20T12:00:00+05:30').expect(201);
+    await pay('2026-10-02T12:00:00+05:30').expect(201);
+    const payments = (await api('get', `/sales/${sale.id}`).expect(200)).body.data.payments;
+    expect(payments.map((payment: any) => payment.paidAt)).toEqual(['2026-09-20T06:30:00.000Z', '2026-10-02T06:30:00.000Z']);
+  });
+
   it('sells a pack and loose pieces of one product on separate lines', async () => {
     const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
       { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },

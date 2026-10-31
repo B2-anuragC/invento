@@ -8,7 +8,7 @@ export type AllocatedDocumentNumber = { documentNumber: string; financialYear: s
 // rejected, because the bill date decides the invoice's financial year.
 const FUTURE_DATE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 
-export function assertNotFutureDated(date: Date, label: 'Sale' | 'Purchase', now = Date.now()): void {
+export function assertNotFutureDated(date: Date, label: 'Sale' | 'Purchase' | 'Payment', now = Date.now()): void {
   if (date.getTime() > now + FUTURE_DATE_TOLERANCE_MS) {
     throw new BadRequestException(`${label} date is in the future. Check the device date and time.`);
   }

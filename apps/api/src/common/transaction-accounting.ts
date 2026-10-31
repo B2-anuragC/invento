@@ -2,6 +2,10 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { RecordPaymentDto } from './dto/transaction-finance.dto.js';
+import { assertNotFutureDated } from './document-numbers.js';
+
+// The calendar day in India, for comparing a payment with its bill.
+const indiaDay = (date: Date) => new Date(date.getTime() + 19_800_000).toISOString().slice(0, 10);
 
 export function taxFor(subtotal: Prisma.Decimal, value: Prisma.Decimal | string | undefined) {
   const rate = new Prisma.Decimal(value ?? 0);
@@ -27,9 +31,12 @@ export async function recordTransactionPayment(prisma: PrismaService, kind: 'sal
   const amount = paidAmount(input.amount, new Prisma.Decimal('999999999999.99'))!;
   if (!amount || amount.lte(0)) throw new BadRequestException('Payment must be greater than zero.');
   if (!Object.values(PaymentMethod).includes(input.method)) throw new BadRequestException('Invalid payment method.');
+  const paidAt = input.paidAt === undefined ? undefined : new Date(input.paidAt);
+  if (paidAt) assertNotFutureDated(paidAt, 'Payment');
   return prisma.$transaction(async (tx) => {
-    const [record] = await tx.$queryRaw<{ total: Prisma.Decimal; amountPaid: Prisma.Decimal | null; status: string }[]>(Prisma.sql`SELECT total, "amountPaid", status FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${id} AND "businessId" = ${businessId} FOR UPDATE`);
+    const [record] = await tx.$queryRaw<{ total: Prisma.Decimal; amountPaid: Prisma.Decimal | null; status: string; billDate: Date }[]>(Prisma.sql`SELECT total, "amountPaid", status, ${Prisma.raw(kind === 'sale' ? '"saleDate"' : '"purchaseDate"')} AS "billDate" FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${id} AND "businessId" = ${businessId} FOR UPDATE`);
     if (!record) throw new NotFoundException('Transaction not found.');
+    if (paidAt && indiaDay(paidAt) < indiaDay(record.billDate)) throw new BadRequestException('The payment date cannot be before the bill date.');
     if (record.status !== 'COMPLETED') throw new ConflictException('Payments require a completed transaction.');
     const duplicate = await tx.transactionPayment.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } } });
     if (duplicate) {
@@ -44,7 +51,7 @@ export async function recordTransactionPayment(prisma: PrismaService, kind: 'sal
     if (alreadyPaid.plus(amount).gt(record.total)) throw new BadRequestException('Payment exceeds the remaining balance.');
     const link = kind === 'sale' ? { saleId: id } : { purchaseId: id };
     if (record.amountPaid === null && alreadyPaid.gt(0)) await tx.transactionPayment.create({ data: { ...link, businessId, requestId: `${input.requestId}_opening`, amount: alreadyPaid, method: input.method, kind: 'OPENING_BALANCE', createdByUserId: userId } });
-    const payment = await tx.transactionPayment.create({ data: { ...link, businessId, requestId: input.requestId, amount, method: input.method, createdByUserId: userId } });
+    const payment = await tx.transactionPayment.create({ data: { ...link, businessId, requestId: input.requestId, amount, method: input.method, paidAt, createdByUserId: userId } });
     if (kind === 'sale') await tx.sale.update({ where: { id }, data: { amountPaid: alreadyPaid.plus(amount) } });
     else await tx.purchase.update({ where: { id }, data: { amountPaid: alreadyPaid.plus(amount) } });
     return payment;

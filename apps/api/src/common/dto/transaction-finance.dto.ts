@@ -21,4 +21,5 @@ export class RecordPaymentDto {
   @ApiProperty() @IsEnum(PaymentMethod) method!: PaymentMethod;
   @ApiProperty() @IsString() @Matches(/^[A-Za-z0-9_-]{8,100}$/) requestId!: string;
   @ApiPropertyOptional() @ValidateIf((_o, v) => v !== undefined) @IsDecimal({ decimal_digits: '0,2' }) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) openingAmountPaid?: string;
+  @ApiPropertyOptional({ description: 'When the money was received or paid; defaults to now. Not before the bill date or in the future.' }) @ValidateIf((_o, v) => v !== undefined) @IsDateString({ strict: true }) paidAt?: string;
 }
