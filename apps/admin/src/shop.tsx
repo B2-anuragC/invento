@@ -62,6 +62,8 @@ const productFields = [
   field("purchasePrice", true),
   field("sellingPrice", true),
   field("minimumStock", true),
+  { key: "gstRate", title: "GST rate (%)", type: "gst-rate", required: true, max: 6 },
+  { key: "hsnCode", title: "HSN code", type: "hsn", max: 10 },
   field("barcode"),
   field("category"),
 ];
@@ -161,7 +163,8 @@ function Editor({
             ) : (
               <input
                 name={f.key}
-                type={f.type === "gstin" ? "text" : f.type || "text"}
+                type={f.type === "gstin" || f.type === "hsn" || f.type === "gst-rate" ? "text" : f.type || "text"}
+                inputMode={f.type === "hsn" ? "numeric" : f.type === "gst-rate" ? "decimal" : undefined}
                 style={f.type === "gstin" ? { textTransform: "uppercase" } : undefined}
                 required={f.required}
                 maxLength={f.max ?? 160}
@@ -558,7 +561,7 @@ function ShopSection({
             <button
               className="primary"
               hidden={!can(`${section}.create`)}
-              onClick={() => setEditing({})}
+              onClick={() => setEditing(section === "products" ? { gstRate: "0" } : {})}
             >
               + Add{" "}
               {section === "products"
@@ -608,12 +611,14 @@ function ShopSection({
                     "unit",
                     "purchasePrice",
                     "sellingPrice",
+                    "gstRate",
+                    "hsnCode",
                     "minimumStock",
                     "status",
                   ]
                 : ["name", "contactName", "phone", "email", "gstin", "status"]
             }
-            titles={{ gstin: "GSTIN" }}
+            titles={{ gstin: "GSTIN", gstRate: "GST %", hsnCode: "HSN" }}
             edit={can(`${section}.update`) ? setEditing : undefined}
           />
           <details className="panel">
