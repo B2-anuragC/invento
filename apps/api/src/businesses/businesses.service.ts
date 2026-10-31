@@ -1,4 +1,5 @@
-import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, isValidDocumentPrefix, normalizeDocumentPrefix } from '@invento/shared';
+import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, GST_STATES, gstinStateCode, isValidDocumentPrefix, normalizeDocumentPrefix } from '@invento/shared';
+import { storedGstin } from '../common/validators/is-gstin.js';
 import { AccessManagementService, lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
 import { requireBusinessMembership, requireBusinessPermission } from '../auth/business-access.js';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -40,7 +41,7 @@ export class BusinessesService {
     return business;
   }
 
-  async update(userId: string, businessId: string, input: { name?: string; email?: string; phone?: string; address?: string; invoicePrefix?: string; purchasePrefix?: string }) {
+  async update(userId: string, businessId: string, input: { name?: string; email?: string; phone?: string; address?: string; invoicePrefix?: string; purchasePrefix?: string; gstin?: string; stateCode?: string }) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'business.update');
     // Changing a prefix continues the same yearly sequence; numbers stay unique.
     const prefix = (value: string | undefined) => {
@@ -49,7 +50,37 @@ export class BusinessesService {
       if (!isValidDocumentPrefix(normalized)) throw new BadRequestException(DOCUMENT_PREFIX_RULE_MESSAGE);
       return normalized;
     };
-    return this.prisma.business.update({ where: { id: businessId }, data: { ...input, email: input.email?.trim().toLowerCase(), name: input.name?.trim(), invoicePrefix: prefix(input.invoicePrefix), purchasePrefix: prefix(input.purchasePrefix) } });
+    // Optional text fields: undefined leaves them unchanged, blank clears them.
+    const optional = (value: string | undefined) => (value === undefined ? undefined : value.trim() || null);
+    const gstin = storedGstin(input.gstin);
+    let stateCode = optional(input.stateCode);
+    // A state sent on its own must still agree with the GSTIN already on file.
+    const effectiveGstin = gstin !== undefined ? gstin : stateCode ? (await this.prisma.business.findUnique({ where: { id: businessId }, select: { gstin: true } }))?.gstin : null;
+    if (effectiveGstin && stateCode && stateCode !== gstinStateCode(effectiveGstin)) {
+      const registeredState = gstinStateCode(effectiveGstin);
+      throw new BadRequestException(`The GSTIN is registered in ${GST_STATES[registeredState]} (${registeredState}); choose that state or leave it blank.`);
+    }
+    if (gstin) {
+      // A registered shop's state is the one its GSTIN was issued in.
+      const registeredState = gstinStateCode(gstin);
+      if (stateCode && stateCode !== registeredState) {
+        throw new BadRequestException(`The GSTIN is registered in ${GST_STATES[registeredState]} (${registeredState}); choose that state or leave it blank.`);
+      }
+      stateCode = registeredState;
+    }
+    return this.prisma.business.update({
+      where: { id: businessId },
+      data: {
+        name: input.name?.trim(),
+        email: input.email === undefined ? undefined : input.email.trim().toLowerCase() || null,
+        phone: optional(input.phone),
+        address: optional(input.address),
+        invoicePrefix: prefix(input.invoicePrefix),
+        purchasePrefix: prefix(input.purchasePrefix),
+        gstin,
+        stateCode,
+      },
+    });
   }
 
   async listUsers(userId: string, businessId: string) {

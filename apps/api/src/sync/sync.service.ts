@@ -97,7 +97,18 @@ export class SyncService {
               ).applyPriceVisibility(businessId, membership, purchases)
             : [],
           schemaVersion: 1,
-          business: { id: business.id, name: business.name },
+          // Shop details for receipts and invoices printed from the device.
+          business: {
+            id: business.id,
+            name: business.name,
+            email: business.email,
+            phone: business.phone,
+            address: business.address,
+            gstin: business.gstin,
+            stateCode: business.stateCode,
+            invoicePrefix: business.invoicePrefix,
+            purchasePrefix: business.purchasePrefix,
+          },
           access: {
             role: membership.role,
             membersCanViewPurchasePrice:

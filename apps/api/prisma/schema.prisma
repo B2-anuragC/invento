@@ -17,6 +17,10 @@ model Business {
   address               String?
   membersCanViewPurchasePrice Boolean                @default(true)
   invoicePrefix         String                 @default("INV")
+  /// GST registration; null for an unregistered shop.
+  gstin                 String?
+  /// GST state code of the shop (place of supply for counter sales).
+  stateCode             String?
   purchasePrefix        String                 @default("PUR")
   isActive              Boolean                @default(true)
   createdAt             DateTime               @default(now())
@@ -204,6 +208,7 @@ model Supplier {
   phone       String?
   email       String?
   address     String?
+  gstin       String?
   status      SupplierStatus @default(ACTIVE)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -298,6 +303,7 @@ model Customer {
   phone       String?
   email       String?
   address     String?
+  gstin       String?
   status      CustomerStatus @default(ACTIVE)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt

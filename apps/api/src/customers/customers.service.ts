@@ -5,6 +5,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { CustomerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { customerStatuses } from './dto/customer.dto.js';
+import { storedGstin } from '../common/validators/is-gstin.js';
 
 type CustomerInput = {
   imageOriginal?: string | null;
@@ -12,6 +13,7 @@ type CustomerInput = {
   name?: string;
   contactName?: string;
   phone?: string;
+  gstin?: string;
   email?: string;
   address?: string;
   status?: (typeof customerStatuses)[number];
@@ -32,6 +34,7 @@ export class CustomersService {
         name: input.name.trim(),
         contactName: input.contactName?.trim() || null,
         phone: input.phone?.trim() || null,
+        gstin: storedGstin(input.gstin) ?? null,
         email: input.email?.trim() || null,
         address: input.address?.trim() || null,
       },
@@ -78,6 +81,7 @@ export class CustomersService {
         name: input.name?.trim(),
         contactName: input.contactName === undefined ? undefined : input.contactName.trim() || null,
         phone: input.phone === undefined ? undefined : input.phone.trim() || null,
+        gstin: storedGstin(input.gstin),
         email: input.email === undefined ? undefined : input.email.trim() || null,
         address: input.address === undefined ? undefined : input.address.trim() || null,
         status: input.status ? this.toStatus(input.status) : undefined,

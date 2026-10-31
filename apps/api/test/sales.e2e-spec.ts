@@ -608,6 +608,29 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(counters.map((counter) => [counter.series, counter.financialYear, counter.lastNumber])).toEqual([['PURCHASE', '2026-27', 1], ['SALE', '2025-26', 1], ['SALE', '2026-27', 10]]);
   });
 
+  it('stores the GST profile of the shop, customers and suppliers and shares it with devices', async () => {
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27aapfu0939f1zv', address: 'Shop 4, Main Road, Pune', phone: '+91 98765 43210' }).expect(200);
+    expect((await api('get', `/businesses/${businessId}`).expect(200)).body.data).toMatchObject({ gstin: '27AAPFU0939F1ZV', stateCode: '27' });
+    await api('patch', `/businesses/${businessId}`).send({ stateCode: '29' }).expect(400);
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZW' }).expect(422);
+    await api('patch', `/businesses/${businessId}`).send({ email: '' }).expect(200);
+
+    const customer = (await api('post', '/customers').send({ name: 'GST customer', gstin: '27 aapfu0939f1zv' }).expect(201)).body.data;
+    expect(customer.gstin).toBe('27AAPFU0939F1ZV');
+    expect((await api('patch', `/customers/${customer.id}`).send({ gstin: '' }).expect(200)).body.data.gstin).toBeNull();
+    await api('post', '/customers').send({ name: 'Mistyped GSTIN', gstin: '27AAPFU0939F1ZW' }).expect(422);
+    const supplier = (await api('post', '/suppliers').send({ name: 'GST supplier', gstin: '27AAPFU0939F1ZV' }).expect(201)).body.data;
+    expect(supplier.gstin).toBe('27AAPFU0939F1ZV');
+
+    // Contacts created offline are validated the same way when they sync.
+    const offline = { operationId: randomUUID(), entityId: randomUUID(), entity: 'customers', action: 'create', payload: { name: 'Offline GST customer', gstin: '27aapfu0939f1zv' } };
+    expect((await api('post', '/sync/push').send(offline).expect(201)).body.data.record.gstin).toBe('27AAPFU0939F1ZV');
+    await api('post', '/sync/push').send({ ...offline, operationId: randomUUID(), entityId: randomUUID(), payload: { name: 'Bad', gstin: 'GSTIN' } }).expect(422);
+
+    const snapshot = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(snapshot.business).toMatchObject({ gstin: '27AAPFU0939F1ZV', stateCode: '27', address: 'Shop 4, Main Road, Pune', phone: '+91 98765 43210', email: null, invoicePrefix: 'INV', purchasePrefix: 'PUR' });
+  });
+
   it('sells a pack and loose pieces of one product on separate lines', async () => {
     const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
       { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },

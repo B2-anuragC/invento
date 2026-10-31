@@ -3,3 +3,4 @@ export * from './utils/index.js';
 export * from './selling-units.js';
 export * from './permissions.js';
 export * from './invoicing.js';
+export * from './gstin.js';
