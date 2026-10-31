@@ -21,7 +21,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | 6 | Receipt lists every payment method used; readable payment method names | Done |
 | 7 | Access screen stops re-rendering mid-task during the 15-second permission refresh | Done |
 | 8 | Glass calculator returns its quantity to the purchase or sale that opened it | Done |
-| 9 | Due-date picker disables dates before the transaction date | |
+| 9 | Due-date picker disables dates before the transaction date | Done |
 | 10 | Product form asks before discarding unsaved changes | |
 | 11 | Quick bill keeps a pack and loose pieces of one product on separate lines; selling options shown on product cards | |
 
