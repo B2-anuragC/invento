@@ -359,6 +359,39 @@ describe("Durable offline transactions", () => {
       await api.hasOfflineBusiness({ ...session, businessId: "other" }),
     ).toBe(false);
   });
+  const withPack = () => {
+    snapshot.products[0] = { ...snapshot.products[0], unit: 'PIECE', sellingOptions: [{ id: 'pack', name: 'Pack of 10', unit: 'PACK', quantity: '1', sellingPrice: '90.00', piecesPerUnit: 10 }] } as LocalRecord;
+    snapshot.inventory[0].quantity = '12';
+  };
+  const packAndLoose = (loose: string, id = 'request_pack_loose'): CreateSaleInput => ({
+    ...sale(id), amountPaid: '0',
+    items: [{ productId: 'product', sellingOptionId: 'pack', quantity: '1', sellingPrice: '90.00' }, { productId: 'product', unit: 'PIECE', quantity: loose, sellingPrice: '10.00' }],
+  });
+  it('allows a pack and loose pieces of one product on separate lines within stock', () => {
+    withPack();
+    const built = buildOfflineTransaction(snapshot, 'sale', packAndLoose('2'));
+    expect(built.movements.map((movement) => movement.quantity)).toEqual([-10, -2]);
+    expect(built.record.items).toHaveLength(2);
+  });
+  it('checks stock across all lines of a product and rejects identical lines', () => {
+    withPack();
+    expect(() => buildOfflineTransaction(snapshot, 'sale', packAndLoose('3'))).toThrow('Insufficient stock');
+    const pack = packAndLoose('1').items[0];
+    expect(() => buildOfflineTransaction(snapshot, 'sale', { ...packAndLoose('1'), items: [pack, pack] })).toThrow('Combine the quantity');
+    expect(() => buildOfflineTransaction(snapshot, 'purchase', { ...purchase(), items: [purchase().items[0], purchase().items[0]] })).toThrow('only once');
+  });
+  it('syncs a pack-and-loose bill without a false item-settings conflict', async () => {
+    withPack();
+    online = true;
+    await api.syncOffline(session, true);
+    online = false;
+    await api.saveOfflineTransaction(session, 'sale', packAndLoose('2'));
+    expect((await api.offlineView(session)).inventory[0].quantity).toBe(0);
+    online = true;
+    await api.syncOffline(session, true);
+    expect(await api.offlineCommands(session)).toHaveLength(0);
+    expect(sent.find((entry) => entry.path === '/sales')?.input.items).toHaveLength(2);
+  });
   it('converts piece and selling-option quantities into the correct stock movement', () => {
     snapshot.products[0] = { ...snapshot.products[0], unit: 'BOX', piecesPerUnit: 24 } as LocalRecord;
     snapshot.inventory[0].quantity = '1';

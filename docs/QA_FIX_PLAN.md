@@ -23,7 +23,7 @@ Logic that lives in screens is moved into `services/` or `packages/shared` where
 | 8 | Glass calculator returns its quantity to the purchase or sale that opened it | Done |
 | 9 | Due-date picker disables dates before the transaction date | Done |
 | 10 | Product form asks before discarding unsaved changes; Cancel editing restores saved values | Done |
-| 11 | Quick bill keeps a pack and loose pieces of one product on separate lines; selling options shown on product cards | |
+| 11 | Quick bill keeps a pack and loose pieces of one product on separate lines; selling options shown on product cards | Done |
 
 ## Phase 2 — Invoicing (India GST)
 

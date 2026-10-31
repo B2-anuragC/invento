@@ -130,9 +130,13 @@ export async function syncOffline(session: AppSession, force = false): Promise<v
         try {
           if (isTransactionCommand(command)) {
             const input = command.payload as unknown as CreateSaleInput | CreatePurchaseInput;
-            for (const expected of command.expectations ?? []) {
+            // Expectations are recorded one per item, in item order, so a product on
+            // two lines (a pack and loose pieces) is checked with each line's option.
+            for (const [index, expected] of (command.expectations ?? []).entries()) {
               const product = state.snapshot.products.find((entry) => entry.id === expected.productId) as ProductRecord | undefined;
-              const optionId = command.entity === 'sale' ? (input as CreateSaleInput).items.find((entry) => entry.productId === expected.productId)?.sellingOptionId : undefined;
+              const items = command.entity === 'sale' ? (input as CreateSaleInput).items : [];
+              const item = items[index]?.productId === expected.productId ? items[index] : items.find((entry) => entry.productId === expected.productId);
+              const optionId = item?.sellingOptionId;
               if (!product || productSignature(product, optionId) !== expected.signature) throw Object.assign(new Error('An item’s tax, unit or selling option changed. Review the pending bill before retrying.'), { status: 409 });
             }
             await transport<TransactionRecord>(command.entity === 'sale' ? '/sales' : '/purchases', { method: 'POST', body: JSON.stringify(input) }, session);

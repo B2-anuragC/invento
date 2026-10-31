@@ -74,16 +74,26 @@ export function buildOfflineTransaction(
   if (!["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"].includes(method))
     throw new Error("Select a valid payment method.");
   if (!input.items.length) throw new Error("Add at least one item.");
+  // Sales may list a product on separate lines sold differently (a pack and
+  // loose pieces), matching the API; purchases keep one line per product.
   const seen = new Set<string>();
+  const reserved = new Map<string, number>();
   const movements: StockMovement[] = [];
   const expectations: ProductExpectation[] = [];
   let subtotal = 0n,
     taxTotal = 0n;
   const id = `local_${input.requestId}`;
   const items = input.items.map((line, index) => {
-    if (seen.has(line.productId))
-      throw new Error("Each product can appear only once in a transaction.");
-    seen.add(line.productId);
+    const lineKey = sale
+      ? `${line.productId}|${(line as CreateSaleInput["items"][number]).sellingOptionId ?? ""}|${(line as CreateSaleInput["items"][number]).unit ?? ""}`
+      : line.productId;
+    if (seen.has(lineKey))
+      throw new Error(
+        sale
+          ? "This product is already on the bill sold the same way. Combine the quantity into one line."
+          : "Each product can appear only once in a transaction.",
+      );
+    seen.add(lineKey);
     const product = view.products.find(
       (entry) => entry.id === line.productId,
     ) as ProductRecord | undefined;
@@ -164,8 +174,9 @@ export function buildOfflineTransaction(
       stockQuantity =
         movement /
         (conversion.unit === "PIECE" ? (product.piecesPerUnit ?? 1) : 1);
+      const alreadyReserved = reserved.get(product.id) ?? 0;
       if (
-        stockQuantity >
+        alreadyReserved + stockQuantity >
         Number(
           view.inventory.find((entry) => entry.productId === product.id)
             ?.quantity ?? 0,
@@ -175,6 +186,7 @@ export function buildOfflineTransaction(
         throw new Error(
           `Insufficient stock for ${product.name} on this device.`,
         );
+      reserved.set(product.id, alreadyReserved + stockQuantity);
     } else if (
       product.piecesPerUnit &&
       Math.abs(

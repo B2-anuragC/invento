@@ -35,6 +35,7 @@ import { TransactionFinanceFields } from "@/components/transaction-finance-field
 import { TransactionSaveNotice } from "@/components/transaction-save-notice";
 import { FormError } from "@/components/form-error";
 import { paymentMethodLabel } from "@/services/payment-methods";
+import { decodeDraftLines, encodeDraftLines, sameLine } from "@/services/bill-lines";
 import { formatMoney as money, formatQuantity } from '@/services/format';
 import {
   TransactionReceipt,
@@ -145,16 +146,7 @@ export default function QuickBillScreen() {
             await clearDraft(session, "sale", "quick");
           } else {
             setLines(
-              Object.entries(draft.quantities)
-                .filter(([id]) => p.some((product) => product.id === id))
-                .map(([id, quantity]) => ({
-                  productId: id,
-                  quantity,
-                  price:
-                    draft.prices[id] ??
-                    p.find((product) => product.id === id)!.sellingPrice,
-                  optionId: draft.selectedOptions?.[id],
-                })),
+              decodeDraftLines(draft, (id) => p.find((product) => product.id === id)?.sellingPrice),
             );
             setCustomerId(
               c.some((customer) => customer.id === draft.contactId)
@@ -268,7 +260,7 @@ export default function QuickBillScreen() {
   items.forEach((item, index) => {
     if ((used[item.productId] ?? 0) > (stock[item.productId] ?? 0) + 1e-9)
       lineErrors[index] =
-        `Only ${stock[item.productId] ?? 0} ${formatUnitLabel(item.product.unit)} available across all bill lines.`;
+        `Only ${formatQuantity(stock[item.productId] ?? 0, item.product.unit)} available across all bill lines.`;
   });
   const paymentValid =
     validDueDate(mode === "full" ? "" : dueDate) &&
@@ -308,17 +300,7 @@ export default function QuickBillScreen() {
       updatedAt: new Date().toISOString(),
       contactId: customerId,
       contactName: customer?.name ?? "",
-      quantities: Object.fromEntries(
-        lines.map((line) => [line.productId, line.quantity]),
-      ),
-      prices: Object.fromEntries(
-        lines.map((line) => [line.productId, line.price]),
-      ),
-      selectedOptions: Object.fromEntries(
-        lines
-          .filter((line) => line.optionId)
-          .map((line) => [line.productId, line.optionId!]),
-      ),
+      ...encodeDraftLines(lines),
       paymentMode: mode,
       paidInput: paid,
       dueDate,
@@ -354,17 +336,10 @@ export default function QuickBillScreen() {
   };
   const add = (product: ProductRecord, optionId?: string) => {
     if (locked) return;
-    const index = lines.findIndex((line) => line.productId === product.id);
-    if (index >= 0 && lines[index].optionId !== optionId)
-      edit(index, {
-        optionId,
-        quantity: "1",
-        price: String(
-          product.sellingOptions?.find((o) => o.id === optionId)
-            ?.sellingPrice ?? product.sellingPrice,
-        ),
-      });
-    else if (index >= 0)
+    // A pack and loose pieces of one product are separate lines; adding the
+    // same kind again increases that line's quantity.
+    const index = lines.findIndex((line) => sameLine(line, { productId: product.id, optionId }));
+    if (index >= 0)
       edit(index, { quantity: String(Number(lines[index].quantity || 0) + 1) });
     else
       setLines((current) => [
@@ -619,11 +594,19 @@ export default function QuickBillScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
                     {suggested.map((product) => (
-                      <Pressable key={product.id} accessibilityRole="button" accessibilityLabel={`Add ${product.name}`} disabled={locked} onPress={() => add(product)} style={styles.suggestion}>
-                        <ProductThumbnail uri={product.imageThumbnail ?? product.images?.[0]?.imageThumbnail} size={32} />
-                        <Text numberOfLines={2} style={styles.bold}>{product.name}</Text>
-                        <Text style={styles.meta}>{money(Number(product.sellingPrice))} / {formatUnitLabel(product.unit)}</Text>
-                      </Pressable>
+                      <View key={product.id} style={styles.suggestion}>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Add ${product.name}`} disabled={locked} onPress={() => add(product)} style={{ gap: 4 }}>
+                          <ProductThumbnail uri={product.imageThumbnail ?? product.images?.[0]?.imageThumbnail} size={32} />
+                          <Text numberOfLines={2} style={styles.bold}>{product.name}</Text>
+                          <Text style={styles.meta}>{money(Number(product.sellingPrice))} / {formatUnitLabel(product.unit)}</Text>
+                        </Pressable>
+                        {/* Selling options are offered here too, not only in search results. */}
+                        {product.sellingOptions?.map((option) => (
+                          <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={`Add ${product.name}, ${option.name}, ${money(Number(option.sellingPrice))}`} disabled={locked} onPress={() => add(product, option.id)} style={styles.cardOption}>
+                            <Text numberOfLines={1} style={styles.green}>＋ {option.name}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
                     ))}
                     {!suggested.length ? <Text style={styles.meta}>Save favorites using the hearts on the Products screen.</Text> : null}
                   </ScrollView>
@@ -651,8 +634,7 @@ export default function QuickBillScreen() {
                               <Text style={[styles.bold, styles.fill]}>{p.name}　＋</Text>
                             </View>
                             <Text style={styles.meta}>
-                              {p.sku} · {stock[p.id] ?? 0}{" "}
-                              {formatUnitLabel(p.unit)} available ·{" "}
+                              {p.sku} · {formatQuantity(stock[p.id] ?? 0, p.unit)} available ·{" "}
                               {money(Number(p.sellingPrice))}
                             </Text>
                           </Pressable>
@@ -786,7 +768,7 @@ export default function QuickBillScreen() {
                   <Pressable accessibilityRole="button" disabled={locked} style={styles.breakdownToggle} onPress={() => {
                     const removed = removedLine;
                     setLines((current) => {
-                      if (current.some((line) => line.productId === removed.line.productId)) return current;
+                      if (current.some((line) => sameLine(line, removed.line))) return current;
                       const next = [...current];
                       next.splice(Math.min(removed.index, next.length), 0, removed.line);
                       return next;
@@ -1123,6 +1105,7 @@ const styles = StyleSheet.create({
   suggestionTab: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 8 },
   selectedTab: { backgroundColor: '#E7F2ED' },
   suggestion: { width: 142, padding: 10, gap: 4, borderWidth: 1, borderColor: '#DEE5E1', borderRadius: 10 },
+  cardOption: { minHeight: 36, justifyContent: 'center', paddingHorizontal: 8, backgroundColor: '#F3F5F4', borderRadius: 8 },
   fill: { flex: 1, minWidth: 0, minHeight: 0 },
   itemRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   itemControls: { flex: 1, minWidth: 148 },
