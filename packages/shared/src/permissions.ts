@@ -104,6 +104,7 @@ export function clientRoutePermissions(path: string): Permission[] {
     return [];
   if (path.includes("settings/access")) return ["members.view", "roles.view"];
   if (path.includes("settings/pricing")) return ["pricing.manage"];
+  if (path.includes("settings/shop")) return ["business.update"];
   if (path.startsWith("/product/"))
     return [path.endsWith("/new") ? "products.create" : "products.view"];
   if (path.startsWith("/sale/"))

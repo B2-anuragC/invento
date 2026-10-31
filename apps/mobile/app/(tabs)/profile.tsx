@@ -167,6 +167,7 @@ export default function ProfileScreen() {
               { title: 'Sales history', detail: 'Invoices and repeat sales', route: '/(tabs)/sales' },
               { title: 'Purchase history', detail: 'Supplier invoices and replenishment', route: '/(tabs)/purchases' },
               { title: 'People & contacts', detail: 'Customers and suppliers', route: '/people' },
+              { title: 'Shop details', detail: 'Address, GSTIN and invoice prefixes', route: '/settings/shop' },
               { title: 'Users & permissions', detail: 'Manage business access', route: '/settings/access' },
               { title: 'Pricing access', detail: 'Control price visibility', route: '/settings/pricing' },
             ].filter(item => { const required = clientRoutePermissions(item.route); return !required.length || required.some(can); }).map((item) => (

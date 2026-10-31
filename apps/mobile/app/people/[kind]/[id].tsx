@@ -25,7 +25,7 @@ import {
   type SaleRecord,
   type SupplierRecord,
 } from '@/services/api';
-import { phoneError } from '@/services/contact-validation';
+import { gstinError, gstinInput, phoneError } from '@/services/contact-validation';
 import { FormError } from '@/components/form-error';
 import { formatDate, formatMoney, plural } from '@/services/format';
 import { paymentMethodsSummary } from '@/services/payment-methods';
@@ -48,7 +48,7 @@ export default function ContactDetailsScreen() {
   const [supplierProductIds, setSupplierProductIds] = useState<string[]>([]);
   const [photo, setPhoto] = useState<ProductPhotoValue>({ imageOriginal: null, imageThumbnail: null });
   const [photoBusy, setPhotoBusy] = useState(false);
-  const [form, setForm] = useState({ name: '', contactName: '', phone: '', email: '', address: '' });
+  const [form, setForm] = useState({ name: '', contactName: '', phone: '', email: '', address: '', gstin: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [paymentTarget, setPaymentTarget] = useState<SaleRecord | PurchaseRecord | null>(null);
@@ -85,6 +85,7 @@ export default function ContactDetailsScreen() {
           phone: loaded.phone ?? '',
           email: loaded.email ?? '',
           address: loaded.address ?? '',
+          gstin: loaded.gstin ?? '',
         });
         if (contactKind === 'customers') setSales(history as SaleRecord[]);
         else setPurchases(history as PurchaseRecord[]);
@@ -101,6 +102,8 @@ export default function ContactDetailsScreen() {
     if (!session || !contact || !form.name.trim() || saving || photoBusy) return;
     const invalidPhone = phoneError(form.phone);
     if (invalidPhone) { setError(invalidPhone); return; }
+    const invalidGstin = gstinError(form.gstin);
+    if (invalidGstin) { setError(invalidGstin); return; }
     setSaving(true);
     setError('');
     try {
@@ -110,6 +113,7 @@ export default function ContactDetailsScreen() {
         phone: form.phone.trim(),
         email: form.email.trim(),
         address: form.address.trim(),
+        gstin: gstinInput(form.gstin),
       };
       const updated = contactKind === 'customers'
         ? await updateCustomer(session, contact.id, { ...input, ...photo })
@@ -183,7 +187,7 @@ export default function ContactDetailsScreen() {
               <View style={customerStyles.copy}>
                 <Text style={customerStyles.meta}>Customer</Text>
                 <Text style={customerStyles.name}>{contact.name}</Text>
-                <Text style={customerStyles.meta}>{[contact.phone, contact.address].filter(Boolean).join(' · ') || 'No contact details'}</Text>
+                <Text style={customerStyles.meta}>{[contact.phone, contact.address, contact.gstin ? `GSTIN ${contact.gstin}` : ''].filter(Boolean).join(' · ') || 'No contact details'}</Text>
                 {contact.contactName ? <Text style={customerStyles.meta}>{contact.contactName}</Text> : null}
                 {contact.email ? <Text style={customerStyles.meta}>{contact.email}</Text> : null}
               </View>
@@ -244,7 +248,7 @@ export default function ContactDetailsScreen() {
               <View style={customerStyles.copy}>
                 <Text style={customerStyles.meta}>Supplier</Text>
                 <Text style={customerStyles.name}>{contact.name}</Text>
-                <Text style={customerStyles.meta}>{[contact.phone, contact.address].filter(Boolean).join(' · ') || 'No contact details'}</Text>
+                <Text style={customerStyles.meta}>{[contact.phone, contact.address, contact.gstin ? `GSTIN ${contact.gstin}` : ''].filter(Boolean).join(' · ') || 'No contact details'}</Text>
                 {contact.contactName ? <Text style={customerStyles.meta}>{contact.contactName}</Text> : null}
                 {contact.email ? <Text style={customerStyles.meta}>{contact.email}</Text> : null}
               </View>
@@ -308,6 +312,7 @@ export default function ContactDetailsScreen() {
                     ['phone', 'Phone'],
                     ['email', 'Email'],
                     ['address', 'Address'],
+                    ['gstin', 'GSTIN (optional)'],
                   ] as const).map(([key, label]) => (
                     <View key={key}>
                       <Text style={styles.label}>{label}</Text>
@@ -317,7 +322,7 @@ export default function ContactDetailsScreen() {
                         style={styles.input}
                         placeholder={label}
                         placeholderTextColor="#89918C"
-                        autoCapitalize={key === 'email' ? 'none' : 'words'}
+                        autoCapitalize={key === 'email' ? 'none' : key === 'gstin' ? 'characters' : 'words'}
                         keyboardType={key === 'phone' ? 'phone-pad' : key === 'email' ? 'email-address' : 'default'}
                       />
                     </View>

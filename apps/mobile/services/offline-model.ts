@@ -1,10 +1,11 @@
 import type { ProductExpectation, StockMovement, TransactionRecord } from './offline-transactions';
-import type { AppSession, CustomerRecord, InventoryActivityRecord, InventoryRecord, PricingAccess, ProductRecord, SupplierRecord, SaleRecord, PurchaseRecord } from './api';
+import type { AppSession, BusinessDetails, CustomerRecord, InventoryActivityRecord, InventoryRecord, PricingAccess, ProductRecord, SupplierRecord, SaleRecord, PurchaseRecord } from './api';
 export type CatalogEntity = 'products' | 'customers' | 'suppliers';
 export type LocalRecord = (ProductRecord | CustomerRecord | SupplierRecord) & { revision: number; updatedAt: string; createdAt?: string; syncState?: 'pending' | 'conflict'; };
 export type OfflineSnapshot = {
   sales: SaleRecord[]; purchases: PurchaseRecord[];
-  schemaVersion: 1; business: { id: string; name: string }; access: PricingAccess;
+  // Shop details beyond id and name arrive in newer snapshots; the schema version is unchanged.
+  schemaVersion: 1; business: BusinessDetails; access: PricingAccess;
   products: LocalRecord[]; customers: LocalRecord[]; suppliers: LocalRecord[];
   inventory: InventoryRecord[]; inventoryActivity: InventoryActivityRecord[]; downloadedAt: string;
 };

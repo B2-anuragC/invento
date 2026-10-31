@@ -120,6 +120,19 @@ it("numbers device bills consecutively, by financial year, and keeps counting af
   fault.write = false;
   expect((await sale("local_request_e", "2026-10-17T10:00:00Z")).documentNumber).toBe("INV/2026-27/0003");
 });
+it("keeps shop details on the device with the server's rules", async () => {
+  await setup();
+  const path = `/businesses/${session.businessId}`;
+  const patch = (body: unknown) => api.localRequest<any>(path, { method: "PATCH", body: JSON.stringify(body) }, session);
+  expect(await patch({ gstin: "27aapfu0939f1zv", address: " Shop 12 ", invoicePrefix: "gs" })).toMatchObject({ gstin: "27AAPFU0939F1ZV", stateCode: "27", address: "Shop 12", invoicePrefix: "GS" });
+  await expect(patch({ gstin: "27AAPFU0939F1ZW" })).rejects.toThrow("valid 15-character GSTIN");
+  await expect(patch({ purchasePrefix: "PURCH" })).rejects.toThrow("prefix");
+  expect(await patch({ gstin: "", address: "" })).toMatchObject({ gstin: null, address: null, stateCode: "27" });
+  expect(await send<any>(path)).toMatchObject({ name: "My shop", invoicePrefix: "GS" });
+  // New device bills use the shop's prefix.
+  const sale = await send<any>("/sales", { requestId: "local_prefix_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "1", sellingPrice: "10" }] });
+  expect(sale.documentNumber).toBe("GS/2026-27/0001");
+});
 it("does not store a local transaction or stock movement when durable storage fails", async () => {
   await setup();
   fault.write = true;

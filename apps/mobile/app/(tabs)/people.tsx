@@ -18,13 +18,13 @@ import {
   type CustomerRecord,
   type SupplierRecord,
 } from '@/services/api';
-import { phoneError } from '@/services/contact-validation';
+import { gstinError, gstinInput, phoneError } from '@/services/contact-validation';
 
 type PersonFilter = 'All' | 'Customers' | 'Suppliers';
 type ContactKind = 'customer' | 'supplier';
-type ContactFields = { name: string; contactName: string; phone: string; email: string; address: string };
+type ContactFields = { name: string; contactName: string; phone: string; email: string; address: string; gstin: string };
 type PersonItem = { imageThumbnail?: string | null; id: string; name: string; phone?: string | null; contactName?: string | null; kind: ContactKind };
-const emptyContact: ContactFields = { name: '', contactName: '', phone: '', email: '', address: '' };
+const emptyContact: ContactFields = { name: '', contactName: '', phone: '', email: '', address: '', gstin: '' };
 
 export default function PeopleDirectoryScreen() {
   const router = useRouter();
@@ -79,6 +79,8 @@ export default function PeopleDirectoryScreen() {
     if (!session || !contact.name.trim() || saving || photoBusy) return;
     const invalidPhone = phoneError(contact.phone);
     if (invalidPhone) { setError(invalidPhone); return; }
+    const invalidGstin = gstinError(contact.gstin);
+    if (invalidGstin) { setError(invalidGstin); return; }
     setSaving(true);
     setError('');
     try {
@@ -88,6 +90,7 @@ export default function PeopleDirectoryScreen() {
         phone: contact.phone.trim(),
         email: contact.email.trim(),
         address: contact.address.trim(),
+        gstin: gstinInput(contact.gstin),
       };
       if (contactKind === 'customer') await createCustomer(session, { ...input, ...photo });
       else await createSupplier(session, { ...input, categories: supplierCategories, productIds: supplierProductIds });
@@ -206,14 +209,16 @@ export default function PeopleDirectoryScreen() {
               ['phone', 'Phone'],
               ['email', 'Email'],
               ['address', 'Address'],
+              ['gstin', 'GSTIN (optional)'],
             ] as const).map(([key, label]) => (
               <TextInput
                 key={key}
+                accessibilityLabel={label}
                 value={contact[key]}
                 onChangeText={(value) => setContact((current) => ({ ...current, [key]: value }))}
                 placeholder={label}
                 placeholderTextColor="#7A817E"
-                autoCapitalize={key === 'email' ? 'none' : 'words'}
+                autoCapitalize={key === 'email' ? 'none' : key === 'gstin' ? 'characters' : 'words'}
                 keyboardType={key === 'phone' ? 'phone-pad' : key === 'email' ? 'email-address' : 'default'}
                 style={styles.modalInput}
               />

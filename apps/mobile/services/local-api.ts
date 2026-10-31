@@ -1,9 +1,9 @@
-import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, financialYearOf, formatDocumentNumber } from '@invento/shared';
+import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
 import { readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
 import type { OfflineSnapshot, LocalRecord } from "./offline-model";
-import type { AppSession, ApiUser, SaleRecord, PurchaseRecord } from "./api";
+import type { AppSession, ApiUser, BusinessDetails, BusinessDetailsInput, SaleRecord, PurchaseRecord } from "./api";
 import { moneyValue } from "./transaction-accounting";
 
 type LocalDatabase = {
@@ -40,6 +40,31 @@ export async function localSession(): Promise<AppSession> {
   };
 }
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const invalid = (message: string) => Object.assign(new Error(message), { status: 422 });
+/** Shop details on a local-only device, checked with the same rules as the server. */
+function updatedLocalBusiness(current: BusinessDetails, input: BusinessDetailsInput): BusinessDetails {
+  const text = (value: string | undefined, previous: string | null | undefined) => (value === undefined ? previous : value.trim() || null);
+  const next: BusinessDetails = { ...current, email: text(input.email, current.email), phone: text(input.phone, current.phone), address: text(input.address, current.address) };
+  if (input.name !== undefined) {
+    if (input.name.trim().length < 2) throw invalid("Enter the shop name (at least 2 characters).");
+    next.name = input.name.trim();
+  }
+  if (input.gstin !== undefined) {
+    const gstin = normalizeGstin(input.gstin);
+    if (gstin && !isValidGstin(gstin)) throw invalid(GSTIN_RULE_MESSAGE);
+    next.gstin = gstin || null;
+  }
+  if (input.stateCode !== undefined) next.stateCode = input.stateCode.trim() || null;
+  if (next.gstin) next.stateCode = gstinStateCode(next.gstin);
+  for (const key of ["invoicePrefix", "purchasePrefix"] as const) {
+    if (input[key] === undefined) continue;
+    const prefix = normalizeDocumentPrefix(input[key]!);
+    if (!isValidDocumentPrefix(prefix)) throw invalid(DOCUMENT_PREFIX_RULE_MESSAGE);
+    next[key] = prefix;
+  }
+  return next;
+}
+
 /** Device-only request handler. No fetch, credentials, cloud account or server is used. */
 export function localRequest<T>(
   path: string,
@@ -90,6 +115,13 @@ export function localRequest<T>(
           downloadedAt: new Date().toISOString(),
         };
         result = business;
+      } else if (/^\/businesses\/[^/]+$/.test(path)) {
+        const snapshot = state.snapshots[decodeURIComponent(path.split("/")[2])];
+        if (!snapshot) throw Object.assign(new Error("Business not found on this device."), { status: 404 });
+        if (method === "PATCH") snapshot.business = updatedLocalBusiness(snapshot.business, input);
+        const entry = state.businesses.find((business) => business.id === snapshot.business.id);
+        if (entry) entry.name = snapshot.business.name;
+        result = clone(snapshot.business);
       } else {
         const snapshot = session?.businessId
           ? state.snapshots[session.businessId]

@@ -116,6 +116,7 @@ export type CustomerRecord = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  gstin?: string | null;
   status: string;
 };
 
@@ -185,6 +186,7 @@ export type SupplierRecord = {
   phone?: string | null;
   email?: string | null;
   address?: string | null;
+  gstin?: string | null;
   status: string;
 };
 
@@ -615,7 +617,7 @@ export async function fetchCustomers(session: AppSession): Promise<CustomerRecor
 
 export async function createCustomer(
   session: AppSession,
-  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string },
+  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string; gstin?: string },
 ): Promise<CustomerRecord> {
   await assertClientPermission(session, 'customers.create');
   if (nativeOffline) return await saveOfflineCatalog(session, 'customers', typeof input === 'string' ? { name: input } : { ...input }) as CustomerRecord;
@@ -636,7 +638,7 @@ export async function fetchCustomer(session: AppSession, customerId: string): Pr
 export async function updateCustomer(
   session: AppSession,
   customerId: string,
-  input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'imageOriginal' | 'imageThumbnail'>>,
+  input: Partial<Pick<CustomerRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'gstin' | 'status' | 'imageOriginal' | 'imageThumbnail'>>,
 ): Promise<CustomerRecord> {
   if (input.status === 'INACTIVE') await assertClientPermission(session, 'customers.delete');
   await assertClientPermission(session, 'customers.update');
@@ -693,7 +695,7 @@ export async function fetchSuppliers(session: AppSession): Promise<SupplierRecor
 
 export async function createSupplier(
   session: AppSession,
-  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string; categories?: string[]; productIds?: string[] },
+  input: string | { imageOriginal?: string | null; imageThumbnail?: string | null; name: string; contactName?: string; phone?: string; email?: string; address?: string; gstin?: string; categories?: string[]; productIds?: string[] },
 ): Promise<SupplierRecord> {
   await assertClientPermission(session, 'suppliers.create');
   if (nativeOffline) return await saveOfflineCatalog(session, 'suppliers', typeof input === 'string' ? { name: input } : { ...input }) as SupplierRecord;
@@ -714,7 +716,7 @@ export async function fetchSupplier(session: AppSession, supplierId: string): Pr
 export async function updateSupplier(
   session: AppSession,
   supplierId: string,
-  input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'status' | 'categories' | 'productIds'>>,
+  input: Partial<Pick<SupplierRecord, 'name' | 'contactName' | 'phone' | 'email' | 'address' | 'gstin' | 'status' | 'categories' | 'productIds'>>,
 ): Promise<SupplierRecord> {
   if (input.status === 'INACTIVE') await assertClientPermission(session, 'suppliers.delete');
   await assertClientPermission(session, 'suppliers.update');
@@ -767,6 +769,46 @@ export async function removeBusinessUser(session: AppSession, userId: string): P
   await request(`/businesses/${encodeURIComponent(session.businessId)}/users/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
   }, session);
+}
+
+/** Shop details shown on receipts and invoices. */
+export type BusinessDetails = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  gstin?: string | null;
+  stateCode?: string | null;
+  invoicePrefix?: string;
+  purchasePrefix?: string;
+};
+
+export type BusinessDetailsInput = Partial<Record<'name' | 'email' | 'phone' | 'address' | 'gstin' | 'stateCode' | 'invoicePrefix' | 'purchasePrefix', string>>;
+
+/** Current shop details; offline devices fall back to the copy downloaded with the business. */
+export async function fetchBusinessDetails(session: AppSession): Promise<BusinessDetails> {
+  await assertClientPermission(session, 'business.view');
+  const live = () => request<BusinessDetails>(`/businesses/${encodeURIComponent(session.businessId)}`, { method: 'GET' }, session);
+  if (!nativeOffline) return live();
+  try {
+    return await live();
+  } catch (error) {
+    if (!isServerUnreachable(error)) throw error;
+    return (await offlineView(session)).business as BusinessDetails;
+  }
+}
+
+/** Saves shop details online and refreshes the device copy used by offline receipts. */
+export async function updateBusinessDetails(session: AppSession, input: BusinessDetailsInput): Promise<BusinessDetails> {
+  await assertClientPermission(session, 'business.update');
+  const updated = await request<BusinessDetails>(`/businesses/${encodeURIComponent(session.businessId)}`, { method: 'PATCH', body: JSON.stringify(input) }, session);
+  if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
+  if (appSession.current?.businessId === session.businessId && appSession.current.businessName !== updated.name) {
+    appSession.current = { ...appSession.current, businessName: updated.name };
+    await persistSession(appSession.current).catch(() => undefined);
+  }
+  return updated;
 }
 
 export async function fetchPricingAccess(session: AppSession): Promise<PricingAccess> {

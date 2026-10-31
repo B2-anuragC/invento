@@ -106,6 +106,7 @@ describe('Permission policy completeness and default denial', () => {
     ['/purchase/create', ['purchases.create']],
     ['/people/suppliers/abc', ['suppliers.view']],
     ['/settings/access', ['members.view', 'roles.view']],
+    ['/settings/shop', ['business.update']],
   ])('gates direct client navigation to %s', (path, permissions) => {
     expect(clientRoutePermissions(path as string)).toEqual(permissions);
   });
