@@ -4,3 +4,4 @@ export * from './selling-units.js';
 export * from './permissions.js';
 export * from './invoicing.js';
 export * from './gstin.js';
+export * from './gst-invoice.js';

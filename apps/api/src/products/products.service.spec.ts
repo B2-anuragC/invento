@@ -94,6 +94,23 @@ describe('ProductsService', () => {
     await expect(service.create('user-a', 'business-a', { ...productInput, imageThumbnail: thumbnail, imageOriginal: null })).rejects.toThrow('uploaded product image');
   });
 
+  it('stores the HSN code as digits only and clears it with a blank value', async () => {
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
+      businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, business: { isActive: true } }) },
+      product: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue({ ...productInput, piecesPerUnit: null }), update: vi.fn().mockResolvedValue({}) },
+    };
+    const service = new ProductsService(prisma as never, {} as never);
+    await service.create('user-a', 'business-a', { ...productInput, hsnCode: ' 7005 29 ' });
+    expect(prisma.product.create.mock.calls.at(-1)?.[0].data.hsnCode).toBe('700529');
+    await service.create('user-a', 'business-a', productInput);
+    expect(prisma.product.create.mock.calls.at(-1)?.[0].data.hsnCode).toBeNull();
+    await service.update('user-a', 'business-a', 'product-a', { hsnCode: '' });
+    expect(prisma.product.update.mock.calls.at(-1)?.[0].data.hsnCode).toBeNull();
+    await service.update('user-a', 'business-a', 'product-a', { name: 'Updated rice' });
+    expect(prisma.product.update.mock.calls.at(-1)?.[0].data.hsnCode).toBeUndefined();
+  });
+
   it('removes both images on update and preserves them when omitted', async () => {
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ isActive: true, role: 'OWNER', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] }, business: { isActive: true } }) },

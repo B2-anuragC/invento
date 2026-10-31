@@ -1,5 +1,5 @@
 import { FilesService } from '../files/files.service.js';
-import { sellingUnitConversion } from '@invento/shared';
+import { invoiceTaxContext, sellingUnitConversion } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import type { RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
@@ -53,6 +53,12 @@ export class SalesService {
     if (!customer) throw new NotFoundException('Customer not found.');
     if (customer.status !== CustomerStatus.ACTIVE) throw new ConflictException('Customer is not active.');
 
+    // Copied onto the sale so the issued invoice never changes when the shop
+    // or customer GST profile is edited later.
+    const shop = await this.prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { gstin: true, stateCode: true } });
+    const tax = invoiceTaxContext({ sellerGstin: shop.gstin, sellerStateCode: shop.stateCode, buyerGstin: customer.gstin });
+    const invoiceDetails = { sellerGstin: shop.gstin, sellerStateCode: tax.sellerStateCode, buyerGstin: customer.gstin, placeOfSupply: tax.placeOfSupply, taxType: tax.taxType };
+
     if (input.items.length === 0) throw new BadRequestException('At least one sale item is required.');
     if (!Object.values(PaymentMethod).includes(input.paymentMethod)) throw new BadRequestException('Invalid payment method.');
 
@@ -73,7 +79,7 @@ export class SalesService {
       if (sellingPrice.lessThanOrEqualTo(0)) throw new BadRequestException('Sale item price must be greater than zero.');
 
       const lineTotal = quantity.times(sellingPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, unitsPerOption: new Prisma.Decimal(1), movementUnit: undefined as string | undefined, movementQuantity: undefined as Prisma.Decimal | undefined, gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
+      return { productId: item.productId, unit: item.unit, sellingOptionId: item.sellingOptionId, optionName: undefined as string | undefined, hsnCode: null as string | null, unitsPerOption: new Prisma.Decimal(1), movementUnit: undefined as string | undefined, movementQuantity: undefined as Prisma.Decimal | undefined, gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), quantity, sellingPrice, lineTotal };
     });
 
     const products = await this.prisma.product.findMany({ where: { businessId, id: { in: lines.map((line) => line.productId) } } });
@@ -82,6 +88,7 @@ export class SalesService {
       const product = productsById.get(line.productId);
       if (!product) throw new NotFoundException(`Product ${line.productId} not found in this business.`);
       if (product.status !== ProductStatus.ACTIVE) throw new ConflictException(`Product ${product.name} is not active.`);
+      line.hsnCode = product.hsnCode;
       if (line.sellingOptionId) {
         const options = (Array.isArray(product.sellingOptions) ? product.sellingOptions : []) as { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number }[];
         const option = options.find((entry) => entry.id === line.sellingOptionId);
@@ -126,6 +133,7 @@ export class SalesService {
           total, subtotal, taxTotal, amountPaid, dueDate, requestId: input.requestId,
           note: input.note,
           referenceImage,
+          ...invoiceDetails,
           createdByUserId: userId,
         },
       });
@@ -147,7 +155,7 @@ export class SalesService {
           tx,
         );
         await tx.saleItem.create({
-          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, gstRate: line.gstRate, taxAmount: line.taxAmount },
+          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, gstRate: line.gstRate, taxAmount: line.taxAmount, hsnCode: line.hsnCode },
         });
       }
 
@@ -181,7 +189,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }

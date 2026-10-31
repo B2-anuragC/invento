@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, ArrayMaxSize, ValidateNested, IsInt, Min, Max, IsDecimal, IsIn, ValidateIf, IsString, MaxLength, MinLength, Matches } from 'class-validator';
+import { IsHsnCode } from '../../common/validators/is-hsn-code.js';
 
 export const productUnits = ['PIECE', 'KG', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'SQUARE_FOOT', 'FOOT', 'PACK', 'BOX', 'DOZEN', 'OTHER'] as const;
 export const productStatuses = ['ACTIVE', 'INACTIVE'] as const;
@@ -28,6 +29,7 @@ export class CreateProductDto {
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
 
   @ApiPropertyOptional({ description: 'GST percentage added to the entered tax-exclusive price.', default: '0' }) @ValidateIf((_o, v) => v !== undefined) @IsDecimal({ decimal_digits: '0,2' }) @Matches(/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/) gstRate?: string;
+  @ApiPropertyOptional({ description: 'HSN code printed on GST invoices: 4, 6 or 8 digits. Send an empty string to clear it.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @IsHsnCode() hsnCode?: string;
 
   @ApiPropertyOptional({ type: [SellingOptionDto] }) @ValidateIf((_object, value) => value !== undefined) @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SellingOptionDto) sellingOptions?: SellingOptionDto[];
   @ApiPropertyOptional({ description: 'Whole pieces per box or pack; dozen is always 12.' }) @ValidateIf((_object, value) => value !== undefined) @IsInt() @Min(1) @Max(100000) piecesPerUnit?: number;
@@ -48,6 +50,7 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ nullable: true }) @ValidateIf((_o, v) => v !== undefined && v !== null) @IsString() @MaxLength(2800000) @Matches(/^(?:data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}|\/files\/[a-f0-9]{64}\/original)$/) imageOriginal?: string | null;
 
   @ApiPropertyOptional({ description: 'GST percentage added to the entered tax-exclusive price.', default: '0' }) @ValidateIf((_o, v) => v !== undefined) @IsDecimal({ decimal_digits: '0,2' }) @Matches(/^(?:\d{1,2}(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/) gstRate?: string;
+  @ApiPropertyOptional({ description: 'HSN code printed on GST invoices: 4, 6 or 8 digits. Send an empty string to clear it.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @IsHsnCode() hsnCode?: string;
 
   @ApiPropertyOptional({ type: [SellingOptionDto] }) @ValidateIf((_object, value) => value !== undefined) @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => SellingOptionDto) sellingOptions?: SellingOptionDto[];
   @ApiPropertyOptional({ description: 'Whole pieces per box or pack; dozen is always 12.' }) @ValidateIf((_object, value) => value !== undefined) @IsInt() @Min(1) @Max(100000) piecesPerUnit?: number;

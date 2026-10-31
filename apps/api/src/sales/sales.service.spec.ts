@@ -10,16 +10,18 @@ function createFakeEnvironment(
   options: {
     role?: string;
     isActive?: boolean;
-    customer?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number }[];
+    customer?: { id: string; businessId: string; status: string; gstin?: string | null } | null;
+    shop?: { gstin: string | null; stateCode: string | null };
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number; hsnCode?: string | null }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
 ) {
   const role = options.role ?? 'OWNER';
   const isActive = options.isActive ?? true;
-  const customer = options.customer === undefined ? { id: 'customer-a', businessId: 'business-a', status: 'ACTIVE' } : options.customer;
-  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice', unit: 'KG' }];
+  const customer = options.customer === undefined ? { id: 'customer-a', businessId: 'business-a', status: 'ACTIVE', gstin: null } : options.customer;
+  const products = options.products ?? [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Rice', unit: 'KG', hsnCode: null }];
+  const shop = options.shop ?? { gstin: null, stateCode: null };
 
   const store: {
     sales: Record<string, unknown>;
@@ -92,6 +94,7 @@ function createFakeEnvironment(
     user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
     businessUser: { findUnique: vi.fn(async () => (isActive ? { business: { isActive: true }, isActive, role, roleDefinition: { permissions: [...(DEFAULT_ROLE_PERMISSIONS[role] ?? [])] } } : { isActive: false, role })) },
     customer: { findFirst: vi.fn(async () => customer) },
+    business: { findUniqueOrThrow: vi.fn(async () => shop) },
     product: { findFirst: vi.fn(async ({ where }: { where: { id: string } }) => products.find((p) => p.id === where.id)), findMany: vi.fn(async ({ where }: { where: { id: { in: string[] } } }) => products.filter((p) => where.id.in.includes(p.id))) },
     sale: { findFirst: vi.fn(async () => null) },
     // Simulates real Postgres transaction semantics: writes made during the
@@ -394,6 +397,33 @@ describe('SalesService', () => {
       const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       await expect(service.create('user-a', 'business-a', { ...saleInput, saleDate: future })).rejects.toThrow('in the future');
       expect(store.counters).toEqual({});
+    });
+  });
+
+  describe('GST invoice details', () => {
+    const SHOP_MH = '27AAPFU0939F1ZV';
+    const BUYER_KA = '29AAPFU0939F1ZR';
+    const glass = { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Glass', unit: 'KG', hsnCode: '70052910' };
+    const taxed = { ...saleInput, items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] };
+
+    it("copies the shop's and customer's GST details and each line's HSN code onto the sale", async () => {
+      const { service, store } = createFakeEnvironment({ shop: { gstin: SHOP_MH, stateCode: '27' }, customer: { id: 'customer-a', businessId: 'business-a', status: 'ACTIVE', gstin: BUYER_KA }, products: [glass] });
+      const sale = await service.create('user-a', 'business-a', taxed);
+      expect(sale).toMatchObject({ sellerGstin: SHOP_MH, sellerStateCode: '27', buyerGstin: BUYER_KA, placeOfSupply: '29', taxType: 'INTER_STATE' });
+      expect(store.saleItems).toEqual([expect.objectContaining({ hsnCode: '70052910' })]);
+    });
+
+    it('treats a customer without a GSTIN as a supply in the shop state', async () => {
+      const { service, store } = createFakeEnvironment({ shop: { gstin: SHOP_MH, stateCode: '27' } });
+      const sale = await service.create('user-a', 'business-a', taxed);
+      expect(sale).toMatchObject({ sellerGstin: SHOP_MH, sellerStateCode: '27', buyerGstin: null, placeOfSupply: '27', taxType: 'INTRA_STATE' });
+      expect(store.saleItems).toEqual([expect.objectContaining({ hsnCode: null })]);
+    });
+
+    it('marks sales of a shop without a GSTIN as a bill of supply', async () => {
+      const { service } = createFakeEnvironment({ shop: { gstin: null, stateCode: '29' } });
+      const sale = await service.create('user-a', 'business-a', taxed);
+      expect(sale).toMatchObject({ sellerGstin: null, sellerStateCode: '29', placeOfSupply: '29', taxType: 'UNREGISTERED' });
     });
   });
 

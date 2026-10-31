@@ -631,6 +631,40 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(snapshot.business).toMatchObject({ gstin: '27AAPFU0939F1ZV', stateCode: '27', address: 'Shop 4, Main Road, Pune', phone: '+91 98765 43210', email: null, invoicePrefix: 'INV', purchasePrefix: 'PUR' });
   });
 
+  it('copies GST details and HSN codes onto each sale so issued invoices never change', async () => {
+    // HSN codes are optional, stored as digits, and validated directly and when synced from a device.
+    expect((await api('patch', `/products/${products[0]}`).send({ hsnCode: ' 7005 29 ', gstRate: '18' }).expect(200)).body.data.hsnCode).toBe('700529');
+    await api('patch', `/products/${products[1]}`).send({ hsnCode: '70052' }).expect(422);
+    const offlineProduct = { operationId: randomUUID(), entityId: randomUUID(), entity: 'products', action: 'create', payload: { name: 'Offline glass', sku: 'GLASS-OFF', unit: 'KG', purchasePrice: '40', sellingPrice: '50', minimumStock: '0', hsnCode: '70052910' } };
+    expect((await api('post', '/sync/push').send(offlineProduct).expect(201)).body.data.record.hsnCode).toBe('70052910');
+    await api('post', '/sync/push').send({ ...offlineProduct, operationId: randomUUID(), entityId: randomUUID(), payload: { ...offlineProduct.payload, sku: 'GLASS-BAD', hsnCode: 'HSN' } }).expect(422);
+
+    // A shop without a GSTIN issues bills of supply.
+    expect((await api('post', '/sales').send(input('1')).expect(201)).body.data).toMatchObject({ sellerGstin: null, buyerGstin: null, taxType: 'UNREGISTERED' });
+
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
+    const counter = (await api('post', '/sales').send(input('1')).expect(201)).body.data;
+    expect(counter).toMatchObject({ sellerGstin: '27AAPFU0939F1ZV', sellerStateCode: '27', buyerGstin: null, placeOfSupply: '27', taxType: 'INTRA_STATE' });
+    expect(counter.items[0]).toMatchObject({ hsnCode: '700529', gstRate: '18', taxAmount: '9' });
+
+    const buyer = (await api('post', '/customers').send({ name: 'Karnataka builder', gstin: '29AAPFU0939F1ZR' }).expect(201)).body.data;
+    const interState = (await api('post', '/sales').send({ ...input('1'), customerId: buyer.id }).expect(201)).body.data;
+    expect(interState).toMatchObject({ buyerGstin: '29AAPFU0939F1ZR', placeOfSupply: '29', taxType: 'INTER_STATE', taxTotal: '9', total: '59' });
+
+    // Later profile edits leave issued invoices unchanged everywhere they are read.
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '' }).expect(200);
+    await api('patch', `/customers/${buyer.id}`).send({ gstin: '' }).expect(200);
+    await api('patch', `/products/${products[0]}`).send({ hsnCode: '' }).expect(200);
+    const issued = { sellerGstin: '27AAPFU0939F1ZV', sellerStateCode: '27', buyerGstin: '29AAPFU0939F1ZR', placeOfSupply: '29', taxType: 'INTER_STATE' };
+    const reread = (await api('get', `/sales/${interState.id}`).expect(200)).body.data;
+    expect(reread).toMatchObject(issued);
+    expect(reread.items[0].hsnCode).toBe('700529');
+    expect((await api('get', '/sales').expect(200)).body.data.find((sale: any) => sale.id === interState.id)).toMatchObject({ ...issued, items: [expect.objectContaining({ hsnCode: '700529' })] });
+    const snapshot = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(snapshot.sales.find((sale: any) => sale.id === interState.id)).toMatchObject({ ...issued, items: [expect.objectContaining({ hsnCode: '700529' })] });
+    expect(snapshot.products.find((product: any) => product.id === products[0]).hsnCode).toBeNull();
+  });
+
   it('sells a pack and loose pieces of one product on separate lines', async () => {
     const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-1', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
       { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },

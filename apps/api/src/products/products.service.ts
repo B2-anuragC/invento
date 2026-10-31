@@ -5,6 +5,7 @@ import { requireBusinessPermission } from '../auth/business-access.js';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
+import { storedHsnCode } from '../common/validators/is-hsn-code.js';
 import { type SellingOptionDto, productStatuses } from './dto/product.dto.js';
 
 type ProductInput = {
@@ -12,6 +13,7 @@ type ProductInput = {
   imageThumbnail?: string | null;
   imageOriginal?: string | null;
   gstRate?: string;
+  hsnCode?: string;
   name?: string;
   sku?: string;
   barcode?: string;
@@ -29,7 +31,7 @@ type ProductInput = {
 export class ProductsService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
 
-  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'imageThumbnail' | 'imageOriginal' | 'images'>, clientId?: string) {
+  async create(userId: string, businessId: string, input: Required<Pick<ProductInput, 'name' | 'sku' | 'unit' | 'purchasePrice' | 'sellingPrice' | 'minimumStock'>> & Pick<ProductInput, 'barcode' | 'category' | 'piecesPerUnit' | 'sellingOptions' | 'gstRate' | 'hsnCode' | 'imageThumbnail' | 'imageOriginal' | 'images'>, clientId?: string) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'products.create');
     const images = await this.normalizeImages(businessId, input);
     const piecesPerUnit = this.groupSize(input.unit, input.piecesPerUnit);
@@ -48,6 +50,7 @@ export class ProductsService {
           piecesPerUnit,
           sellingOptions,
           gstRate: input.gstRate ?? '0',
+          hsnCode: storedHsnCode(input.hsnCode) ?? null,
           purchasePrice: input.purchasePrice,
           sellingPrice: input.sellingPrice,
           minimumStock: input.minimumStock,
@@ -124,6 +127,7 @@ export class ProductsService {
           sku: input.sku?.trim().toUpperCase(),
           barcode: input.barcode === undefined ? undefined : input.barcode.trim() || null,
           category: input.category === undefined ? undefined : input.category.trim() || null,
+          hsnCode: storedHsnCode(input.hsnCode),
           purchasePrice: input.purchasePrice,
           sellingPrice: input.sellingPrice,
           minimumStock: input.minimumStock,
