@@ -7,7 +7,7 @@ import {
   type TransactionDraft,
 } from "@/services/transaction-drafts";
 import { Ionicons } from "@expo/vector-icons";
-import { discountError, sellingUnitConversion } from "@invento/shared";
+import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
@@ -224,7 +224,12 @@ export default function QuickBillScreen() {
   const discountInput = saleDiscountInput(discountMode, discountValue);
   const totals = transactionTotals(items, discountInput);
   const discountProblem = discountError(totals.subtotal.toFixed(2), discountInput);
-  const customer = customers.find((c) => c.id === customerId);
+  // With no customer chosen, the bill goes to the shop's walk-in customer.
+  const walkIn = customers.find((c) => c.isWalkIn && c.status === "ACTIVE");
+  const customer = customerId ? customers.find((c) => c.id === customerId) : walkIn;
+  const billCustomerId = customer?.id ?? "";
+  // Credit needs a named customer to collect from.
+  const walkInCredit = Boolean(customer?.isWalkIn) && mode !== "full";
   const used: Record<string, number> = {};
   const lineErrors: string[] = items.map((item) => {
     if (
@@ -275,13 +280,14 @@ export default function QuickBillScreen() {
   });
   const paymentValid =
     !discountProblem &&
+    !walkInCredit &&
     validDueDate(mode === "full" ? "" : dueDate) &&
     (mode !== "partial" || (Number(paid) > 0 && Number(paid) < totals.total));
   const valid =
     totals.total <= 999999999999.99 &&
     !loading &&
     !loadError &&
-    !!customerId &&
+    !!billCustomerId &&
     items.length > 0 &&
     !lineErrors.some(Boolean) &&
     paymentValid;
@@ -404,7 +410,7 @@ export default function QuickBillScreen() {
     setOutcome(null);
     const input: CreateSaleInput = pendingInput.current ?? {
       requestId: requestId.current,
-      customerId,
+      customerId: billCustomerId,
       paymentMethod: method,
       amountPaid:
         mode === "full"
@@ -821,7 +827,11 @@ export default function QuickBillScreen() {
                     {totals.discount > 0 ? ` · ${money(totals.discount)} off` : ""}
                   </Text>
                   {!paymentValid ? (
-                    <Text style={styles.error}>Check payment details</Text>
+                    <Text style={styles.error}>
+                      {walkInCredit
+                        ? "Walk-in sales must be paid in full"
+                        : "Check payment details"}
+                    </Text>
                   ) : null}
                 </View>
                 <Ionicons name="chevron-forward" size={22} color="#737B77" />
@@ -993,7 +1003,7 @@ export default function QuickBillScreen() {
                         >
                           <Text style={styles.bold}>
                             {c.name}
-                            {c.id === customerId ? " ✓" : ""}
+                            {c.id === billCustomerId ? " ✓" : ""}
                           </Text>
                           {c.phone ? (
                             <Text style={styles.meta}>{c.phone}</Text>
@@ -1051,6 +1061,9 @@ export default function QuickBillScreen() {
                         setMethod(value as CreateSaleInput["paymentMethod"])
                       }
                     />
+                    {walkInCredit ? (
+                      <FormError message={WALK_IN_PAYMENT_MESSAGE} />
+                    ) : null}
                     <ActionButton title="Done" onPress={() => setPanel(null)} />
                   </>
                 ) : panel === "scanner" ? (

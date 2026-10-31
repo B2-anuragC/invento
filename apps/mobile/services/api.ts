@@ -120,6 +120,8 @@ export type CustomerRecord = {
   email?: string | null;
   address?: string | null;
   gstin?: string | null;
+  /** The shop's built-in walk-in customer: cannot be edited, sales must be paid in full. */
+  isWalkIn?: boolean | null;
   status: string;
 };
 

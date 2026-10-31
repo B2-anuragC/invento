@@ -456,6 +456,15 @@ describe("Durable offline transactions", () => {
     expect(await api.offlineCommands(session)).toHaveLength(0);
     expect(snapshot.sales).toHaveLength(1); expect(snapshot.inventory[0].quantity).toBe(8);
   });
+  it("keeps walk-in sales paid in full, as the server requires", () => {
+    snapshot.customers.push({ id: "walkin_shop", name: "Walk-in customer", isWalkIn: true, status: "ACTIVE", revision: 1 } as LocalRecord);
+    const walkIn = { ...sale("request_walk_in"), customerId: "walkin_shop" };
+    // 2 x 10.00 + 18% GST = 23.60
+    expect(() => buildOfflineTransaction(snapshot, "sale", { ...walkIn, amountPaid: "0" })).toThrow("paid in full");
+    expect(() => buildOfflineTransaction(snapshot, "sale", { ...walkIn, amountPaid: undefined })).toThrow("paid in full");
+    expect(buildOfflineTransaction(snapshot, "sale", { ...walkIn, amountPaid: "23.60" }).record).toMatchObject({ total: "23.60", amountPaid: "23.60" });
+  });
+
   it("splits a sale discount before GST exactly as the server does", () => {
     snapshot.products.push({ ...snapshot.products[0], id: "putty", sku: "PUTTY", gstRate: "5" } as LocalRecord);
     snapshot.inventory.push({ productId: "putty", quantity: 10 });

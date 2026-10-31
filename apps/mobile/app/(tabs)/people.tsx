@@ -69,7 +69,8 @@ export default function PeopleDirectoryScreen() {
   useFocusEffect(useCallback(() => { loadDirectory(); }, [loadDirectory]));
 
   const people: PersonItem[] = [
-    ...(filter !== 'Suppliers' ? customers.map((item) => ({ ...item, kind: 'customer' as const })) : []),
+    // The built-in walk-in customer is not a contact to manage.
+    ...(filter !== 'Suppliers' ? customers.filter((item) => !item.isWalkIn).map((item) => ({ ...item, kind: 'customer' as const })) : []),
     ...(filter !== 'Customers' ? suppliers.map((item) => ({ ...item, kind: 'supplier' as const })) : []),
   ].filter((item) => `${item.name} ${item.contactName ?? ''} ${item.phone ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((left, right) => left.name.localeCompare(right.name));

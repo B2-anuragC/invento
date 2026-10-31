@@ -1,4 +1,4 @@
-import { discountAmountFor, discountError, sellingUnitConversion, splitDiscount } from "@invento/shared";
+import { discountAmountFor, discountError, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import type {
   CreateSaleInput,
   CreatePurchaseInput,
@@ -246,6 +246,8 @@ export function buildOfflineTransaction(
     Object.assign(item, { taxAmount: decimal(tax) }, sale ? { discountAmount: shares[index] } : {});
   }
   const total = subtotal - scaled(discountTotal, 2) + taxTotal;
+  if (sale && (contact as CustomerRecord).isWalkIn && (sale.amountPaid === undefined || scaled(sale.amountPaid, 2) !== total))
+    throw new Error(WALK_IN_PAYMENT_MESSAGE);
   if (total > 99999999999999n)
     throw new Error("Transaction total exceeds the supported range.");
   if (

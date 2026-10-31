@@ -1,6 +1,6 @@
 import { ProductThumbnail } from '@/components/product-photo';
 import { SaleReferencePhoto } from '@/components/sale-reference-photo';
-import { discountError, sellingUnitConversion } from '@invento/shared';
+import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { TransactionFinanceFields, type DiscountMode } from '@/components/transaction-finance-fields';
 import { saleDiscountInput, transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
@@ -206,7 +206,9 @@ export default function CreateSaleScreen() {
   const { subtotal, discount: discountTotal, tax: taxTotal, total } = transactionTotals(saleItems, discountInput);
   const discountProblem = discountError(subtotal.toFixed(2), discountInput);
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
-  const paymentValid = !discountProblem && (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
+  // Credit needs a named customer to collect from.
+  const walkInCredit = Boolean(customers.find((customer) => customer.id === customerId)?.isWalkIn) && paymentMode !== 'full';
+  const paymentValid = !discountProblem && !walkInCredit && (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
   const quantityError = (product: ProductRecord, quantity: number) => {
     if (quantity <= 0) return 'Enter a quantity greater than zero.';
     const option = product.sellingOptions?.find((entry) => entry.id === selectedOptions[product.id]);
@@ -614,6 +616,7 @@ export default function CreateSaleScreen() {
               ))}
               <SaleReferencePhoto value={referenceImage} onBusy={setPhotoBusy} onChange={(value) => { setReferenceImage(value); clearErrorOnEdit(); }} disabled={saving} />
                <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} discount={{ mode: discountMode, value: discountValue, amount: discountTotal, error: discountProblem, onMode: (value) => { setDiscountMode(value); setDiscountValue(''); }, onValue: setDiscountValue }} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
+              {walkInCredit ? <FormError message={WALK_IN_PAYMENT_MESSAGE} /> : null}
             </>
           ) : null}
         </ScrollView>
