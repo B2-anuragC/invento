@@ -897,7 +897,9 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     // A fully returned bill takes no payment and cannot be cancelled; the dashboard and lists count it at its net amount.
     await api('post', `/sales/${sale.id}/payments`).send({ amount: '1', method: 'CASH', requestId: randomUUID() }).expect(400);
     expect((await api('post', `/sales/${sale.id}/cancel`).send({ reason: 'Undo' }).expect(409)).body.error.message).toMatch(/has returns/);
-    expect((await api('get', '/sales').expect(200)).body.data.find((row: any) => row.id === sale.id)).toMatchObject({ returnedTotal: '307.39', netTotal: '0' });
+    const listed = (await api('get', '/sales').expect(200)).body.data.find((row: any) => row.id === sale.id);
+    expect(listed).toMatchObject({ returnedTotal: '307.39', netTotal: '0' });
+    expect(listed.returns.map((note: any) => [note.documentNumber, note.total])).toEqual([[first.returns[0].documentNumber, '38.02'], [rest.returns[1].documentNumber, '269.37']]);
     expect((await api('get', '/dashboard/summary').expect(200)).body.data).toMatchObject({ todaySales: '59', saleCount: 2 });
     expect((await api('get', `/dashboard/sales?from=${today}&to=${today}`).expect(200)).body.data).toMatchObject({ total: '59', count: 2 });
     const top = (await api('get', `/dashboard/top-products?from=${today}&to=${today}`).expect(200)).body.data.items;
@@ -960,6 +962,8 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(second.returns[1].documentNumber).toMatch(/\/0002$/);
     expect((await api('get', `/dashboard/purchases?from=${today}&to=${today}`).expect(200)).body.data).toMatchObject({ total: '330.4', count: 1 });
     expect((await api('get', '/sync/snapshot').expect(200)).body.data.purchases.find((row: any) => row.id === purchase.id).returns).toHaveLength(2);
+    const listed = (await api('get', '/purchases').expect(200)).body.data.find((row: any) => row.id === purchase.id);
+    expect(listed.returns.map((note: any) => [note.documentNumber, note.total])).toEqual([[returned.returns[0].documentNumber, '118'], [second.returns[1].documentNumber, '23.6']]);
   });
 
   it('records when a payment was made, within the bill date and today', async () => {

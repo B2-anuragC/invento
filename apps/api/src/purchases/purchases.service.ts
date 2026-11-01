@@ -466,6 +466,8 @@ export class PurchasesService {
         updatedAt: true,
         supplier: { select: { id: true, name: true } },
         items: { include: { returnItems: { select: { quantity: true } } } },
+        // Credit and debit note numbers show in the lists.
+        ...billReturnsInclude,
       },
       orderBy: { purchaseDate: 'desc' },
     });
