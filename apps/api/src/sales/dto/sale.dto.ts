@@ -1,9 +1,9 @@
 import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { DISCOUNT_AMOUNT_RULE_MESSAGE, DISCOUNT_PERCENT_RULE_MESSAGE } from '@invento/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PaymentMethod } from '@prisma/client';
-import { ArrayMinSize, IsIn, IsArray, IsDateString, IsDecimal, IsEnum, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsBoolean, IsIn, IsArray, IsDateString, IsDecimal, IsEnum, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
@@ -25,6 +25,8 @@ export class CreateSaleDto extends TransactionFinanceDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(500) note?: string;
   @ApiPropertyOptional({ description: 'Bill discount in rupees, up to the subtotal. It lowers the taxable value and is split across the lines.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @Matches(/^\d{1,12}(?:\.\d{1,2})?$/, { message: DISCOUNT_AMOUNT_RULE_MESSAGE }) discountAmount?: string;
   @ApiPropertyOptional({ description: 'Bill discount as a percentage of the subtotal; send discountAmount or this, not both.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @Matches(/^\d{1,3}(?:\.\d{1,2})?$/, { message: DISCOUNT_PERCENT_RULE_MESSAGE }) discountPercent?: string;
+  // The raw value: implicit conversion would turn the string "false" into true.
+  @ApiPropertyOptional({ description: 'Charge GST at each product\'s rate (needs the shop GSTIN). False: tax 0 on every line and the sale is a bill of supply. Missing: charged as before, for bills queued by older apps.' }) @ValidateIf((_object, value) => value !== undefined) @Transform(({ obj, key }) => obj[key]) @IsBoolean() chargeGst?: boolean;
   @ApiProperty({ type: [SaleItemDto] })
   @IsArray()
   @ArrayMinSize(1)

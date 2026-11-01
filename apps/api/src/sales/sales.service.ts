@@ -1,5 +1,5 @@
 import { FilesService } from '../files/files.service.js';
-import { discountAmountFor, discountError, invoiceTaxContext, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
+import { chargeGstError, chargesGst, discountAmountFor, discountError, invoiceTaxContext, lineGstRate, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import type { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
@@ -22,6 +22,7 @@ type CreateSaleInput = {
   expectedTotal?: string;
   discountAmount?: string;
   discountPercent?: string;
+  chargeGst?: boolean;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
@@ -60,7 +61,10 @@ export class SalesService {
     // or customer GST profile is edited later.
     const shop = await this.prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { gstin: true, stateCode: true } });
     const tax = invoiceTaxContext({ sellerGstin: shop.gstin, sellerStateCode: shop.stateCode, buyerGstin: customer.gstin });
-    const invoiceDetails = { sellerGstin: shop.gstin, sellerStateCode: tax.sellerStateCode, buyerGstin: customer.gstin, placeOfSupply: tax.placeOfSupply, taxType: tax.taxType };
+    const gstChoiceError = chargeGstError({ chargeGst: input.chargeGst, sellerGstin: shop.gstin });
+    if (gstChoiceError) throw new BadRequestException(gstChoiceError);
+    const chargeGst = chargesGst(input.chargeGst);
+    const invoiceDetails = { chargeGst, sellerGstin: shop.gstin, sellerStateCode: tax.sellerStateCode, buyerGstin: customer.gstin, placeOfSupply: tax.placeOfSupply, taxType: tax.taxType };
 
     if (input.items.length === 0) throw new BadRequestException('At least one sale item is required.');
     if (!Object.values(PaymentMethod).includes(input.paymentMethod)) throw new BadRequestException('Invalid payment method.');
@@ -113,14 +117,15 @@ export class SalesService {
     }
 
     // A discount given at the time of sale lowers the taxable value: it is split
-    // across the lines and each line's GST is charged on what is left.
+    // across the lines and each line's GST is charged on what is left. A sale
+    // without GST charges none on any line.
     const subtotal = lines.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
     const invalidDiscount = discountError(subtotal.toFixed(2), input);
     if (invalidDiscount) throw new BadRequestException(invalidDiscount);
     const discountTotal = new Prisma.Decimal(discountAmountFor(subtotal.toFixed(2), input));
     const shares = splitDiscount(lines.map((line) => line.lineTotal.toFixed(2)), discountTotal.toFixed(2));
     lines.forEach((line, index) => { line.discountAmount = new Prisma.Decimal(shares[index]); });
-    for (const line of lines) Object.assign(line, taxFor(line.lineTotal.minus(line.discountAmount), productsById.get(line.productId)!.gstRate));
+    for (const line of lines) Object.assign(line, taxFor(line.lineTotal.minus(line.discountAmount), lineGstRate(productsById.get(line.productId)!.gstRate?.toString(), chargeGst)));
     const taxTotal = lines.reduce((sum, line) => sum.plus(line.taxAmount), new Prisma.Decimal(0));
     const total = subtotal.minus(discountTotal).plus(taxTotal);
     if (input.expectedTotal !== undefined && (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) || !total.equals(input.expectedTotal))) throw new ConflictException('Item rates changed the bill total. Review this pending transaction before syncing.');
@@ -208,7 +213,7 @@ export class SalesService {
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, cancelledAt: true, cancelReason: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, chargeGst: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, cancelledAt: true, cancelReason: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
   }

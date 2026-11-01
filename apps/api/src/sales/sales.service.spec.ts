@@ -428,6 +428,34 @@ describe('SalesService', () => {
     });
   });
 
+  describe('optional GST', () => {
+    const SHOP_MH = '27AAPFU0939F1ZV';
+    const glass = { id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Glass', unit: 'KG', hsnCode: null, gstRate: '18' };
+    const taxed = { ...saleInput, items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '1000.00' }] };
+    const amounts = (sale: Record<string, unknown>) => [sale.chargeGst, String(sale.taxTotal), String(sale.total)];
+
+    it('charges no GST on any line when turned off, after the discount, and keeps the invoice number', async () => {
+      const { service, store } = createFakeEnvironment({ shop: { gstin: SHOP_MH, stateCode: '27' }, products: [glass] });
+      const sale = await service.create('user-a', 'business-a', { ...taxed, chargeGst: false, discountAmount: '100', expectedTotal: '900.00' }) as Record<string, unknown>;
+      expect(amounts(sale)).toEqual([false, '0', '900']);
+      expect(sale).toMatchObject({ documentNumber: 'INV/2025-26/0001', taxType: 'INTRA_STATE', sellerGstin: SHOP_MH });
+      expect(store.saleItems).toEqual([expect.objectContaining({ gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0), discountAmount: new Prisma.Decimal(100) })]);
+    });
+
+    it('charges GST as before when the choice is on or missing (bills queued by older apps)', async () => {
+      const { service } = createFakeEnvironment({ shop: { gstin: SHOP_MH, stateCode: '27' }, products: [glass], openingStock: { 'product-a': '10' } });
+      expect(amounts(await service.create('user-a', 'business-a', { ...taxed, chargeGst: true }) as Record<string, unknown>)).toEqual([true, '180', '1180']);
+      expect(amounts(await service.create('user-a', 'business-a', { ...taxed, expectedTotal: '1180.00' }) as Record<string, unknown>)).toEqual([true, '180', '1180']);
+    });
+
+    it('refuses GST on a sale from a shop without a GSTIN, before any stock or number is used', async () => {
+      const { service, store } = createFakeEnvironment({ products: [glass] });
+      await expect(service.create('user-a', 'business-a', { ...taxed, chargeGst: true })).rejects.toThrow(new BadRequestException('Add the shop GSTIN in Shop details to charge GST on sales.'));
+      expect([store.sales, store.counters, store.inventory['product-a'].quantity.toString()]).toEqual([{}, {}, '100']);
+      expect(amounts(await service.create('user-a', 'business-a', { ...taxed, chargeGst: false }) as Record<string, unknown>)).toEqual([false, '0', '1000']);
+    });
+  });
+
   describe('walk-in customer', () => {
     const walkIn = { id: 'walkin_business-a', businessId: 'business-a', status: 'ACTIVE', gstin: null, isWalkIn: true };
     const line = { items: [{ productId: 'product-a', quantity: '1.000', sellingPrice: '40.00' }] };

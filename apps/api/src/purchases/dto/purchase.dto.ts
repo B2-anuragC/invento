@@ -2,8 +2,8 @@ import { FileAttachmentDto } from '../../common/dto/file-attachment.dto.js';
 import { PaymentMethod } from '@prisma/client';
 import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { ArrayMinSize, IsEnum, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMinSize, IsBoolean, IsEnum, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
@@ -21,6 +21,8 @@ export class CreatePurchaseDto extends TransactionFinanceDto {
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(80) invoiceNumber?: string;
   @ApiProperty({ example: '2026-01-15' }) @IsDateString({ strict: true }) purchaseDate!: string;
   @ApiPropertyOptional() @ValidateIf((_object, value) => value !== undefined) @IsString() @MaxLength(500) note?: string;
+  // The raw value: implicit conversion would turn the string "false" into true.
+  @ApiPropertyOptional({ description: 'Whether the supplier charged GST. False: tax 0 on every line. Missing: charged at each product\'s rate as before, for bills queued by older apps.' }) @ValidateIf((_o, v) => v !== undefined) @Transform(({ obj, key }) => obj[key]) @IsBoolean() chargeGst?: boolean;
   @ApiProperty({ type: [PurchaseItemDto] })
   @IsArray()
   @ArrayMinSize(1)

@@ -743,6 +743,49 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(top.find((row: any) => row.productId === products[1]).revenue).toBe('180');
   });
 
+  it('charges GST on sales and purchases only when chosen, and stores the choice on the bill', async () => {
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    const now = new Date().toISOString();
+    const today = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+
+    // A shop without a GSTIN cannot charge GST on a sale; without GST it sells as before.
+    const refused = await api('post', '/sales').send({ ...input('1'), chargeGst: true }).expect(400);
+    expect(refused.body.error.message).toContain('GSTIN');
+    await api('post', '/sales').send({ ...input('1'), chargeGst: 'false' }).expect(422);
+    await api('post', '/purchases').send({ supplierId: 'none', purchaseDate: '2026-09-20', chargeGst: 1, items: [{ productId: products[0], quantity: '1', purchasePrice: '1' }] }).expect(422);
+    expect((await api('post', '/sales').send({ ...input('1'), chargeGst: false }).expect(201)).body.data).toMatchObject({ chargeGst: false, taxTotal: '0', total: '50', taxType: 'UNREGISTERED' });
+
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
+    const noGst = (await api('post', '/sales').send({ ...input('2'), saleDate: now, chargeGst: false, expectedTotal: '100.00', requestId: randomUUID() }).expect(201)).body.data;
+    expect(noGst).toMatchObject({ chargeGst: false, subtotal: '100', taxTotal: '0', total: '100', taxType: 'INTRA_STATE', sellerGstin: '27AAPFU0939F1ZV' });
+    expect(noGst.documentNumber).toMatch(/^INV\//);
+    expect(noGst.items[0]).toMatchObject({ gstRate: '0', taxAmount: '0' });
+    const withGst = (await api('post', '/sales').send({ ...input('2'), saleDate: now, chargeGst: true }).expect(201)).body.data;
+    expect(withGst).toMatchObject({ chargeGst: true, taxTotal: '18', total: '118' });
+    // A bill queued by an older app (no choice sent) is charged as before and its total still matches.
+    expect((await api('post', '/sales').send({ ...input('2'), saleDate: now, expectedTotal: '118.00', requestId: randomUUID() }).expect(201)).body.data).toMatchObject({ chargeGst: true, taxTotal: '18' });
+
+    const supplier = (await api('post', '/suppliers').send({ name: 'GST Supplier' }).expect(201)).body.data;
+    const purchase = { supplierId: supplier.id, purchaseDate: now, items: [{ productId: products[0], quantity: '10', purchasePrice: '40' }] };
+    const plainPurchase = (await api('post', '/purchases').send({ ...purchase, chargeGst: false }).expect(201)).body.data;
+    expect(plainPurchase).toMatchObject({ chargeGst: false, taxTotal: '0', total: '400', items: [expect.objectContaining({ gstRate: '0', taxAmount: '0' })] });
+    expect((await api('post', '/purchases').send(purchase).expect(201)).body.data).toMatchObject({ chargeGst: true, taxTotal: '72', total: '472' });
+
+    // The choice is read back everywhere bills are listed, and totals follow it.
+    expect((await api('get', '/sales').expect(200)).body.data.find((sale: any) => sale.id === noGst.id)).toMatchObject({ chargeGst: false, taxTotal: '0' });
+    expect((await api('get', `/sales/${noGst.id}`).expect(200)).body.data.chargeGst).toBe(false);
+    expect((await api('get', '/purchases').expect(200)).body.data.find((row: any) => row.id === plainPurchase.id)).toMatchObject({ chargeGst: false, taxTotal: '0' });
+    const snapshot = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(snapshot.sales.find((sale: any) => sale.id === noGst.id).chargeGst).toBe(false);
+    expect(snapshot.purchases.find((row: any) => row.id === plainPurchase.id).chargeGst).toBe(false);
+    const range = `from=${today}&to=${today}`;
+    expect((await api('get', `/dashboard/sales?${range}`).expect(200)).body.data).toMatchObject({ total: '336', count: 3 });
+    expect((await api('get', `/dashboard/purchases?${range}`).expect(200)).body.data).toMatchObject({ total: '872', count: 2 });
+
+    // The database refuses tax on a bill that charges no GST.
+    await expect(prisma.sale.update({ where: { id: noGst.id }, data: { taxTotal: '1' } })).rejects.toThrow('sales_no_gst_no_tax');
+  });
+
   it('gives every shop one walk-in customer for paid counter sales', async () => {
     const customers = (await api('get', '/customers').expect(200)).body.data;
     const walkIn = customers.find((customer: any) => customer.isWalkIn);

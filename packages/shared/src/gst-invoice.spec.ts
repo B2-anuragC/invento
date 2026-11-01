@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gstRateSummary, halfRate, invoiceTaxContext, isValidHsnCode, normalizeHsnCode, splitLineTax } from './gst-invoice.js';
+import { CHARGE_GST_NEEDS_GSTIN_MESSAGE, chargeGstError, chargesGst, gstRateSummary, halfRate, invoiceTaxContext, isValidHsnCode, lineGstRate, normalizeHsnCode, saleDocumentTitle, splitLineTax } from './gst-invoice.js';
 
 const SHOP_MH = '27AAPFU0939F1ZV';
 // Built from the same PAN with valid check characters.
@@ -79,5 +79,27 @@ describe('helpers', () => {
     for (const code of ['7005', '700529', '70052910']) expect(isValidHsnCode(code)).toBe(true);
     for (const code of ['', '700', '70052', '7005291', '700529101', '70A5']) expect(isValidHsnCode(code)).toBe(false);
     expect(normalizeHsnCode(' 7005 29 ')).toBe('700529');
+  });
+});
+
+describe('optional GST', () => {
+  it('charges GST unless the bill explicitly turns it off, so older queued bills keep their totals', () => {
+    expect([chargesGst(true), chargesGst(undefined), chargesGst(null), chargesGst(false)]).toEqual([true, true, true, false]);
+    expect([lineGstRate('18', true), lineGstRate(18, undefined), lineGstRate(null, true), lineGstRate('18', false)]).toEqual(['18', '18', '0', '0']);
+  });
+
+  it('lets only a shop with a GSTIN charge GST on a sale', () => {
+    expect(chargeGstError({ chargeGst: true, sellerGstin: null })).toBe(CHARGE_GST_NEEDS_GSTIN_MESSAGE);
+    expect(chargeGstError({ chargeGst: true, sellerGstin: SHOP_MH })).toBe('');
+    expect(chargeGstError({ chargeGst: false, sellerGstin: null })).toBe('');
+    expect(chargeGstError({ sellerGstin: null })).toBe('');
+  });
+
+  it('titles a sale a Tax invoice only when it charges GST from a registered shop', () => {
+    expect(saleDocumentTitle({ chargeGst: true, taxType: 'INTRA_STATE' })).toBe('Tax invoice');
+    expect(saleDocumentTitle({ taxType: 'INTER_STATE' })).toBe('Tax invoice');
+    expect(saleDocumentTitle({ chargeGst: false, taxType: 'INTRA_STATE' })).toBe('Bill of supply');
+    expect(saleDocumentTitle({ chargeGst: true, taxType: 'UNREGISTERED' })).toBe('Bill of supply');
+    expect(saleDocumentTitle({ chargeGst: true, taxType: null })).toBeNull();
   });
 });

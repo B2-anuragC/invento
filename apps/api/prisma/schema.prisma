@@ -241,6 +241,8 @@ model Purchase {
   purchaseDate    DateTime
   subtotal        Decimal       @db.Decimal(14, 2)
   taxTotal        Decimal       @default(0) @db.Decimal(14, 2)
+  /// Whether the supplier charged GST; when false every line has tax 0.
+  chargeGst       Boolean       @default(true)
   amountPaid      Decimal?      @db.Decimal(14, 2)
   dueDate         DateTime?     @db.Date
   requestId       String?
@@ -347,6 +349,8 @@ model Sale {
   placeOfSupply   String?
   /// INTRA_STATE (CGST + SGST), INTER_STATE (IGST) or UNREGISTERED (bill of supply); null on older sales.
   taxType         String?
+  /// Whether the sale charged GST; when false every line has tax 0 and it prints as a bill of supply.
+  chargeGst       Boolean       @default(true)
   saleDate        DateTime
   paymentMethod   PaymentMethod
   subtotal        Decimal       @db.Decimal(14, 2)

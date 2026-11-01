@@ -22,6 +22,7 @@ import {
   ProductStatus,
   SupplierStatus,
 } from '@prisma/client';
+import { chargesGst, lineGstRate } from '@invento/shared';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 
@@ -48,6 +49,7 @@ type CreatePurchaseInput = {
   invoiceNumber?: string;
   purchaseDate: string;
   note?: string;
+  chargeGst?: boolean;
   items: PurchaseItemInput[];
 };
 
@@ -224,10 +226,15 @@ export class PurchasesService {
         );
     }
 
+    // Without GST from the supplier, no line carries tax.
+    const chargeGst = chargesGst(input.chargeGst);
     for (const line of lines)
       Object.assign(
         line,
-        taxFor(line.lineTotal, productsById.get(line.productId)!.gstRate),
+        taxFor(
+          line.lineTotal,
+          lineGstRate(productsById.get(line.productId)!.gstRate?.toString(), chargeGst),
+        ),
       );
     const subtotal = lines.reduce(
       (sum, line) => sum.plus(line.lineTotal),
@@ -271,6 +278,7 @@ export class PurchasesService {
             total,
             subtotal,
             taxTotal,
+            chargeGst,
             amountPaid,
             dueDate,
             requestId: input.requestId,
@@ -425,6 +433,7 @@ export class PurchasesService {
         purchaseDate: true,
         subtotal: true,
         taxTotal: true,
+        chargeGst: true,
         amountPaid: true,
         dueDate: true,
         requestId: true,

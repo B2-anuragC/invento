@@ -11,7 +11,7 @@ function createFakeEnvironment(
     role?: string;
     isActive?: boolean;
     supplier?: { id: string; businessId: string; status: string } | null;
-    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number }[];
+    products?: { id: string; businessId: string; status: string; name: string; unit?: string; piecesPerUnit?: number; gstRate?: string }[];
     openingStock?: Record<string, string>;
     failInventoryOnProductId?: string;
   } = {},
@@ -166,6 +166,17 @@ describe('PurchasesService', () => {
       id: 'purchase-a',
       items: [{ id: 'item-a', quantity: new Prisma.Decimal('10') }],
     }]);
+  });
+
+  it('charges GST at product rates unless the supplier charged none', async () => {
+    const products = [{ id: 'product-a', businessId: 'business-a', status: 'ACTIVE', name: 'Glass', unit: 'KG', gstRate: '18' }];
+    const items = [{ productId: 'product-a', quantity: '1.000', purchasePrice: '100.00' }];
+    const { service, store } = createFakeEnvironment({ products });
+    // Missing (an older app's queued bill): charged as before.
+    const amounts = (purchase: Record<string, unknown>) => [purchase.chargeGst, String(purchase.taxTotal), String(purchase.total)];
+    expect(amounts(await service.create('user-a', 'business-a', { ...purchaseInput, items }) as Record<string, unknown>)).toEqual([true, '18', '118']);
+    expect(amounts(await service.create('user-a', 'business-a', { ...purchaseInput, items, chargeGst: false, expectedTotal: '100.00' }) as Record<string, unknown>)).toEqual([false, '0', '100']);
+    expect(store.purchaseItems.slice(-1)).toEqual([expect.objectContaining({ gstRate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0) })]);
   });
 
   it('creates a purchase, purchase items, and increases inventory via a PURCHASE transaction', async () => {

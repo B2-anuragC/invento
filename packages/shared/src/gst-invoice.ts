@@ -72,3 +72,39 @@ export function gstRateSummary(lines: { gstRate: number | string; lineTotal: num
 export function halfRate(rate: number | string): string {
   return String(Number((Number(rate) / 2).toFixed(3)));
 }
+
+// Optional GST per bill. A sale or purchase either charges GST at each
+// product's rate or charges none (tax 0 on every line). Bills sent without the
+// choice, e.g. queued by an older app, charge GST as before so their totals hold.
+
+export const CHARGE_GST_NEEDS_GSTIN_MESSAGE = 'Add the shop GSTIN in Shop details to charge GST on sales.';
+
+/** Whether a bill charges GST: only an explicit `false` turns it off. */
+export function chargesGst(chargeGst: boolean | null | undefined): boolean {
+  return chargeGst !== false;
+}
+
+/** The GST rate a line is charged at: its product's rate, or 0 when the bill charges no GST. */
+export function lineGstRate(productRate: number | string | null | undefined, chargeGst: boolean | null | undefined): string {
+  return chargesGst(chargeGst) ? String(productRate ?? 0) : '0';
+}
+
+/**
+ * Empty when a sale may be saved with this choice. Only a shop with a GSTIN can
+ * charge GST on a sale; a missing choice is allowed (older apps, charged as before).
+ */
+export function chargeGstError(input: { chargeGst?: boolean | null; sellerGstin?: string | null }): string {
+  return input.chargeGst === true && !input.sellerGstin ? CHARGE_GST_NEEDS_GSTIN_MESSAGE : '';
+}
+
+export type SaleDocumentTitle = 'Tax invoice' | 'Bill of supply';
+
+/**
+ * What an issued sale prints as: a Tax invoice when it charges GST from a shop
+ * with a GSTIN, otherwise a Bill of supply (same invoice number). Null for
+ * sales made before GST invoices, which have no GST details.
+ */
+export function saleDocumentTitle(sale: { chargeGst?: boolean | null; taxType?: GstTaxType | null }): SaleDocumentTitle | null {
+  if (!sale.taxType) return null;
+  return chargesGst(sale.chargeGst) && sale.taxType !== 'UNREGISTERED' ? 'Tax invoice' : 'Bill of supply';
+}
