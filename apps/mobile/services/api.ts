@@ -8,6 +8,7 @@ export type SellingOption = { id: string; name: string; unit: string; quantity: 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { ADJUST_PENDING_MESSAGE } from './stock-adjustment';
+import { indiaDate, todayBillTotals } from './dashboard-summary';
 import { cachedAccess, configureOffline, getSyncStatus, syncOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
@@ -552,13 +553,12 @@ export async function fetchDashboardSummary(session: AppSession): Promise<Dashbo
   await assertClientPermission(session, 'reports.view');
   if (nativeOffline) {
     const view = await offlineView(session);
-    const today = new Date(Date.now() + 19800000).toISOString().slice(0, 10);
-    const dateOf = (value: string) => new Date(new Date(value).getTime() + 19800000).toISOString().slice(0, 10);
-    // Like the server's summary: completed bills only.
-    const sales = view.sales.filter((sale) => dateOf(sale.saleDate) === today && sale.status !== 'CANCELLED');
-    const purchases = view.purchases.filter((purchase) => dateOf(purchase.purchaseDate) === today && purchase.status !== 'CANCELLED');
+    const today = indiaDate(Date.now());
+    // Like the server's summary: completed bills only, net of returns.
+    const sales = todayBillTotals(view.sales, (sale) => sale.saleDate, today);
+    const purchases = todayBillTotals(view.purchases, (purchase) => purchase.purchaseDate, today);
     const canViewCosts = !!view.access.permissions?.includes('pricing.view');
-    return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.reduce((sum, sale) => sum + Number(sale.total), 0), todayPurchases: canViewCosts ? purchases.reduce((sum, purchase) => sum + Number(purchase.total ?? 0), 0) : null, saleCount: sales.length, purchaseCount: purchases.length, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
+    return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.total, todayPurchases: canViewCosts ? purchases.total : null, saleCount: sales.count, purchaseCount: purchases.count, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
   }
   return request<DashboardSummary>('/dashboard/summary', { method: 'GET' }, session);
 }
