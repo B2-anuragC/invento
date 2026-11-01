@@ -195,7 +195,7 @@ export default function ProfileScreen() {
                 <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#737B77', fontSize: 24 }}>›</Text>
               </Pressable>
             ))}
-            {guest ? <View style={styles.row}><View style={{ flex: 1 }}><Text style={styles.value}>Team and roles</Text><Text style={styles.role}>Create an account to add staff and choose what they can do.</Text></View></View> : null}
+            {guest ? <Pressable accessibilityRole="button" onPress={() => router.push('/guest/account')} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.value}>Team and roles</Text><Text style={styles.role}>Create an account to add staff and choose what they can do.</Text></View><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#737B77', fontSize: 24 }}>›</Text></Pressable> : null}
           </ListCard>
           {editing ? (
             <>
@@ -207,6 +207,7 @@ export default function ProfileScreen() {
           )}
           {Platform.OS !== 'web' ? <ActionButton title="Sync status" variant="secondary" onPress={() => router.push('/settings/sync')} /> : null}
           <ActionButton title={loggingOut ? 'Signing out…' : guest ? 'Leave guest mode' : 'Log out'} onPress={() => guest ? setConfirming('logout') : void handleLogout()} disabled={loggingOut || saving} />
+          {guest ? <ActionButton title="Create account and move this shop" onPress={() => router.push('/guest/account')} disabled={loggingOut || saving} /> : null}
           {guest ? <ActionButton title="Delete guest shop" variant="danger" onPress={() => setConfirming('delete')} disabled={loggingOut || saving} /> : null}
         </View>
         <ConfirmationDialog visible={confirming === 'logout'} title="Leave guest mode?" message="Your guest shop stays on this phone. Choose Continue as guest on the sign-in screen to open it again." confirmLabel="Leave guest mode" cancelLabel="Stay" onConfirm={() => void handleLogout()} onCancel={() => setConfirming(null)} />

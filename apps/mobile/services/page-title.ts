@@ -24,6 +24,7 @@ const FIXED: Record<string, string> = {
   '/settings/pricing': 'Pricing & access',
   '/settings/shop': 'Shop details',
   '/settings/sync': 'Sync status',
+  '/guest/account': 'Move to an account',
   '/calculator/glass': 'Glass calculator',
   '/modal': 'Invento',
 };

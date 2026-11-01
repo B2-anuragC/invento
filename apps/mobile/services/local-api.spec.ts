@@ -349,3 +349,14 @@ describe("editing and cancelling bills on the device", () => {
     expect(await stock()).toBe(0);
   });
 });
+it("deletes one business and keeps the others", async () => {
+  await setup();
+  const first = session.businessId;
+  const second = await send<{ id: string }>("/businesses", { name: "Second shop", slug: "second-shop" });
+  await api.deleteLocalBusiness(first);
+  expect((await send<any[]>("/businesses")).map((entry) => entry.business.id)).toEqual([second.id]);
+  expect(await api.guestJournal(first)).toEqual([]);
+  expect(await api.guestJournal(second.id)).toHaveLength(1);
+  await api.deleteLocalBusiness(second.id);
+  expect(disk.size).toBe(0);
+});

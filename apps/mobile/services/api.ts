@@ -1,7 +1,10 @@
 import type { PurchaseEditInput, SaleEditInput } from './bill-edit';
 import { DEFAULT_ROLE_PERMISSIONS, planStockAdjustment, type EffectiveAccess, type Permission, type GstTaxType, type StockAdjustmentInput } from '@invento/shared';
 import { isDeviceOnly, LOCAL_ONLY } from './runtime-mode';
-import { deleteLocalDatabase, localRequest, localSession } from './local-api';
+import { deleteLocalBusiness, deleteLocalDatabase, guestJournal, localRequest, localSession } from './local-api';
+import { newUploadState, uploadDifferences, uploadGuestJournal, uploadSummary, type GuestUploadState } from './guest-upload';
+import { deleteOfflineState, readOfflineState, writeOfflineState } from './offline-storage';
+import type { OfflineSnapshot } from './offline-model';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 import { createSessionLoader } from './session-loader';
 import { isServerUnreachable, liveOrCachedAccess } from './access-fallback';
@@ -553,6 +556,64 @@ export async function deleteGuestShop(session: AppSession): Promise<void> {
   await forgetOfflineBusinesses(session.user.id, [...businessIds, '']);
   appSession.current = null;
   await clearPersistedSession();
+}
+
+/** What a guest shop holds, for the screen that moves it to an account. */
+export async function guestShopSummary(guest: AppSession) {
+  const snapshot = await localRequest<OfflineSnapshot>('/sync/snapshot', { method: 'GET' }, guest);
+  return { name: snapshot.business.name, ...uploadSummary(snapshot) };
+}
+
+const uploadKey = (guest: AppSession, account: AppSession) => `invento.guest-upload.v1:${guest.businessId}:${account.user.id}`;
+
+/**
+ * Moves the open guest shop to an account as a new shop: the device's journal
+ * is sent in order (see guest-upload.ts), progress is saved after each step so
+ * a failed upload continues where it stopped, and the account's copy is
+ * compared with the phone's. When they match, the app switches to the new shop
+ * and the guest copy is deleted; when they differ, the guest copy is kept and
+ * the differences are returned.
+ */
+export async function moveGuestShopToAccount(guest: AppSession, account: AppSession, onProgress: (done: number, total: number, label: string) => void): Promise<{ session: AppSession; differences: string[] }> {
+  if (guest.mode !== 'guest' || !guest.businessId) throw new Error('Open the guest shop to move it to an account.');
+  if (isDeviceOnly(account)) throw new Error('Sign in to an account first.');
+  // Changes still in the phone's outbox go into the guest shop first.
+  await syncOffline(guest, true);
+  if (getSyncStatus().pending > 0) throw new Error('Some changes are still being saved on this phone. Try again in a moment.');
+  const entries = await guestJournal(guest.businessId);
+  if (entries[0]?.path !== '/businesses' || entries[0].method !== 'POST') throw new Error('This shop has no record of its changes on this phone, so it cannot be moved to an account.');
+  const device = await localRequest<OfflineSnapshot>('/sync/snapshot', { method: 'GET' }, guest);
+  const key = uploadKey(guest, account);
+  const saved = await readOfflineState(key);
+  let state: GuestUploadState = saved ? JSON.parse(saved) : newUploadState(guest.businessId);
+
+  // While uploading, the account is the app's session, so a renewed token is kept for it.
+  appSession.current = account;
+  try {
+    state = await uploadGuestJournal({
+      entries,
+      state,
+      send: (upload, businessId) => request(upload.path, { method: upload.method, ...(upload.body ? { body: JSON.stringify(upload.body) } : {}) }, { ...(appSession.current ?? account), businessId: businessId ?? '' }),
+      save: (next) => writeOfflineState(key, JSON.stringify(next)),
+      onProgress,
+      localLines: (billId) => [...device.sales, ...device.purchases].find((bill) => bill.id === billId)?.items as { id: string; productId: string; quantity: string }[] | undefined,
+    });
+  } catch (error) {
+    appSession.current = guest;
+    throw error;
+  }
+  const differences = uploadDifferences(device, state);
+  const session: AppSession = { ...(appSession.current ?? account), businessId: state.businessId!, businessName: device.business.name };
+  delete session.mode;
+  appSession.current = session;
+  await persistSession(session);
+  await refreshOfflineSnapshot(session).catch(() => undefined);
+  if (!differences.length) {
+    await deleteLocalBusiness(guest.businessId);
+    await forgetOfflineBusinesses(guest.user.id, [guest.businessId]);
+    await deleteOfflineState(key);
+  }
+  return { session, differences };
 }
 
 export async function logoutSession(session: AppSession): Promise<void> {

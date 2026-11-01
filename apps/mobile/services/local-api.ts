@@ -1,4 +1,4 @@
-import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, type DocumentSeries, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
+import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, type DocumentSeries, WALK_IN_CUSTOMER_NAME, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
 import { deleteOfflineState, readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
@@ -51,6 +51,22 @@ export async function deleteLocalDatabase(): Promise<string[]> {
     const ids = (await load()).businesses.map((business) => business.id);
     await deleteOfflineState(key);
     return ids;
+  });
+  writes = work;
+  return work;
+}
+
+/** Deletes one business from the device-only handler, with its records, numbers and journal. */
+export async function deleteLocalBusiness(businessId: string): Promise<void> {
+  const work = writes.catch(() => {}).then(async () => {
+    const state = await load();
+    state.businesses = state.businesses.filter((business) => business.id !== businessId);
+    delete state.snapshots[businessId];
+    delete state.journals?.[businessId];
+    for (const key of Object.keys(state.operations)) if (key.startsWith(`${businessId}:`)) delete state.operations[key];
+    for (const key of Object.keys(state.documentCounters ?? {})) if (key.startsWith(`${businessId}|`)) delete state.documentCounters![key];
+    if (state.businesses.length) await writeOfflineState(key, JSON.stringify(state));
+    else await deleteOfflineState(key);
   });
   writes = work;
   return work;
@@ -170,7 +186,8 @@ export function localRequest<T>(
           business: { id: business.id, name: business.name },
           access: { role: "OWNER", membersCanViewPurchasePrice: true, permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER] },
           products: [],
-          customers: [],
+          // Like the server, every shop starts with its walk-in customer for counter sales.
+          customers: [{ id: `walkin_${business.id}`, name: WALK_IN_CUSTOMER_NAME, isWalkIn: true, status: "ACTIVE", revision: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as LocalRecord],
           suppliers: [],
           inventory: [],
           inventoryActivity: [],

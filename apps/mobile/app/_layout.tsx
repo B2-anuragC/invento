@@ -98,6 +98,10 @@ export default function RootLayout() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
+              name="guest/account"
+              options={{ headerShown: false, animation: "slide_from_right" }}
+            />
+            <Stack.Screen
               name="modal"
               options={{ presentation: "modal", title: "Modal" }}
             />
