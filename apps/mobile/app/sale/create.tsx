@@ -427,7 +427,7 @@ export default function CreateSaleScreen() {
             <BackButton onPress={goBack} style={styles.backButton} />
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{step === 3 ? 'Review sale' : repeatSaleId ? 'Repeat sale' : 'New sale'}</Text>
-              <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · SELL PRICES'}</Text>
+              {step === 3 ? <Text style={styles.subtitle}>{`DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}`}</Text> : null}
             </View>
             {hasChanges ? <Pressable accessibilityRole="button" accessibilityLabel="Discard sale" disabled={saving} onPress={() => { if (!submitting.current) setLeaveConfirm(true); }} style={styles.discardButton}><Text style={styles.discardText}>Discard</Text></Pressable> : <View style={styles.discardButton} />}
           </View>
@@ -678,14 +678,14 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center', alignItems: 'center', gap: 12 },
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
   header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },
-  headerTop: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  headerTop: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
   backButton: { marginRight: 12 },
   headerCopy: { flex: 1 },
-  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
+  title: { color: '#1D2B25', fontSize: 22, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },
   discardButton: { minWidth: 64, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
   discardText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
-  steps: { minHeight: 59, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
+  steps: { minHeight: 48, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
   step: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },
   stepActive: { backgroundColor: '#176B50' },

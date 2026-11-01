@@ -1,5 +1,6 @@
 import { usePermissions } from '@/services/permissions';
 import { BackButton } from '@/components/back-button';
+import { HeaderIconButton, ListHeader, StatStrip } from '@/components/screen-heading';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
@@ -175,37 +176,35 @@ export default function ContactDetailsScreen() {
     return (
       <AppScreen style={customerStyles.screen}>
         <View style={customerStyles.header}>
-          <BackButton fallback="/(tabs)/people" />
-          <Text style={customerStyles.heading}>Customer details</Text>
-          {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Edit customer" onPress={() => setEditing(true)} style={customerStyles.edit}><Ionicons name="pencil-outline" size={21} color="#1C2D26" /></Pressable> : null}
+          <ListHeader title="Customer" back backFallback="/(tabs)/people" actions={<>
+            <HeaderIconButton icon="call-outline" label={contact.phone ? `Call ${contact.name}` : 'Call (no phone number)'} disabled={!contact.phone} onPress={() => void openPhone('tel')} />
+            <HeaderIconButton icon="logo-whatsapp" label={contact.phone ? `Open chat with ${contact.name} in WhatsApp` : 'WhatsApp (no phone number)'} disabled={!contact.phone} onPress={() => void openPhone('whatsapp')} />
+            {canEdit ? <HeaderIconButton icon="pencil-outline" label="Edit customer" onPress={() => setEditing(true)} /> : null}
+          </>} />
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={customerStyles.content}>
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-          <ProductPhoto kind="customer" value={photo} />
+          {photo.imageOriginal ? <ProductPhoto kind="customer" value={photo} /> : null}
           <View style={customerStyles.card}>
             <View style={customerStyles.row}>
               <View style={customerStyles.avatar}><Ionicons name="person-outline" size={22} color="#176344" /></View>
               <View style={customerStyles.copy}>
-                <Text style={customerStyles.meta}>Customer</Text>
                 <Text style={customerStyles.name}>{contact.name}</Text>
                 <Text style={customerStyles.meta}>{[contact.phone, contact.address, contact.gstin ? `GSTIN ${contact.gstin}` : ''].filter(Boolean).join(' · ') || 'No contact details'}</Text>
                 {contact.contactName ? <Text style={customerStyles.meta}>{contact.contactName}</Text> : null}
                 {contact.email ? <Text style={customerStyles.meta}>{contact.email}</Text> : null}
               </View>
             </View>
-            <View style={customerStyles.actions}>
-              {(['tel', 'whatsapp'] as const).map((scheme) => <Pressable key={scheme} accessibilityRole="button" accessibilityState={{ disabled: !contact.phone }} disabled={!contact.phone} onPress={() => void openPhone(scheme)} style={[customerStyles.button, customerStyles.contactButton, !contact.phone && customerStyles.disabled]}><Ionicons name={scheme === 'tel' ? 'call-outline' : 'logo-whatsapp'} size={18} color="#176344" /><Text style={customerStyles.buttonText}>{scheme === 'tel' ? 'Call' : 'WhatsApp'}</Text></Pressable>)}
-            </View>
           </View>
-          <View style={customerStyles.summary}>
-            <Text style={customerStyles.summaryLabel}>OUTSTANDING · TO COLLECT</Text>
-            <Text style={customerStyles.summaryValue}>{formatMoney(outstanding)}{unknownPayments ? ' + unconfirmed' : ''}</Text>
-            <Text style={customerStyles.summaryMeta}>{latestSale ? `Latest sale ${formatDate(latestSale.saleDate)}` : 'No sales recorded'}</Text>
-            <View style={customerStyles.divider} />
-            <View style={customerStyles.between}><Text style={customerStyles.meta}>Saved sales</Text><Text style={customerStyles.name}>{sales.length}</Text></View>
-            <Text style={customerStyles.meta}>{unknownPayments ? 'Some historical payments need confirmation. Open a receipt to confirm prior payments.' : 'Based on recorded payments.'}</Text>
-          </View>
-          <View style={customerStyles.between}><Text style={customerStyles.sectionTitle}>Transaction history</Text><Text style={customerStyles.link}>All transactions</Text></View>
+          <StatStrip
+            items={[
+              { label: unknownPayments ? 'To collect · known' : 'To collect', value: formatMoney(outstanding), tone: 'amber' },
+              { label: 'Saved sales', value: String(sales.length), tone: 'blue' },
+              { label: 'Latest sale', value: latestSale ? formatDate(latestSale.saleDate) : 'None' },
+            ]}
+            note={unknownPayments ? 'Some older payments are not confirmed. Open a receipt to confirm them.' : null}
+          />
+          <Text accessibilityRole="header" style={customerStyles.sectionTitle}>Transaction history · {sales.length}</Text>
           {!sales.length ? <Text style={styles.empty}>No transactions linked to this customer yet.</Text> : null}
           {[...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime()).map((sale) => (
             <View key={sale.id} style={customerStyles.card}>
@@ -223,9 +222,9 @@ export default function ContactDetailsScreen() {
         {canEdit ? <View style={customerStyles.footer}>
           <View style={customerStyles.actions}>
             <Pressable accessibilityRole="button" onPress={() => router.push(`/sale/create?customerId=${encodeURIComponent(contact.id)}`)} style={[customerStyles.button, customerStyles.primary]}><Ionicons name="add" size={24} color="white" /><Text style={customerStyles.primaryText}>New sale</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityState={{ disabled: !latestSale }} disabled={!latestSale} onPress={() => latestSale && router.push(`/sale/create?saleId=${encodeURIComponent(latestSale.id)}`)} style={[customerStyles.button, !latestSale && customerStyles.disabled]}><Ionicons name="refresh" size={18} color="#176344" /><Text style={customerStyles.buttonText}>Repeat sale</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Repeat latest sale" accessibilityState={{ disabled: !latestSale }} disabled={!latestSale} onPress={() => latestSale && router.push(`/sale/create?saleId=${encodeURIComponent(latestSale.id)}`)} style={[customerStyles.button, !latestSale && customerStyles.disabled]}><Ionicons name="refresh" size={18} color="#176344" /><Text style={customerStyles.buttonText}>Repeat</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: !recordableTransactions.length }} disabled={!recordableTransactions.length} onPress={() => setPaymentTarget(recordableTransactions[0])} accessibilityLabel="Record payment" style={[customerStyles.button, !recordableTransactions.length && customerStyles.disabled]}><Ionicons name="cash-outline" size={18} color="#176344" /><Text style={customerStyles.buttonText}>Payment</Text></Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: !recordableTransactions.length }} disabled={!recordableTransactions.length} onPress={() => setPaymentTarget(recordableTransactions[0])} style={[customerStyles.button, customerStyles.paymentButton, !recordableTransactions.length && customerStyles.disabled]}><Text style={customerStyles.buttonText}>Record payment</Text></Pressable>
         </View> : null}
         {paymentModal}
       </AppScreen>
@@ -237,9 +236,11 @@ export default function ContactDetailsScreen() {
     return (
       <AppScreen style={customerStyles.screen}>
         <View style={customerStyles.header}>
-          <BackButton fallback="/(tabs)/people" />
-          <Text style={customerStyles.heading}>Supplier details</Text>
-          {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Edit supplier" onPress={() => setEditing(true)} style={customerStyles.edit}><Ionicons name="pencil-outline" size={21} color="#1C2D26" /></Pressable> : null}
+          <ListHeader title="Supplier" back backFallback="/(tabs)/people" actions={<>
+            <HeaderIconButton icon="call-outline" label={contact.phone ? `Call ${contact.name}` : 'Call (no phone number)'} disabled={!contact.phone} onPress={() => void openPhone('tel')} />
+            <HeaderIconButton icon="logo-whatsapp" label={contact.phone ? `Open chat with ${contact.name} in WhatsApp` : 'WhatsApp (no phone number)'} disabled={!contact.phone} onPress={() => void openPhone('whatsapp')} />
+            {canEdit ? <HeaderIconButton icon="pencil-outline" label="Edit supplier" onPress={() => setEditing(true)} /> : null}
+          </>} />
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={customerStyles.content}>
           {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
@@ -247,26 +248,22 @@ export default function ContactDetailsScreen() {
             <View style={customerStyles.row}>
               <View style={customerStyles.avatar}><Ionicons name="cube-outline" size={22} color="#176344" /></View>
               <View style={customerStyles.copy}>
-                <Text style={customerStyles.meta}>Supplier</Text>
                 <Text style={customerStyles.name}>{contact.name}</Text>
                 <Text style={customerStyles.meta}>{[contact.phone, contact.address, contact.gstin ? `GSTIN ${contact.gstin}` : ''].filter(Boolean).join(' · ') || 'No contact details'}</Text>
                 {contact.contactName ? <Text style={customerStyles.meta}>{contact.contactName}</Text> : null}
                 {contact.email ? <Text style={customerStyles.meta}>{contact.email}</Text> : null}
               </View>
             </View>
-            <View style={customerStyles.actions}>
-              {(['tel', 'whatsapp'] as const).map((scheme) => <Pressable key={scheme} accessibilityRole="button" accessibilityState={{ disabled: !contact.phone }} disabled={!contact.phone} onPress={() => void openPhone(scheme)} style={[customerStyles.button, customerStyles.contactButton, !contact.phone && customerStyles.disabled]}><Ionicons name={scheme === 'tel' ? 'call-outline' : 'logo-whatsapp'} size={18} color="#176344" /><Text style={customerStyles.buttonText}>{scheme === 'tel' ? 'Call' : 'WhatsApp'}</Text></Pressable>)}
-            </View>
           </View>
-          <View style={customerStyles.summary}>
-            <Text style={customerStyles.summaryLabel}>OUTSTANDING · TO PAY</Text>
-            <Text style={customerStyles.summaryValue}>{purchaseTotalsHidden ? 'Restricted price' : formatMoney(outstanding)}{!purchaseTotalsHidden && unknownPayments ? ' + unconfirmed' : ''}</Text>
-            <Text style={customerStyles.summaryMeta}>{latestPurchase ? `Latest purchase ${formatDate(latestPurchase.purchaseDate)}` : 'No purchases recorded'}</Text>
-            <View style={customerStyles.divider} />
-            <View style={customerStyles.between}><Text style={customerStyles.meta}>Saved purchases</Text><Text style={customerStyles.name}>{purchases.length}</Text></View>
-            <Text style={customerStyles.meta}>{unknownPayments ? 'Some historical payments need confirmation. Open a receipt to confirm prior payments.' : 'Based on recorded payments.'}</Text>
-          </View>
-          <View style={customerStyles.between}><Text style={customerStyles.sectionTitle}>Transaction history</Text><Text style={customerStyles.link}>All transactions</Text></View>
+          <StatStrip
+            items={[
+              { label: !purchaseTotalsHidden && unknownPayments ? 'To pay · known' : 'To pay', value: purchaseTotalsHidden ? 'Restricted' : formatMoney(outstanding), tone: 'amber' },
+              { label: 'Saved purchases', value: String(purchases.length), tone: 'blue' },
+              { label: 'Latest purchase', value: latestPurchase ? formatDate(latestPurchase.purchaseDate) : 'None' },
+            ]}
+            note={!purchaseTotalsHidden && unknownPayments ? 'Some older payments are not confirmed. Open a receipt to confirm them.' : null}
+          />
+          <Text accessibilityRole="header" style={customerStyles.sectionTitle}>Transaction history · {purchases.length}</Text>
           {!purchases.length ? <Text style={styles.empty}>No transactions linked to this supplier yet.</Text> : null}
           {[...purchases].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime()).map((purchase) => (
             <Pressable key={purchase.id} accessibilityRole="button" accessibilityLabel={`View purchase ${purchase.invoiceNumber || purchase.id}`} onPress={() => router.push(`/purchase/${purchase.id}`)} style={customerStyles.card}>
@@ -284,9 +281,8 @@ export default function ContactDetailsScreen() {
         {canEdit ? <View style={customerStyles.footer}>
           <View style={customerStyles.actions}>
             <Pressable accessibilityRole="button" onPress={() => router.push(`/purchase/create?supplierId=${encodeURIComponent(contact.id)}`)} style={[customerStyles.button, customerStyles.primary]}><Ionicons name="add" size={24} color="white" /><Text style={customerStyles.primaryText}>New purchase</Text></Pressable>
-
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: !recordableTransactions.length }} disabled={!recordableTransactions.length} onPress={() => setPaymentTarget(recordableTransactions[0])} style={[customerStyles.button, !recordableTransactions.length && customerStyles.disabled]}><Ionicons name="cash-outline" size={18} color="#176344" /><Text style={customerStyles.buttonText}>Record payment</Text></Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: !recordableTransactions.length }} disabled={!recordableTransactions.length} onPress={() => setPaymentTarget(recordableTransactions[0])} style={[customerStyles.button, customerStyles.paymentButton, !recordableTransactions.length && customerStyles.disabled]}><Text style={customerStyles.buttonText}>Record payment</Text></Pressable>
         </View> : null}
         {paymentModal}
       </AppScreen>
@@ -450,32 +446,25 @@ const styles = StyleSheet.create({
 
 const customerStyles = StyleSheet.create({
   screen: { backgroundColor: '#F3F5F4' },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 20, padding: 20, minHeight: 76, backgroundColor: '#FFFFFF' },
-  heading: { flex: 1, color: '#1C2D26', fontSize: 22, fontWeight: '700' },
-  edit: { padding: 10, borderRadius: 10, backgroundColor: '#F3F5F4' },
-  content: { padding: 20, gap: 16, width: '100%', maxWidth: 680, alignSelf: 'center' },
+  header: { paddingHorizontal: 16, paddingTop: 8, backgroundColor: '#F3F5F4', width: '100%', maxWidth: 680, alignSelf: 'center' },
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 20, gap: 12, width: '100%', maxWidth: 680, alignSelf: 'center' },
   card: { flexShrink: 0, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E1E7E3', padding: 14, gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1, minWidth: 0 },
   avatar: { width: 38, height: 38, borderRadius: 8, backgroundColor: '#E8F3EC', alignItems: 'center', justifyContent: 'center' },
   name: { color: '#1C2D26', fontSize: 14, fontWeight: '600', flexShrink: 1 },
   meta: { color: '#74827B', fontSize: 11, lineHeight: 16 },
-  actions: { width: '100%', minHeight: 50, flexShrink: 0, flexDirection: 'row', alignItems: 'stretch', gap: 10 },
-  button: { flexGrow: 1, flexBasis: 0, minHeight: 50, borderRadius: 10, borderWidth: 1, borderColor: '#E1E7E3', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
-  contactButton: { height: 50, flexShrink: 0 },
+  actions: { width: '100%', minHeight: 48, flexShrink: 0, flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  button: { flexGrow: 1, flexBasis: 0, minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: '#E1E7E3', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
   buttonText: { color: '#176344', fontSize: 14, fontWeight: '600' },
+  contactButton: { height: 48, flexShrink: 0 },
   disabled: { opacity: 0.45 },
-  summary: { padding: 18, borderRadius: 14, backgroundColor: '#E8F3EC', gap: 12 },
-  summaryLabel: { color: '#176344', fontSize: 12, fontWeight: '600' },
-  summaryValue: { color: '#124B35', fontSize: 36, fontWeight: '700' },
-  summaryMeta: { color: '#176344', fontSize: 11 },
   divider: { height: 1, backgroundColor: '#E1E7E3' },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { color: '#1C2D26', fontSize: 16, fontWeight: '600' },
   link: { color: '#176344', fontSize: 12, fontWeight: '600' },
   badge: { color: '#176344', fontSize: 10, backgroundColor: '#E8F3EC', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 },
-  footer: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderColor: '#E1E7E3', padding: 16, paddingHorizontal: 20, gap: 12 },
-  paymentButton: { flexGrow: 0, flexBasis: 'auto' },
+  footer: { backgroundColor: '#FFFFFF', borderTopWidth: 1, borderColor: '#E1E7E3', paddingVertical: 10, paddingHorizontal: 16 },
   primary: { backgroundColor: '#176344', borderColor: '#176344' },
-  primaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  primaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
