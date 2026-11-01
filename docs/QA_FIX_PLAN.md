@@ -129,10 +129,14 @@ Decisions agreed on 31 October 2026:
 
 | # | Change | Status |
 |---|---|---|
-| 29 | Confirmation for assigning owner, deactivating members and deleting roles; clearer role picker | |
+| 29 | Confirmation for assigning owner, deactivating members and deleting roles; clearer role picker | Done |
 | 30 | Accessible names without icon-font characters; labelled icon buttons and form fields; page titles on web | |
 | 31 | Consistent back buttons and labels, sale naming, ₹ tab icon, share labels, pending-payment card, GST note on purchase quantities | |
 | 32 | Simpler selling-option form ("1 pack = 10 pieces" plus price) | |
+
+### Phase 6 design
+
+- **Access confirmations and role picker (29)**: on web and phone, making a member an owner ("Make Ravi an owner?"), adding an account as an owner, and taking owner away from someone ("Remove owner access from Sita?", a decision added here because it is as hard to undo) ask first; other role changes apply straight away. Deactivating a membership always asks ("Deactivate Ravi? … Their bills and history stay"); reactivating does not. Deleting a role asks ("Delete the Cashier role? … cannot be undone"), and while any membership, active or not, still has the role it explains who has it instead of offering Delete, since the server refuses that too. Role pickers show role names, never keys, with one line on what each role can do (built-in roles have a fixed description; custom roles show "Custom role · 3 of 42 permissions"), and only offer roles the member may give (Owner only for owners, never more than their own permissions). Web: each member's role select marks the current role, describes the chosen one, and saves with "Change role" (or "Keep Salesperson"), instead of saving on every change. Phone: "Change role" opens a list of radio buttons with the descriptions and "Save role"; the add-member role list and the role editor's permissions are radio buttons and checkboxes for screen readers. Both say what changed ("QA Staff is now Manager."). The wording and rules are in `@invento/shared` (`access-changes.ts`).
 
 ## Deferred
 

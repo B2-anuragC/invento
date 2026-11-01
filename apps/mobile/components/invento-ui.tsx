@@ -84,7 +84,7 @@ export function ActionButton({
 }: {
   title: string;
   onPress?: () => void;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
   fullWidth?: boolean;
   permission?: Permission;
@@ -101,11 +101,11 @@ export function ActionButton({
       style={({ pressed }) => [
         styles.actionButton,
         fullWidth && styles.fullWidthAction,
-        variant === 'primary' ? styles.primaryAction : styles.secondaryAction,
+        variant === 'primary' ? styles.primaryAction : variant === 'danger' ? styles.dangerAction : styles.secondaryAction,
         pressed && { opacity: 0.9 },
         disabled && { opacity: 0.5 },
       ]}>
-      <Text style={[styles.actionText, variant === 'primary' ? styles.primaryText : styles.secondaryText]}>
+      <Text style={[styles.actionText, variant === 'secondary' ? styles.secondaryText : styles.primaryText]}>
         {title}
       </Text>
     </Pressable>
@@ -120,12 +120,14 @@ export function ConfirmationDialog({
   cancelLabel,
   onConfirm,
   onCancel,
+  danger = false,
 }: {
   visible: boolean;
   title: string;
   message: string;
   confirmLabel: string;
   cancelLabel?: string;
+  danger?: boolean;
   onConfirm: () => void;
   onCancel?: () => void;
 }) {
@@ -133,13 +135,13 @@ export function ConfirmationDialog({
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel ?? onConfirm}>
       <View style={styles.dialogBackdrop}>
         <View style={styles.dialog}>
-          <Text style={styles.dialogTitle}>{title}</Text>
+          <Text accessibilityRole="header" style={styles.dialogTitle}>{title}</Text>
           <Text style={styles.dialogMessage}>{message}</Text>
           <View style={styles.dialogActions}>
             {cancelLabel ? (
               <ActionButton title={cancelLabel} variant="secondary" onPress={onCancel} />
             ) : null}
-            <ActionButton title={confirmLabel} onPress={onConfirm} />
+            <ActionButton title={confirmLabel} variant={danger ? 'danger' : 'primary'} onPress={onConfirm} />
           </View>
         </View>
       </View>
@@ -307,6 +309,9 @@ const styles = StyleSheet.create({
   },
   secondaryAction: {
     backgroundColor: '#E5E7EB',
+  },
+  dangerAction: {
+    backgroundColor: '#A13E37',
   },
   actionText: {
     textAlign: 'center',
