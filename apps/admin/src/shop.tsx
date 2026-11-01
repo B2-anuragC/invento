@@ -613,6 +613,8 @@ function ShopSection({
     revision,
   );
   const balances = partyBalances(billKind, (bills.data ?? []) as unknown as DetailBill[]);
+  // Purchase amounts are hidden without cost prices, so suppliers then have no Balance column.
+  const showBalance = !!bills.data && (section === "customers" || can("pricing.view"));
   const billKindOfSection = section === "sales" ? "sale" : "purchase";
   // Owners and admins change a saved bill's items; a purchase's also need cost prices.
   const mayEditItems = can(`${section}.edit`) && (section === "sales" || can("pricing.view"));
@@ -713,7 +715,7 @@ function ShopSection({
             />
           )}
           <Records
-            rows={people ? rows.map((r) => ({ ...r, balance: partyBalanceCell(balances, r, !!bills.data) })) : rows}
+            rows={people ? rows.map((r) => ({ ...r, balance: partyBalanceCell(balances, r, showBalance) })) : rows}
             keys={
               section === "products"
                 ? [
@@ -727,7 +729,7 @@ function ShopSection({
                     "minimumStock",
                     "status",
                   ]
-                : ["name", "contactName", "phone", "gstin", ...(bills.data ? ["balance"] : []), "status"]
+                : ["name", "contactName", "phone", "email", "gstin", ...(showBalance ? ["balance"] : []), "status"]
             }
             titles={{ gstin: "GSTIN", gstRate: "GST %", hsnCode: "HSN", balance: "Balance" }}
             edit={can(`${section}.update`) ? setEditing : undefined}

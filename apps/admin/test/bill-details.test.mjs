@@ -46,15 +46,37 @@ test("party totals add up bills, leave out cancelled ones and track overdue amou
     sale({ id: "s4", status: "CANCELLED", amountPaid: "0" }),
     sale({ id: "s5", customerId: "c2", customer: { id: "c2", name: "Shree" }, amountPaid: null }),
   ], "2026-11-01");
-  assert.deepEqual(totals.get("c1"), { bills: 3, billed: 344000, due: 108000, overdue: 100000 });
-  assert.deepEqual(totals.get("c2"), { bills: 1, billed: 118000, due: 0, overdue: 0 });
+  assert.deepEqual(totals.get("c1"), { bills: 3, billed: 344000, due: 108000, overdue: 100000, unknown: 0, hidden: 0 });
+  assert.deepEqual(totals.get("c2"), { bills: 1, billed: 118000, due: 0, overdue: 0, unknown: 1, hidden: 0 });
   assert.equal(partyBalanceText(totals.get("c1")), "₹1,080.00 due (₹1,000.00 overdue)");
-  assert.equal(partyBalanceText(totals.get("c2")), "Nothing due");
+  assert.equal(partyBalanceText(totals.get("c2")), "Not recorded");
   assert.equal(partyBalanceText(undefined), "—");
-  assert.equal(partyBalanceText({ bills: 1, billed: 100, due: 50, overdue: 0 }), "₹0.50 due");
+  assert.equal(partyBalanceText({ bills: 1, billed: 100, due: 50, overdue: 0, unknown: 0, hidden: 0 }), "₹0.50 due");
+  assert.equal(partyBalanceText({ bills: 1, billed: 100, due: 0, overdue: 0, unknown: 0, hidden: 0 }), "Nothing due");
   assert.equal(partySummary("sale", totals.get("c1")), "3 sales · ₹3,440.00 billed · ₹1,080.00 due (₹1,000.00 overdue)");
-  assert.equal(partySummary("purchase", { bills: 1, billed: 0, due: 0, overdue: 0 }), "1 purchase · ₹0.00 billed · Nothing due");
+  assert.equal(partySummary("purchase", { bills: 1, billed: 0, due: 0, overdue: 0, unknown: 0, hidden: 0 }), "1 purchase · ₹0.00 billed · Nothing due");
   assert.equal(partySummary("purchase", undefined), "No purchases from this supplier yet.");
+});
+
+test("older bills with no recorded payments are not counted as nothing owed", () => {
+  const totals = partyBalances("sale", [
+    sale({ id: "o1", amountPaid: null, total: "500", netTotal: "500" }),
+    sale({ id: "o2", amountPaid: null, total: "500", netTotal: "500" }),
+    sale({ id: "n1", customerId: "c2", customer: { id: "c2", name: "Shree" }, amountPaid: "0", total: "300", netTotal: "300" }),
+    sale({ id: "o3", customerId: "c2", customer: { id: "c2", name: "Shree" }, amountPaid: null }),
+  ], "2026-11-01");
+  assert.equal(partyBalanceText(totals.get("c1")), "Not recorded");
+  assert.equal(partySummary("sale", totals.get("c1")), "2 sales · ₹1,000.00 billed · Not recorded");
+  assert.equal(partyBalanceText(totals.get("c2")), "₹300.00 due + older bills not recorded");
+});
+
+test("purchases with hidden cost prices do not read as nothing due", () => {
+  // What GET /purchases returns to a member without pricing.view: no amounts.
+  const redacted = { id: "p1", status: "COMPLETED", supplierId: "s1", supplier: { id: "s1", name: "Saint Glass Distributors" }, dueDate: "2026-10-01" };
+  const totals = partyBalances("purchase", [redacted, { ...redacted, id: "p2" }], "2026-11-01");
+  assert.deepEqual(totals.get("s1"), { bills: 2, billed: 0, due: 0, overdue: 0, unknown: 2, hidden: 2 });
+  assert.equal(partyBalanceText(totals.get("s1")), "—");
+  assert.equal(partySummary("purchase", totals.get("s1")), "2 purchases · amounts hidden for your role");
 });
 
 test("bill amounts list only what applies", () => {

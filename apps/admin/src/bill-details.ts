@@ -93,7 +93,12 @@ export function billRow<T extends DetailBill>(kind: BillKind, bill: T, today = i
   return { ...bill, party: partyOf(kind, bill)?.name ?? "—", balance: balanceText(bill, today) };
 }
 
-export type PartyBalance = { bills: number; billed: number; due: number; overdue: number };
+/**
+ * A customer's or supplier's totals. `unknown` counts bills whose balance is not
+ * known (an older bill saved before payments were recorded, or hidden prices);
+ * `hidden` counts bills whose amounts are hidden for the member's role.
+ */
+export type PartyBalance = { bills: number; billed: number; due: number; overdue: number; unknown: number; hidden: number };
 
 /**
  * Totals per customer or supplier from their bills: how many, the amount
@@ -104,22 +109,31 @@ export function partyBalances(kind: BillKind, bills: DetailBill[], today = india
   for (const bill of bills) {
     const id = (kind === "sale" ? bill.customerId ?? bill.customer?.id : bill.supplierId ?? bill.supplier?.id) ?? "";
     if (!id || bill.status === "CANCELLED") continue;
-    const entry = totals.get(id) ?? { bills: 0, billed: 0, due: 0, overdue: 0 };
-    const due = balanceDue(bill) ?? 0;
+    const entry = totals.get(id) ?? { bills: 0, billed: 0, due: 0, overdue: 0, unknown: 0, hidden: 0 };
+    const net = netPaise(bill);
+    const due = balanceDue(bill);
     entry.bills += 1;
-    entry.billed += netPaise(bill) ?? 0;
-    entry.due += due;
-    if (due > 0 && bill.dueDate && bill.dueDate.slice(0, 10) < today) entry.overdue += due;
+    if (net == null) entry.hidden += 1;
+    else entry.billed += net;
+    if (due == null) entry.unknown += 1;
+    else {
+      entry.due += due;
+      if (due > 0 && bill.dueDate && bill.dueDate.slice(0, 10) < today) entry.overdue += due;
+    }
     totals.set(id, entry);
   }
   return totals;
 }
 
-/** The people table's Balance column: "₹1,200.00 due", "Nothing due" or "—" with no bills. */
+/**
+ * The people table's Balance column: "₹1,200.00 due", "Nothing due", "Not recorded"
+ * when only older bills are owed on, or "—" with no bills or hidden prices.
+ */
 export function partyBalanceText(balance: PartyBalance | undefined): string {
-  if (!balance) return "—";
-  if (balance.due === 0) return "Nothing due";
-  return balance.overdue > 0 ? `${money(balance.due)} due (${money(balance.overdue)} overdue)` : `${money(balance.due)} due`;
+  if (!balance || balance.hidden > 0) return "—";
+  if (balance.due === 0) return balance.unknown > 0 ? "Not recorded" : "Nothing due";
+  const due = balance.overdue > 0 ? `${money(balance.due)} due (${money(balance.overdue)} overdue)` : `${money(balance.due)} due`;
+  return balance.unknown > 0 ? `${due} + older bills not recorded` : due;
 }
 
 export type DetailLine = { label: string; value: string };
@@ -200,5 +214,6 @@ export function billPayments(bill: DetailBill): PaymentRow[] {
 export function partySummary(kind: BillKind, balance: PartyBalance | undefined): string {
   if (!balance) return kind === "sale" ? "No sales to this customer yet." : "No purchases from this supplier yet.";
   const count = `${balance.bills} ${kind === "sale" ? "sale" : "purchase"}${balance.bills === 1 ? "" : "s"}`;
+  if (balance.hidden > 0) return `${count} · amounts hidden for your role`;
   return `${count} · ${money(balance.billed)} billed · ${partyBalanceText(balance)}`;
 }
