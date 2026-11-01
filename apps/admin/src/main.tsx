@@ -4,6 +4,7 @@ import { login, logout, setSessionExpired, type PanelAccess } from "./api";
 import { label } from "./components";
 import { Overview, Directory, Detail, Audit } from "./pages";
 import { ShopWorkspace } from "./shop";
+import { platformPageTitle } from "./page-title";
 import "./style.css";
 
 function App() {
@@ -20,12 +21,25 @@ function App() {
     });
     return () => window.removeEventListener("hashchange", handler);
   }, []);
+  // Shop workspace pages set their own title (see ShopWorkspace).
+  const [, routeSection, routeId] = route.split("/");
+  const inShop =
+    !!access &&
+    (!access.isPlatformAdmin ||
+      routeSection === "shops" ||
+      (routeSection === "businesses" && !!routeId));
+  useEffect(() => {
+    if (!inShop) document.title = platformPageTitle(access ? route : null);
+  }, [access, route, inShop]);
   if (!access)
     return (
       <main className="login">
         <section className="login-brand">
           <div className="brand">
-            <span className="brand-icon">i</span> invento
+            <span className="brand-icon" aria-hidden>
+              i
+            </span>{" "}
+            invento
             <span className="brand-sub">PLATFORM</span>
           </div>
           <h1>
@@ -86,7 +100,8 @@ function App() {
               </p>
             )}
             <button className="primary" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in →"}
+              {busy ? "Signing in…" : "Sign in"}
+              {!busy && <span aria-hidden> →</span>}
             </button>
           </form>
           <p className="muted fine">
@@ -103,7 +118,10 @@ function App() {
     <div className="shell">
       <aside>
         <a href="#/overview" className="brand">
-          <span className="brand-icon">i</span> invento
+          <span className="brand-icon" aria-hidden>
+            i
+          </span>{" "}
+          invento
         </a>
         <p className="sidebar-label">
           {access.isPlatformAdmin ? "PLATFORM ADMIN" : "BUSINESS WORKSPACE"}

@@ -211,7 +211,7 @@ export function Detail({
   return (
     <>
       <a className="back" href={`#/${kind}`}>
-        ← Back to {kind}
+        <span aria-hidden>← </span>Back to {kind}
       </a>
       <Notice {...result} />
       {result.data && (
@@ -228,7 +228,7 @@ export function Detail({
                   className="primary"
                   href={`#/shops/${encodeURIComponent(id)}`}
                 >
-                  Manage this shop →
+                  Manage this shop<span aria-hidden> →</span>
                 </a>
               )}
             </div>

@@ -12,6 +12,7 @@ import { codeName, formatCell, quantity, unitName } from "./format";
 import { billRow, partyBalances, partyBalanceText, type DetailBill } from "./bill-details";
 import { BillView, PartyView } from "./record-details";
 import { AccessManagement } from "./access-management";
+import { shopPageTitle } from "./page-title";
 import React, { useId, useState } from "react";
 import { PAGE_SIZES, pageOf, pageSummary, searchRows } from "./table-view";
 import { api, type PanelAccess } from "./api";
@@ -290,7 +291,7 @@ function Records({
                       (row.isWalkIn || row.status === "CANCELLED" ? (
                         <span className="muted">{row.isWalkIn ? "Built in" : view ? "" : "—"}</span>
                       ) : (
-                        <button onClick={() => edit(row)}>Edit</button>
+                        <button onClick={() => edit(row)} aria-label={`Edit ${String(row.documentNumber ?? row.name ?? "record")}`}>Edit</button>
                       ))}
                   </td>
                 )}
@@ -380,7 +381,7 @@ export function ShopWorkspace({
       ) : platform ? (
         <p>
           <a href="#/businesses">
-            Choose a business from the business directory →
+            Choose a business from the business directory<span aria-hidden> →</span>
           </a>
         </p>
       ) : (
@@ -393,7 +394,9 @@ export function ShopWorkspace({
             >
               <strong>{shop.name}</strong>
               <span>{shop.slug}</span>
-              <span className="business-choice-action">Manage business →</span>
+              <span className="business-choice-action">
+                Manage business<span aria-hidden> →</span>
+              </span>
             </a>
           ))}
         </div>
@@ -468,10 +471,17 @@ function Shop({
   const visible = sections.filter((s) => can(sectionPermission[s]) || (s === "team" && can("roles.view")));
   const requested = section === "roles" ? "team" : section;
   const active = visible.includes(requested) ? requested : visible[0];
+  const shopName = business.data ? String(business.data.name) : undefined;
+  React.useEffect(() => {
+    document.title = shopPageTitle(
+      active ? (sectionTitles[active] ?? label(active)) : "Business workspace",
+      shopName,
+    );
+  }, [active, shopName]);
   return (
     <>
       <a className="back" href={platform ? "#/businesses" : "#/shops"}>
-        ← Back to businesses
+        <span aria-hidden>← </span>Back to businesses
       </a>
       {business.data && (
         <div className="business-header">

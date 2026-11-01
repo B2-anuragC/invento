@@ -553,7 +553,7 @@ export function SaleCreator({
                   setReview(true);
                 }}
               >
-                Review sale →
+                Review sale<span aria-hidden> →</span>
               </button>
             ) : (
               <button key="create" className="primary" disabled={busy || !!validation}>
