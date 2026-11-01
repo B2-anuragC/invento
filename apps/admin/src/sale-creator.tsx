@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
-import { WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
+import { chargeGstError, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import { api } from "./api";
 import { type Row } from "./components";
 import {
+  chargeGstSwitch,
   saleTotals,
   paymentAmount,
   type SaleLine,
@@ -16,11 +17,13 @@ export function SaleCreator({
   id,
   products,
   customers,
+  shop,
   saved,
 }: {
   id: string;
   products: SaleProduct[];
   customers: Row[];
+  shop: Row;
   saved: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,6 +39,10 @@ export function SaleCreator({
   const [dueDate, setDueDate] = useState("");
   const [discountMode, setDiscountMode] = useState<"amount" | "percent">("amount");
   const [discountValue, setDiscountValue] = useState("");
+  // Off by default on every new sale; only a shop with a GSTIN can turn it on.
+  const [chargeGstOn, setChargeGstOn] = useState(false);
+  const gstSwitch = chargeGstSwitch("sale", chargeGstOn, shop);
+  const chargeGst = chargeGstOn && !gstSwitch.disabled;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -51,7 +58,11 @@ export function SaleCreator({
   let totals = { subtotal: 0, discount: 0, tax: 0, total: 0 },
     validation = "";
   try {
-    totals = saleTotals(lines, discount);
+    totals = saleTotals(lines, discount, chargeGst);
+    validation = chargeGstError({
+      chargeGst,
+      sellerGstin: shop.gstin ? String(shop.gstin) : null,
+    });
   } catch (e) {
     validation = (e as Error).message;
   }
@@ -92,6 +103,7 @@ export function SaleCreator({
           amountPaid: paymentAmount(mode, totals.total, paid),
           ...(mode !== "full" && dueDate ? { dueDate } : {}),
           ...discount,
+          chargeGst,
           ...(values.get("invoiceNumber")
             ? { invoiceNumber: values.get("invoiceNumber") }
             : {}),
@@ -124,6 +136,7 @@ export function SaleCreator({
       setDueDate("");
       setDiscountMode("amount");
       setDiscountValue("");
+      setChargeGstOn(false);
       setMethod("CASH");
       setSearch("");
       setCustomerSearch("");
@@ -380,6 +393,19 @@ export function SaleCreator({
                     </span>
                   </div>
                 ))}
+                <label className="checkbox charge-gst">
+                  <input
+                    type="checkbox"
+                    checked={chargeGst}
+                    disabled={gstSwitch.disabled}
+                    aria-describedby="charge-gst-note"
+                    onChange={(e) => setChargeGstOn(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Charge GST</strong>
+                    <small id="charge-gst-note">{gstSwitch.note}</small>
+                  </span>
+                </label>
                 <div className="shop-fields">
                   <label>
                     Discount (before GST)

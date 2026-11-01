@@ -1,7 +1,7 @@
 import { CancelBill } from "./cancel-bill";
 import { StockAdjustment } from "./stock-adjustment";
 import { SaleCreator } from "./sale-creator";
-import { type SaleProduct } from "./sale-model";
+import { billGstLabel, chargeGstSwitch, saleTotals, type SaleProduct } from "./sale-model";
 import { GST_STATES, inventoryMovementLabel, inventoryMovementNote, type EffectiveAccess, type Permission } from "@invento/shared";
 import { firstFieldError } from "./form-validation";
 import { AccessManagement } from "./access-management";
@@ -649,19 +649,23 @@ function ShopSection({
             <TransactionForm id={id} section={section} saved={refresh} />
           )}
           <Records
-            rows={rows}
+            rows={rows.map((r) => ({
+              ...r,
+              gstState: billGstLabel(section === "sales" ? "sale" : "purchase", r),
+            }))}
             keys={[
               "documentNumber",
               "invoiceNumber",
               section === "sales" ? "saleDate" : "purchaseDate",
               "total",
+              "gstState",
               "status",
               "note",
             ]}
             titles={
               section === "sales"
-                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference" }
-                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice" }
+                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", gstState: "Bill type" }
+                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", gstState: "GST" }
             }
             edit={can(`${section}.update`) ? setEditing : undefined}
           />
@@ -908,7 +912,10 @@ function TransactionForm({
   const sale = section === "sales";
   const products = useShopLoad<Row[]>(id, "/products");
   const people = useShopLoad<Row[]>(id, sale ? "/customers" : "/suppliers");
+  const shop = useShopLoad<Row>(id, `/businesses/${encodeURIComponent(id)}`);
   const [person, setPerson] = useState("");
+  // "Supplier charged GST", off by default on every new purchase.
+  const [chargeGst, setChargeGst] = useState(false);
   const [lines, setLines] = useState<Row[]>([]);
   const [version, setVersion] = useState(0);
   if (sale)
@@ -916,11 +923,13 @@ function TransactionForm({
       <>
         <Notice {...products} />
         <Notice {...people} />
-        {products.data && people.data && (
+        <Notice {...shop} />
+        {products.data && people.data && shop.data && (
           <SaleCreator
             id={id}
             products={products.data as unknown as SaleProduct[]}
             customers={people.data}
+            shop={shop.data}
             saved={saved}
           />
         )}
@@ -989,6 +998,12 @@ function TransactionForm({
             </button>
           </div>
         ))}
+        <PurchaseGst
+          lines={lines}
+          products={products.data ?? []}
+          chargeGst={chargeGst}
+          setChargeGst={setChargeGst}
+        />
         <Editor
           key={`transaction-${version}`}
           title="Transaction details"
@@ -1023,16 +1038,71 @@ function TransactionForm({
               body: JSON.stringify({
                 ...data,
                 [sale ? "customerId" : "supplierId"]: person,
+                chargeGst,
                 items: lines,
               }),
             });
             setLines([]);
+            setChargeGst(false);
             setVersion((v) => v + 1);
             saved();
           }}
         />
       </div>
     </details>
+  );
+}
+/** The purchase's GST checkbox and its totals, computed as the API will. */
+function PurchaseGst({
+  lines,
+  products,
+  chargeGst,
+  setChargeGst,
+}: {
+  lines: Row[];
+  products: Row[];
+  chargeGst: boolean;
+  setChargeGst: (value: boolean) => void;
+}) {
+  const note = chargeGstSwitch("purchase", chargeGst, null).note;
+  let totals: ReturnType<typeof saleTotals> | null = null;
+  try {
+    totals = saleTotals(
+      lines.map((line) => ({
+        product: (products.find((p) => p.id === line.productId) ??
+          { id: String(line.productId), name: "", sellingPrice: "0" }) as unknown as SaleProduct,
+        quantity: String(line.quantity),
+        price: String(line.purchasePrice),
+      })),
+      {},
+      chargeGst,
+    );
+  } catch {
+    // Lines are validated when added; a stale product list shows no totals.
+  }
+  const money = (value: number) =>
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value);
+  return (
+    <>
+      <label className="checkbox charge-gst">
+        <input
+          type="checkbox"
+          checked={chargeGst}
+          aria-describedby="purchase-gst-note"
+          onChange={(e) => setChargeGst(e.target.checked)}
+        />
+        <span>
+          <strong>Supplier charged GST</strong>
+          <small id="purchase-gst-note">{note}</small>
+        </span>
+      </label>
+      {totals && lines.length > 0 && (
+        <p className="muted">
+          Subtotal {money(totals.subtotal)} · GST {money(totals.tax)} ·{" "}
+          <strong>Total {money(totals.total)}</strong>
+        </p>
+      )}
+    </>
   );
 }
 function Pricing({ id }: { id: string }) {

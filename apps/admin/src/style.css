@@ -1251,3 +1251,10 @@ details.panel > .panel {
     grid-template-columns: 1fr;
   }
 }
+.charge-gst span {
+  display: grid;
+  gap: 2px;
+}
+.charge-gst small {
+  color: var(--muted);
+}

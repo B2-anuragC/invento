@@ -1,4 +1,14 @@
-import { discountAmountFor, discountError, splitDiscount, type DiscountInput } from "@invento/shared";
+import {
+  CHARGE_GST_NEEDS_GSTIN_MESSAGE,
+  chargesGst,
+  discountAmountFor,
+  discountError,
+  lineGstRate,
+  saleDocumentTitle,
+  splitDiscount,
+  type DiscountInput,
+  type GstTaxType,
+} from "@invento/shared";
 
 export type SaleProduct = {
   id: string;
@@ -27,8 +37,14 @@ const decimal = (value: bigint) =>
 /**
  * Bill totals exactly as the API computes them: each line rounded half-up,
  * a bill discount split across the lines before GST, GST rounded per line.
+ * Without GST (`chargeGst` false) every line is taxed at 0; missing charges it.
+ * Purchases use the same arithmetic with the purchase price as the line price.
  */
-export function saleTotals(lines: SaleLine[], discount: DiscountInput = {}) {
+export function saleTotals(
+  lines: SaleLine[],
+  discount: DiscountInput = {},
+  chargeGst?: boolean,
+) {
   let subtotal = 0n,
     tax = 0n;
   const amounts: bigint[] = [];
@@ -47,7 +63,7 @@ export function saleTotals(lines: SaleLine[], discount: DiscountInput = {}) {
     };
     const amount =
       (scaled(line.quantity, 3) * scaled(line.price, 2) + 500n) / 1000n;
-    const rate = String(line.product.gstRate ?? 0);
+    const rate = lineGstRate(line.product.gstRate, chargeGst);
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(rate))
       throw new Error("This product has an invalid tax rate.");
     subtotal += amount;
@@ -82,4 +98,42 @@ export function paymentAmount(mode: string, total: number, paid: string) {
       "Partial payment must be greater than zero and less than the total.",
     );
   return Number(paid).toFixed(2);
+}
+
+/** The "Charge GST" (sale) or "Supplier charged GST" (purchase) checkbox. */
+export function chargeGstSwitch(
+  kind: "sale" | "purchase",
+  on: boolean,
+  shop: { gstin?: unknown } | null | undefined,
+) {
+  if (kind === "purchase")
+    return {
+      disabled: false,
+      note: on
+        ? "GST at each item’s rate, as on the supplier’s bill."
+        : "No GST on this purchase.",
+    };
+  if (shop && !shop.gstin)
+    return { disabled: true, note: CHARGE_GST_NEEDS_GSTIN_MESSAGE };
+  return {
+    disabled: false,
+    note: on
+      ? "Tax invoice · GST at each item’s rate."
+      : "Bill of supply · no GST on any item.",
+  };
+}
+/** What the sales and purchases tables show for a saved bill's GST. */
+export function billGstLabel(
+  kind: "sale" | "purchase",
+  bill: { chargeGst?: unknown; taxType?: unknown },
+) {
+  const chargeGst = typeof bill.chargeGst === "boolean" ? bill.chargeGst : undefined;
+  if (kind === "sale")
+    return (
+      saleDocumentTitle({
+        chargeGst,
+        taxType: (bill.taxType as GstTaxType | null | undefined) ?? null,
+      }) ?? (chargesGst(chargeGst) ? "GST charged" : "No GST")
+    );
+  return chargesGst(chargeGst) ? "GST charged" : "No GST";
 }
