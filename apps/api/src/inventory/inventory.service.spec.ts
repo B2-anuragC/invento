@@ -142,6 +142,26 @@ describe('InventoryService', () => {
     expect(store.inventory?.quantity.toString()).toBe('18');
   });
 
+  it('counts a grouped product in whole pieces once a single piece has gone', async () => {
+    const { prisma, store } = createFakePrisma({ product: { id: 'product-a', businessId: 'business-a', unit: 'DOZEN', piecesPerUnit: 12 } });
+    const service = new InventoryService(prisma as never);
+
+    await service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '2' });
+    const sold = await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_OUT', quantity: '1', unit: 'PIECE' });
+    // 23 pieces show as 1.91666… dozen, which no three-decimal count can match.
+    expect(sold.balanceAfter.toString()).toBe('1.9166666666666666667');
+    await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '1', expectedQuantity: '1.917' })).rejects.toBeInstanceOf(ConflictException);
+
+    await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '1', unit: 'PIECE', expectedQuantity: '24' })).rejects.toThrow('Stock changed while you were counting: it is now 23 pieces.');
+    const counted = await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '1', unit: 'PIECE', note: 'Counted 2', expectedQuantity: '23' });
+    expect(counted.balanceAfter.toString()).toBe('2');
+    expect(store.inventory?.quantity.toString()).toBe('24');
+
+    await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_OUT', quantity: '1', unit: 'PIECE' });
+    await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'DAMAGE', quantity: '23', unit: 'PIECE', note: 'Counted 0', expectedQuantity: '23' });
+    expect(store.inventory?.quantity.toString()).toBe('0');
+  });
+
   it('rejects adjustments before opening stock has been recorded', async () => {
     const { prisma } = createFakePrisma();
     const service = new InventoryService(prisma as never);
