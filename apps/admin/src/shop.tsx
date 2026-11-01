@@ -495,10 +495,10 @@ function ShopSection({
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState<Row | null>(null);
   const [message, setMessage] = useState("");
-  const refresh = () => {
+  const refresh = (message = "Saved successfully.") => {
     setRevision((v) => v + 1);
     setEditing(null);
-    setMessage("Saved successfully.");
+    setMessage(message);
   };
   // Sale and purchase edits show and compare the bill's calendar date in India.
   const dateKey = section === "sales" ? "saleDate" : "purchaseDate";
@@ -602,7 +602,12 @@ function ShopSection({
                     body: JSON.stringify(data),
                   },
                 );
-                refresh();
+                // A new record closes the form and returns to the list with what was added.
+                refresh(
+                  editing.id
+                    ? undefined
+                    : `${section === "products" ? "Product" : section === "customers" ? "Customer" : "Supplier"} added: ${String(data.name ?? "")}.`,
+                );
               }}
             />
           )}
