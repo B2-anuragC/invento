@@ -1,10 +1,10 @@
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
-import { ScreenHeading, screenStyles } from '@/components/screen-heading';
+import { HeaderIconButton, ListHeader, SearchField, StatStrip, StickyBar, screenStyles } from '@/components/screen-heading';
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
+import { ActionButton, AppScreen } from '@/components/invento-ui';
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
 import { transactionSearchText, transactionTitle } from '@/services/transaction-labels';
@@ -66,21 +66,22 @@ export default function PurchasesScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <ScreenHeading title="Purchases" subtitle="Stock replenishment and supplier invoices" />
-
-        <SectionHeader title="Overview" />
-        <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={loading || error ? '—' : restrictedPrice ? 'Hidden' : formatMoney(totalPurchases)} delta={restrictedPrice ? 'Restricted by access settings' : purchases.some((record) => record.syncState) ? 'Includes pending device bills' : 'All recorded purchases'} accent="amber" />
-          <SummaryCard label="Suppliers" value={loading || error ? '—' : String(supplierCount)} delta="In purchase history" accent="blue" />
+      <ScrollView contentContainerStyle={screenStyles.listContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets stickyHeaderIndices={[1]}>
+        <View>
+          <ListHeader title="Purchases" actions={<HeaderIconButton permission="purchases.create" variant="primary" icon="add" text="Add purchase" label="Add purchase" onPress={() => router.push('/purchase/create')} />} />
+          <StatStrip
+            items={[
+              { label: restrictedPrice ? 'Total · restricted' : purchases.some((record) => record.syncState) ? 'Total · incl. pending' : 'Total value', value: loading || error ? '—' : restrictedPrice ? 'Hidden' : formatMoney(totalPurchases), tone: 'amber' },
+              { label: 'Purchases', value: loading || error ? '—' : String(purchases.length), tone: 'blue' },
+              { label: 'Suppliers', value: loading || error ? '—' : String(supplierCount), tone: 'blue' },
+            ]}
+          />
         </View>
-
-        <View style={styles.buttonRow}>
-          <ActionButton permission="purchases.create" title="Add purchase" onPress={() => router.push('/purchase/create')} />
-        </View>
-
-        <TextInput accessibilityLabel="Search purchases" value={search} onChangeText={setSearch} placeholder="Search invoice or supplier" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
-        <ListCard title={search ? `Search results · ${filteredRecords.length}` : 'Purchases history'}>
+        <StickyBar>
+          <SearchField accessibilityLabel="Search purchases" value={search} onChangeText={setSearch} placeholder="Search invoice or supplier" />
+        </StickyBar>
+        <View style={styles.listCard}>
+          {search ? <Text style={styles.resultCount}>Search results · {filteredRecords.length}</Text> : null}
           {loading ? (
             <ActivityIndicator color="#176B50" />
           ) : error ? (
@@ -106,41 +107,17 @@ export default function PurchasesScreen() {
           ) : (
             <View style={{ paddingVertical: 24, gap: 8 }}><Text style={{ color: '#24332A', fontSize: 17, fontWeight: '700' }}>{search ? 'No matching invoices' : 'Your first purchase starts here'}</Text><Text style={styles.message}>{search ? 'Try a different invoice number or supplier name.' : 'No purchases yet. Record an invoice to replenish stock.'}</Text></View>
           )}
-        </ListCard>
+        </View>
       </ScrollView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  listCard: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14, borderWidth: 1, borderColor: '#E5E7EB' },
+  resultCount: { color: '#737B77', fontSize: 12, fontWeight: '700', paddingTop: 12 },
   cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
   returnedLabel: { color: '#9C5B12', fontSize: 12, fontWeight: '700', marginTop: 4 },
-  content: {
-    padding: 20,
-    paddingBottom: 32,
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#24332A',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 18,
-    color: '#737B77',
-    fontSize: 13,
-  },
-  cardsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
-  },
-  buttonRow: {
-    marginBottom: 20,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

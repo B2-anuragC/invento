@@ -14,6 +14,8 @@ describe('payments to collect on the Sales tab', () => {
     expect(card.note).toBeNull();
     expect(card.showFilter).toBe(true);
     expect(money(card.accessibilityLabel)).toBe('₹1,480.00 to collect. 2 unpaid sales · 1 overdue');
+    expect(money(card.chipLabel)).toBe('Unpaid · ₹1,480.00');
+    expect(money(card.amount)).toBe('₹1,480.00');
   });
   it('says one sale, without an overdue count when none is late', () => {
     expect(pendingPaymentsCard([sale('50.00', '0.00')], { ready: true, filterOn: false, overdue: never }).detail).toBe('1 unpaid sale');
@@ -24,6 +26,8 @@ describe('payments to collect on the Sales tab', () => {
     expect(card.detail).toBe('');
     expect(card.note).toBe('2 older sales without a recorded payment are not counted.');
     expect(card.showFilter).toBe(false);
+    expect(card.chipLabel).toBe('Unpaid');
+    expect(money(card.amount)).toBe('₹0.00');
     expect(pendingPaymentsCard([sale('400.00', null)], { ready: true, filterOn: false, overdue: never }).note).toBe('1 older sale without a recorded payment is not counted.');
   });
   it('keeps the filter switch while it is on, so it can be turned off', () => {
@@ -31,7 +35,7 @@ describe('payments to collect on the Sales tab', () => {
   });
   it('shows a dash and no switch while sales load', () => {
     const card = pendingPaymentsCard([sale('50.00', '0.00')], { ready: false, filterOn: true, overdue: never });
-    expect(card).toMatchObject({ title: '—', detail: '', note: null, showFilter: false, accessibilityLabel: 'Payments to collect, loading' });
+    expect(card).toMatchObject({ title: '—', detail: '', note: null, showFilter: false, accessibilityLabel: 'Payments to collect, loading', chipLabel: 'Unpaid', amount: '—' });
   });
   it('lists only the sales with money to collect', () => {
     expect(unpaidSales([sale('10.00', '0.00'), sale('10.00', '10.00'), sale('10.00', null)])).toHaveLength(1);

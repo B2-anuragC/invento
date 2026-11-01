@@ -1,6 +1,7 @@
 import { Children, useState, type ReactNode } from 'react';
 import { Ionicons } from '@/components/ui/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { HeaderIconButton } from './screen-heading';
 
 export type ListingView = 'list' | 'grid';
 
@@ -11,6 +12,12 @@ export function ListingViewToggle({ value, onChange }: { value: ListingView; onC
       <Text style={[styles.label, value === mode && styles.selectedLabel]}>{mode === 'grid' ? 'Grid' : 'List'}</Text>
     </Pressable>)}
   </View>;
+}
+
+/** The view switch as one header icon button (F8): it shows the view it switches to. */
+export function ListingViewButton({ value, onChange, gridName = 'grid' }: { value: ListingView; onChange: (value: ListingView) => void; gridName?: string }) {
+  const next = value === 'grid' ? 'list' : 'grid';
+  return <HeaderIconButton icon={next === 'grid' ? 'grid-outline' : 'list-outline'} label={`Show ${next === 'grid' ? gridName : 'list'} view`} onPress={() => onChange(next)} />;
 }
 
 export function ListingLayout({ view, maxColumns = 3, children }: { view: ListingView; maxColumns?: 2 | 3; children: ReactNode }) {

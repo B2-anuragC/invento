@@ -3,12 +3,12 @@ import { paymentBalance, isOverdue, countedAmount, netAmount } from '@/services/
 import { returnSummary } from '@/services/bill-returns';
 import { pendingPaymentsCard } from '@/services/pending-payments';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
-import { ScreenHeading, screenStyles } from '@/components/screen-heading';
+import { ChipRow, HeaderIconButton, ListHeader, SearchField, StatStrip, StickyBar, screenStyles } from '@/components/screen-heading';
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
+import { ActionButton, AppScreen } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
 import { transactionSearchText, transactionTitle } from '@/services/transaction-labels';
@@ -71,32 +71,27 @@ export default function SalesScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <ScreenHeading title="Sales" subtitle="Recorded transactions and payment totals" />
-
-        <SectionHeader title="Summary" />
-        <View style={styles.cardsRow}>
-          <SummaryCard label="Total value" value={loading || error ? '—' : formatMoney(totalSales)} delta={sales.some((record) => record.syncState) ? "Includes device bills pending sync" : "All recorded sales"} accent="green" />
-          <SummaryCard label="Sales" value={loading || error ? '—' : String(sales.length)} delta="Transactions" accent="blue" />
+      <ScrollView contentContainerStyle={screenStyles.listContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets stickyHeaderIndices={[1]}>
+        <View>
+          <ListHeader title="Sales" actions={<HeaderIconButton permission="sales.create" variant="primary" icon="add" text="New sale" label="New sale" onPress={() => router.push('/sale/quick')} />} />
+          <StatStrip
+            items={[
+              { label: sales.some((record) => record.syncState) ? 'Total · incl. pending' : 'Total value', value: loading || error ? '—' : formatMoney(totalSales) },
+              { label: 'Sales', value: loading || error ? '—' : String(sales.length), tone: 'blue' },
+              { label: 'To collect', value: pendingCard.amount, tone: 'amber' },
+            ]}
+            note={[pendingCard.detail, pendingCard.note].filter(Boolean).join(' · ')}
+          />
         </View>
-
-        <View style={styles.buttonRow}>
-          <ActionButton permission="sales.create" title="New sale" onPress={() => router.push('/sale/quick')} />
-        </View>
-
-        <View accessible accessibilityLabel={pendingCard.accessibilityLabel} style={styles.pendingCard}>
-          <Text style={styles.pendingTitle}>{pendingCard.title}</Text>
-          {pendingCard.detail ? <Text style={styles.customer}>{pendingCard.detail}</Text> : null}
-          {pendingCard.note ? <Text style={styles.time}>{pendingCard.note}</Text> : null}
-        </View>
-        {pendingCard.showFilter ? (
-          <Pressable accessibilityRole="switch" accessibilityState={{ checked: pendingOnly }} aria-checked={pendingOnly} accessibilityLabel={pendingCard.filterLabel} onPress={() => router.setParams({ payment: pendingOnly ? 'all' : 'pending' })} style={styles.filterRow}>
-            <Text style={styles.filterText}>{pendingCard.filterLabel}</Text>
-            <Switch aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" pointerEvents="none" value={pendingOnly} trackColor={{ false: '#D5DDD8', true: '#80AB94' }} thumbColor={pendingOnly ? '#176B50' : '#F4F6F5'} />
-          </Pressable>
-        ) : null}
-        <TextInput accessibilityLabel="Search sales" value={search} onChangeText={setSearch} placeholder="Search invoice or customer" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
-        <ListCard title={search ? `Search results · ${filteredRecords.length}` : pendingOnly ? 'Unpaid sales' : 'Sales history'}>
+        <StickyBar>
+          <SearchField accessibilityLabel="Search sales" value={search} onChangeText={setSearch} placeholder="Search invoice or customer" />
+          {pendingCard.showFilter ? <ChipRow label="Filter sales" options={[
+            { key: 'all', label: 'All sales', selected: !pendingOnly, onPress: () => router.setParams({ payment: 'all' }) },
+            { key: 'pending', label: pendingCard.chipLabel, accessibilityLabel: `${pendingCard.filterLabel}. ${pendingCard.accessibilityLabel}`, selected: pendingOnly, onPress: () => router.setParams({ payment: pendingOnly ? 'all' : 'pending' }) },
+          ]} /> : null}
+        </StickyBar>
+        <View style={styles.listCard}>
+          {search ? <Text style={styles.resultCount}>Search results · {filteredRecords.length}</Text> : null}
           {loading ? (
             <ActivityIndicator color="#176B50" />
           ) : error ? (
@@ -125,49 +120,18 @@ export default function SalesScreen() {
           ) : (
             <View style={{ paddingVertical: 24, gap: 8 }}><Text style={{ color: '#24332A', fontSize: 17, fontWeight: '700' }}>{search ? 'No matching invoices' : 'Your first sale starts here'}</Text><Text style={styles.message}>{search ? 'Try a different invoice number or customer name.' : 'No sales yet. Record your first sale to see it here.'}</Text></View>
           )}
-        </ListCard>
+        </View>
       </ScrollView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  pendingCard: { padding: 14, borderRadius: 12, backgroundColor: '#FFF5D8', borderWidth: 1, borderColor: '#EBDDAB', marginBottom: 8, gap: 2 },
-  pendingTitle: { fontSize: 16, fontWeight: '800', color: '#5E4519' },
-  filterRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
-  filterText: { color: '#24332A', fontSize: 14, fontWeight: '700' },
+  listCard: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14, borderWidth: 1, borderColor: '#E5E7EB' },
+  resultCount: { color: '#737B77', fontSize: 12, fontWeight: '700', paddingTop: 12 },
   pendingLabel: { color: '#795A24', fontSize: 12, fontWeight: '700', marginTop: 4 },
   cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
   returnedLabel: { color: '#9C5B12', fontSize: 12, fontWeight: '700', marginTop: 4 },
-  content: {
-    padding: 20,
-    paddingBottom: 32,
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#24332A',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 18,
-    color: '#737B77',
-    fontSize: 13,
-  },
-  cardsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,9 +1,9 @@
-import { ScreenHeading, screenStyles } from '@/components/screen-heading';
+import { ChipRow, HeaderIconButton, ListHeader, SearchField, StatStrip, StickyBar, screenStyles } from '@/components/screen-heading';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
+import { ActionButton, AppScreen, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
 import { formatMoney, formatQuantity } from '@/services/format';
 import { usePermissions } from '@/services/permissions';
@@ -105,71 +105,31 @@ export default function InventoryScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <ScreenHeading title="Inventory" subtitle="Current stock health and reorder risk" />
-        {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
-        <View style={styles.actions}>
-          <ActionButton title="Adjust stock" variant="secondary" permission="inventory.adjust" onPress={() => router.push('/inventory/adjust')} />
-        </View>
-
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          style={screenStyles.search}
-          accessibilityLabel="Search inventory" placeholder="Search product or unit"
-          placeholderTextColor="#9CA3AF"
-          autoCapitalize="none"
-        />
-
-        <SectionHeader title="Health" />
-        <View style={styles.cardsRow}>
-          <SummaryCard
-            label="Products"
-            value={loading || error ? '—' : String(products.length)}
-            delta={loading ? 'Loading…' : error ? 'Unavailable' : 'Active catalog'}
-            accent="green"
+      <ScrollView contentContainerStyle={screenStyles.listContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets stickyHeaderIndices={[1]}>
+        <View>
+          <ListHeader title="Inventory" back actions={<HeaderIconButton permission="inventory.adjust" icon="swap-vertical-outline" text="Adjust" label="Adjust stock" onPress={() => router.push('/inventory/adjust')} />} />
+          {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
+          <StatStrip
+            items={[
+              { label: 'Products', value: loading || error ? '—' : String(products.length) },
+              { label: outOfStockCount ? `Reorder · ${outOfStockCount} out` : 'Reorder', value: loading || error ? '—' : String(reorderCount), tone: 'amber' },
+              ...(value.atCost !== null ? [{ label: 'Value at cost', value: loading || error ? '—' : formatMoney(value.atCost), tone: 'blue' as const }] : []),
+              { label: 'At selling price', value: loading || error ? '—' : formatMoney(value.atSellingPrice), tone: 'blue' },
+            ]}
+            note={loading || error ? null : 'Stock values are before GST.'}
           />
-          <SummaryCard
-            label="Need reorder"
-            value={loading || error ? '—' : String(reorderCount)}
-            delta={loading ? 'Loading…' : error ? 'Unavailable' : `${outOfStockCount} out of stock`}
-            accent="amber"
-          />
-        </View>
-
-        <SectionHeader title="Stock value" />
-        <View style={styles.cardsRow}>
-          {value.atCost !== null ? (
-            <SummaryCard
-              label="At cost"
-              value={loading || error ? '—' : formatMoney(value.atCost)}
-              delta={loading ? 'Loading…' : error ? 'Unavailable' : 'Before GST'}
-              accent="blue"
-            />
+          {error ? (
+            <View style={styles.errorState}>
+              <Text style={styles.errorText}>{error}</Text>
+              <ActionButton title="Retry" variant="secondary" onPress={() => void loadInventory()} />
+            </View>
           ) : null}
-          <SummaryCard
-            label="At selling price"
-            value={loading || error ? '—' : formatMoney(value.atSellingPrice)}
-            delta={loading ? 'Loading…' : error ? 'Unavailable' : 'Before GST'}
-            accent="blue"
-          />
         </View>
-
-        {error ? (
-          <View style={styles.errorState}>
-            <Text style={styles.errorText}>{error}</Text>
-            <ActionButton title="Retry" variant="secondary" onPress={() => void loadInventory()} />
-          </View>
-        ) : null}
-
-        <View style={screenStyles.chips}>
-          {(['All', 'Low stock', 'Out of stock'] as const).map((value) => (
-            <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: filter === value }} onPress={() => setFilter(value)} style={[screenStyles.chip, filter === value && screenStyles.chipActive]}>
-              <Text style={[screenStyles.chipText, filter === value && screenStyles.chipTextActive]}>{value}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <ListCard title="Stock levels">
+        <StickyBar>
+          <SearchField accessibilityLabel="Search inventory" value={search} onChangeText={setSearch} placeholder="Search product or unit" />
+          <ChipRow label="Filter stock" options={(['All', 'Low stock', 'Out of stock'] as const).map((value) => ({ key: value, label: value, selected: filter === value, onPress: () => setFilter(value) }))} />
+        </StickyBar>
+        <View style={styles.listCard}>
           {loading ? <ActivityIndicator color="#176B50" style={styles.stateMessage} /> : null}
           {!loading && !error && filteredStockItems.length === 0 ? (
             <Text style={styles.stateMessage}>{search || filter !== 'All' ? 'No items match these filters.' : 'No active products yet. Add a product from your catalog to get started.'}</Text>
@@ -189,46 +149,15 @@ export default function InventoryScreen() {
               </View>
             </Pressable>
           ))}
-        </ListCard>
+        </View>
       </ScrollView>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: 20,
-    paddingBottom: 32,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#24332A',
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 18,
-    color: '#737B77',
-    fontSize: 13,
-  },
-  searchInput: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E2E2',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 18,
-    fontSize: 15,
-    color: '#24332A',
-  },
-  notice: { backgroundColor: '#E9F9F1', color: '#0F766E', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 19, marginBottom: 12 },
-  actions: { flexDirection: 'row', marginBottom: 14 },
-  cardsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 18,
-  },
+  listCard: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 4, borderWidth: 1, borderColor: '#E5E7EB' },
+  notice: { backgroundColor: '#E9F9F1', color: '#0F766E', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 19, marginBottom: 8 },
   errorState: {
     gap: 10,
     marginBottom: 16,

@@ -6,6 +6,8 @@ type Bill = Parameters<typeof paymentBalance>[0] & { dueDate?: string | null };
 export type PendingPaymentsCard = {
   /** "₹1,180.00 to collect", "Nothing to collect", or "—" while sales load. */
   title: string;
+  /** The amount alone ("₹1,180.00", "₹0.00"), or "—" while sales load. */
+  amount: string;
   /** "3 unpaid sales · 1 overdue". Empty when nothing is owed. */
   detail: string;
   /** Older sales saved before payments were recorded have no balance and are not counted. */
@@ -13,6 +15,8 @@ export type PendingPaymentsCard = {
   /** The filter switch is offered while something is owed, or while it is on. */
   showFilter: boolean;
   filterLabel: string;
+  /** The quick-filter chip on the Sales tab: "Unpaid · ₹1,180.00", or "Unpaid" while loading or when nothing is owed. */
+  chipLabel: string;
   /** What a screen reader hears for the whole card. */
   accessibilityLabel: string;
 };
@@ -36,10 +40,12 @@ export function pendingPaymentsCard(sales: Bill[], options: { ready: boolean; fi
   const note = options.ready && unknown ? `${plural(unknown, 'older sale')} without a recorded payment ${unknown === 1 ? 'is' : 'are'} not counted.` : null;
   return {
     title,
+    amount: options.ready ? formatMoney(total) : '—',
     detail,
     note,
     showFilter: options.ready && (unpaid.length > 0 || options.filterOn),
     filterLabel: 'Show only unpaid sales',
+    chipLabel: options.ready && unpaid.length ? `Unpaid · ${formatMoney(total)}` : 'Unpaid',
     accessibilityLabel: [title === '—' ? 'Payments to collect, loading' : title, detail, note].filter(Boolean).join('. '),
   };
 }

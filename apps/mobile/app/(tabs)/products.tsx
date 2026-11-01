@@ -1,16 +1,17 @@
-import { usePermissions } from '@/services/permissions';
 import { readProductFavorites, saveProductFavorites } from '@/services/product-favorites';
 import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StoredImage } from '@/components/stored-image';
 import { fileSource } from '@/services/file-storage';
-import { ListingLayout, type ListingView } from '@/components/listing-layout';
+import { ListingLayout, ListingViewButton, type ListingView } from '@/components/listing-layout';
+import { ChipRow, FilterButton, HeaderIconButton, ListHeader, SearchField, StickyBar, screenStyles } from '@/components/screen-heading';
+import { filterButtonLabels } from '@/services/list-header';
 import { ProductThumbnail } from '@/components/product-photo';
 import { placeFirst, productInitials, readCatalogView, saveCatalogView, stockBadge } from '@/services/catalog-view';
 import { receiveAddedProduct } from '@/services/new-product';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ActionButton, AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, fetchSales, type InventoryRecord, type ProductRecord, type SaleRecord } from '@/services/api';
@@ -27,7 +28,6 @@ const sectionLabels: Record<ProductSection, string> = {
 
 export default function ProductsScreen() {
   const router = useRouter();
-  const { can } = usePermissions();
   const insets = useSafeAreaInsets();
   const openFilters = () => { Keyboard.dismiss(); setShowFilters(true); };
   const resetFilters = () => { setCategory('All'); setStockFilter('all'); setUnitFilter('All'); setStatus('ACTIVE'); setSortByPrice(false); setSection('frequent'); };
@@ -169,38 +169,19 @@ export default function ProductsScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Catalog</Text>
-            <Text style={styles.subtitle}>{plural(products.length, 'product').toUpperCase()} · {plural(Math.max(0, categories.length - 1), 'category', 'categories').toUpperCase()}</Text>
+      <ScrollView contentContainerStyle={screenStyles.listContent} keyboardShouldPersistTaps="handled" stickyHeaderIndices={[1]}>
+        <ListHeader title="Catalog" actions={<>
+          <ListingViewButton value={listingView} onChange={changeView} gridName="tile" />
+          <HeaderIconButton permission="products.create" variant="primary" icon="add" text="Add" label="Add product" onPress={() => router.push('/product/new')} />
+        </>} />
+        <StickyBar>
+          <SearchField accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Name, SKU or barcode" trailing={<FilterButton text={filterButtonLabels(filterCount).text} accessibilityLabel={`Filters and sorting${filterCount ? `, ${filterCount} active filters` : ''}`} active={filterCount > 0} onPress={openFilters} />} />
+          {categories.length > 1 ? <ChipRow label="Categories" options={categories.map((value) => ({ key: value, label: value, accessibilityLabel: `Category: ${value}`, selected: category === value, onPress: () => setCategory(value) }))} /> : null}
+          <View style={styles.resultsBar}>
+            <Text style={styles.resultCount}>{loading ? 'Loading products…' : `${plural(filteredProducts.length, 'product')}${categories.length > 1 ? ` · ${plural(categories.length - 1, 'category', 'categories')}` : ''}`}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Change product grouping and sort" onPress={openFilters} style={styles.browseButton}><Text style={styles.linkText}>{sortByPrice ? 'Price ↑' : section === 'frequent' ? 'Frequent' : sectionLabels[section]}</Text><Ionicons name="chevron-down" size={14} color="#176B50" /></Pressable>
           </View>
-          <Pressable disabled={!can('products.create')} style={[styles.addIcon, !can('products.create') && { display: 'none' }]} onPress={() => router.push('/product/new')} accessibilityRole="button" accessibilityLabel="Add product">
-            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.addIconText}>+</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.searchRow}>
-          <View style={styles.searchWrap}>
-            <Ionicons name="search-outline" size={20} color="#68766E" />
-            <TextInput accessibilityLabel="Search products" value={search} onChangeText={setSearch} style={styles.searchInput} placeholder="Name, SKU or barcode" placeholderTextColor="#89918C" autoCapitalize="none" />
-            {search ? <Pressable accessibilityRole="button" accessibilityLabel="Clear product search" onPress={() => setSearch('')} style={styles.clearButton}><Ionicons name="close" size={19} color="#738078" /></Pressable> : null}
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Filters and sorting${filterCount ? `, ${filterCount} active filters` : ''}`} accessibilityState={{ expanded: showFilters }} onPress={openFilters} style={[styles.filterButton, filterCount > 0 && styles.filterChoiceSelected]}><Ionicons name="options-outline" size={20} color="#176B50" /><Text style={styles.linkText}>Filters{filterCount ? ` · ${filterCount}` : ''}</Text></Pressable>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList} keyboardShouldPersistTaps="handled">
-          {categories.map((value) => (
-            <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Category: ${value}`} accessibilityState={{ selected: category === value }} onPress={() => setCategory(value)} style={[styles.categoryChip, category === value && styles.categoryChipSelected]}>
-              <Text style={[styles.categoryText, category === value && styles.categoryTextSelected]}>{value}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-        <View style={styles.resultsBar}>
-          <Text style={styles.resultCount}>{loading ? 'Loading products…' : plural(filteredProducts.length, 'product')}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Change product grouping and sort" onPress={openFilters} style={styles.browseButton}><Text style={styles.linkText}>{sortByPrice ? 'Price ↑' : section === 'frequent' ? 'Frequent' : sectionLabels[section]}</Text><Ionicons name="chevron-down" size={14} color="#176B50" /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={isGrid ? 'Show list view' : 'Show tile view'} onPress={() => changeView(isGrid ? 'list' : 'grid')} style={styles.viewButton}><Ionicons name={isGrid ? 'list-outline' : 'grid-outline'} size={21} color="#176B50" /></Pressable>
-        </View>
-
+        </StickyBar>
         {added ? (
           <View accessibilityRole="alert" style={styles.addedNotice}>
             <Ionicons name="checkmark-circle" size={20} color="#0F766E" />
@@ -348,16 +329,10 @@ export default function ProductsScreen() {
 
 
 const styles = StyleSheet.create({
-  categoryList: { gap: 8, paddingTop: 10, paddingBottom: 2 },
-  categoryChip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderWidth: 1, borderColor: '#DDE4DE', borderRadius: 12, backgroundColor: '#FFFFFF' },
-  categoryChipSelected: { backgroundColor: '#176B50', borderColor: '#176B50' },
-  categoryText: { color: '#68746E', fontSize: 12, fontWeight: '600' },
-  categoryTextSelected: { color: '#FFFFFF' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   clearButton: { minWidth: 32, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  resultsBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 },
+  resultsBar: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32, marginBottom: -6 },
   resultCount: { flex: 1, minWidth: 0, fontSize: 12, color: '#737B77' },
-  browseButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, flexShrink: 1 },
+  browseButton: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, marginVertical: -6, flexShrink: 1 },
   viewButton: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,31,25,0.4)' },
   sheet: { maxHeight: '90%', width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' },
@@ -385,15 +360,6 @@ const styles = StyleSheet.create({
   addedNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E9F9F1', borderRadius: 12, paddingLeft: 12, marginBottom: 10 },
   addedNoticeText: { flex: 1, color: '#0F766E', fontSize: 13, lineHeight: 19, paddingVertical: 10 },
 
-  content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 16, backgroundColor: '#FFFFFF' },
-  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
-  subtitle: { marginTop: 5, color: '#737B77', fontSize: 12, fontWeight: '500', letterSpacing: 0.2 },
-  addIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center' },
-  addIconText: { color: '#24332A', fontSize: 28, lineHeight: 32, fontWeight: '400' },
-  searchWrap: { flex: 1, minWidth: 0, gap: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#E1E1E1', borderWidth: 1, borderRadius: 13, minHeight: 48, paddingHorizontal: 10 },
-  searchInput: { flex: 1, minWidth: 0, color: '#17241E', fontSize: 14, paddingVertical: 13 },
-  filterButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF', borderColor: '#DDE4DE', borderWidth: 1, borderRadius: 13, paddingHorizontal: 11, minHeight: 48, justifyContent: 'center' },
   filtersPanel: { padding: 16, gap: 8 },
   filterLabel: { color: '#6A766F', fontSize: 11, fontWeight: '700' },
   filterChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8, marginBottom: 12 },

@@ -1,5 +1,6 @@
 import { usePermissions } from '@/services/permissions';
-import { ListingLayout, ListingViewToggle, type ListingView } from '@/components/listing-layout';
+import { ListingLayout, ListingViewButton, type ListingView } from '@/components/listing-layout';
+import { ChipRow, HeaderIconButton, ListHeader, SearchField, StickyBar, screenStyles } from '@/components/screen-heading';
 import { ProductPhoto, ProductThumbnail, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { useCallback, useState } from 'react';
@@ -118,29 +119,15 @@ export default function PeopleDirectoryScreen() {
 
   return (
     <AppScreen>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>People</Text>
-            <Text style={styles.subtitle}>CUSTOMERS & SUPPLIERS</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Add person" onPress={() => openCreate()} style={[styles.addButton, !can('customers.create') && !can('suppliers.create') && { display: 'none' }]}>
-            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.addButtonText}>＋</Text>
-          </Pressable>
-        </View>
-        <View style={styles.searchWrap}>
-          <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.searchIcon}>⌕</Text>
-          <TextInput accessibilityLabel="Search by name or phone" value={search} onChangeText={setSearch} placeholder="Search by name or phone" placeholderTextColor="#7A817E" style={styles.search} />
-        </View>
-        <View style={styles.filters}>
-          {(['All', 'Customers', 'Suppliers'] as PersonFilter[]).map((value) => (
-            <Pressable key={value} onPress={() => setFilter(value)} style={[styles.filter, filter === value && styles.filterSelected]}>
-              <Text style={[styles.filterText, filter === value && styles.filterTextSelected]}>{value}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={{ marginTop: 14 }}><ListingViewToggle value={listingView} onChange={setListingView} /></View>
-        <Text style={styles.balanceNote}>Your business contacts · Tap a person to view history</Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={screenStyles.listContent} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets stickyHeaderIndices={[1]}>
+        <ListHeader title="People" actions={<>
+          <ListingViewButton value={listingView} onChange={setListingView} />
+          {can('customers.create') || can('suppliers.create') ? <HeaderIconButton variant="primary" icon="add" text="Add" label="Add person" onPress={() => openCreate()} /> : null}
+        </>} />
+        <StickyBar>
+          <SearchField accessibilityLabel="Search by name or phone" value={search} onChangeText={setSearch} placeholder="Search by name or phone" />
+          <ChipRow label="Show" options={(['All', 'Customers', 'Suppliers'] as PersonFilter[]).map((value) => ({ key: value, label: value, selected: filter === value, onPress: () => setFilter(value) }))} />
+        </StickyBar>
         {filter !== 'Suppliers' ? (
           <View style={styles.group}>
             <View style={styles.groupHeading}>
@@ -242,22 +229,7 @@ const styles = StyleSheet.create({
   gridCopy: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: '100%' },
   gridName: { fontSize: 13, lineHeight: 17 },
 
-  content: { paddingHorizontal: 20, paddingBottom: 34, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
-  header: { minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
-  subtitle: { color: '#737B77', fontSize: 12, marginTop: 4 },
-  addButton: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#F5F5F5', alignItems: 'center', justifyContent: 'center' },
-  addButtonText: { color: '#24332A', fontSize: 28, fontWeight: '400' },
-  searchWrap: { minHeight: 52, marginTop: 16, borderRadius: 13, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13 },
-  searchIcon: { color: '#747C78', fontSize: 24, marginRight: 9 },
-  search: { flex: 1, color: '#24332A', fontSize: 14, paddingVertical: 12 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 14 },
-  filter: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 17, borderRadius: 12, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF' },
-  filterSelected: { backgroundColor: '#176B50', borderColor: '#176B50' },
-  filterText: { color: '#747C78', fontSize: 13, fontWeight: '600' },
-  filterTextSelected: { color: '#FFFFFF', fontWeight: '700' },
-  balanceNote: { color: '#737B77', fontSize: 11, marginTop: 17, marginBottom: 2 },
-  group: { marginTop: 12 },
+  group: { marginTop: 6 },
   groupHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   groupTitle: { color: '#24332A', fontSize: 18, fontWeight: '800' },
   addLink: { color: '#176B50', fontSize: 12, fontWeight: '700' },

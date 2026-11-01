@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen, appColors } from '@/components/invento-ui';
+import { HeaderIconButton, ListHeader, StatStrip, screenStyles } from '@/components/screen-heading';
 import { formatMoney, formatQuantity, plural } from '@/services/format';
 import { lowStockText, purchasesSummary, topProductDays, type LowStockRow, type TopProductRow } from '@/services/dashboard-summary';
 import { netAmount } from '@/services/transaction-accounting';
@@ -92,16 +93,14 @@ export default function DashboardScreen() {
 
   return (
     <AppScreen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Good morning</Text>
-            <Text style={styles.storeName}>{appSession.current?.businessName ?? 'Your shop'}</Text>
-          </View>
-          <Pressable accessibilityLabel="Account" onPress={() => router.push('/(tabs)/profile')} style={styles.avatar}>
-            <Text style={styles.avatarText}>{appSession.current?.user.name.slice(0, 1).toUpperCase() ?? 'I'}</Text>
+      <ScrollView contentContainerStyle={[screenStyles.listContent, styles.content]}>
+        <ListHeader title={appSession.current?.businessName ?? 'Your shop'} titleLines={2} actions={<>
+          {can('sales.view') || can('purchases.view') ? <HeaderIconButton icon="time-outline" label="All activity: sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} /> : null}
+          <HeaderIconButton permission="sales.create" variant="primary" icon="add" text="New sale" label="New sale" onPress={() => router.push('/sale/quick')} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Account" onPress={() => router.push('/(tabs)/profile')} style={styles.avatar}>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.avatarText}>{appSession.current?.user.name.slice(0, 1).toUpperCase() ?? 'I'}</Text>
           </Pressable>
-        </View>
+        </>} />
 
         {error ? (
           <View style={styles.errorCard}>
@@ -110,57 +109,15 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        <Pressable accessibilityRole="button" accessibilityLabel="View all activity, sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} style={[styles.activityShortcut, !can('sales.view') && !can('purchases.view') && { display: 'none' }]}>
-          <Text style={styles.activityLink}>All activity · sales, purchases & drafts</Text>
-          <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.activityLink}>›</Text>
-        </Pressable>
-
-        <View style={styles.salesCard}>
-          <View style={styles.salesTop}>
-            <Text style={styles.salesLabel}>TODAY’S SALES</Text>
-            <Pressable accessibilityLabel="View sales" style={!can('sales.view') ? { display: 'none' } : undefined} onPress={() => router.push('/(tabs)/sales')}>
-              <Text style={styles.arrow}>↗</Text>
-            </Pressable>
-          </View>
-          <View style={styles.salesValueRow}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.salesValue}>
-              {loading ? '—' : formatMoney(summary?.todaySales)}
-            </Text>
-            <Text style={styles.salesCount}>{plural(summary?.saleCount ?? 0, 'sale')}</Text>
-          </View>
-
-        </View>
-
-        <Pressable accessibilityRole="button" accessibilityLabel={purchases ? `Today's purchases: ${purchases.value}, ${purchases.detail}` : "Today's purchases"} disabled={!can('purchases.view')} onPress={() => router.push('/(tabs)/purchases')} style={styles.purchasesCard}>
-          <View style={styles.purchasesCopy}>
-            <Text style={styles.purchasesLabel}>TODAY’S PURCHASES</Text>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.purchasesValue}>{loading || !purchases ? '—' : purchases.value}</Text>
-          </View>
-          <Text style={styles.purchasesDetail}>{loading || !purchases ? '' : purchases.detail}</Text>
-          {can('purchases.view') ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.alertArrow}>›</Text> : null}
-        </Pressable>
-
-        <View style={styles.actionRow}>
-          <Pressable onPress={() => router.push('/sale/quick')} style={[styles.primaryAction, !can('sales.create') && { display: 'none' }]}>
-            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
-          </Pressable>
-          {lowStockCount > 0 && can('inventory.view') ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={`${lowStockCount} ${lowStockCount === 1 ? 'product needs' : 'products need'} attention. Review low stock.`} onPress={() => router.push('/(tabs)/inventory')} style={styles.stockAlert}>
-            <Text style={styles.alertIcon}>⚠</Text>
-            <View style={styles.alertCopy}>
-              <Text style={styles.alertTitle}>{lowStockCount} low stock</Text>
-              <Text style={styles.alertSub}>Review stock</Text>
-            </View>
-            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.alertArrow}>›</Text>
-          </Pressable>
-          ) : null}
-        </View>
-
+        <StatStrip items={[
+          { label: `Today's sales · ${plural(summary?.saleCount ?? 0, 'sale')}`, value: loading ? '—' : formatMoney(summary?.todaySales), onPress: can('sales.view') ? () => router.push('/(tabs)/sales') : undefined, accessibilityLabel: `Today's sales: ${loading ? 'loading' : `${formatMoney(summary?.todaySales)}, ${plural(summary?.saleCount ?? 0, 'sale')}`}. View sales` },
+          { label: `Today's purchases${purchases?.detail ? ` · ${purchases.detail}` : ''}`, value: loading || !purchases ? '—' : purchases.value, tone: 'amber', onPress: can('purchases.view') ? () => router.push('/(tabs)/purchases') : undefined, accessibilityLabel: purchases ? `Today's purchases: ${purchases.value}, ${purchases.detail}. View purchases` : "Today's purchases" },
+        ]} />
 
         {!loading && lowStock.length > 0 ? (
           <>
             <View style={styles.activityHeading}>
-              <Text style={styles.activityTitle}>Low stock</Text>
+              <Text style={styles.activityTitle}>Low stock{lowStockCount ? ` · ${lowStockCount}` : ''}</Text>
               {can('inventory.view') ? <Pressable onPress={() => router.push('/(tabs)/inventory')}><Text style={styles.activityLink}>View all</Text></Pressable> : null}
             </View>
             <View style={styles.activityCard}>
@@ -233,45 +190,19 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   pendingShortcut: { minHeight: 44, marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  content: { paddingHorizontal: 20, paddingBottom: 28, backgroundColor: '#F5F5F5' },
-  header: { minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  greeting: { color: '#737B77', fontSize: 13 },
-  storeName: { marginTop: 3, fontSize: 22, fontWeight: '800', color: '#1D2B25' },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
+  content: { backgroundColor: '#F5F5F5' },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E7F2ED', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#176B50', fontSize: 16, fontWeight: '800' },
   errorCard: { marginTop: 14, borderRadius: 12, padding: 13, backgroundColor: '#FBECEA', flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   errorText: { flex: 1, color: '#A74737', fontSize: 12 },
   retry: { color: '#176B50', fontSize: 12, fontWeight: '800' },
-  activityShortcut: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 44 },
-  salesCard: { marginTop: 4, padding: 19, borderRadius: 20, backgroundColor: '#104C38' },
-  salesTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  salesLabel: { color: '#D7E5DD', fontSize: 12, fontWeight: '700', letterSpacing: 0.6 },
-  arrow: { color: '#D7E5DD', fontSize: 22, fontWeight: '700' },
-  salesValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginTop: 17 },
-  salesValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', flexShrink: 1 },
-  salesCount: { color: '#D7E5DD', fontSize: 12 },
-  purchasesCard: { marginTop: 10, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  purchasesCopy: { flex: 1, minWidth: 0 },
-  purchasesLabel: { color: '#737B77', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
-  purchasesValue: { marginTop: 4, color: '#24332A', fontSize: 20, fontWeight: '800' },
-  purchasesDetail: { color: '#737B77', fontSize: 12, flexShrink: 1, textAlign: 'right' },
   headingNote: { color: '#737B77', fontSize: 12 },
   listRow: { minHeight: 52, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
   listName: { flex: 1, minWidth: 0 },
   stockText: { color: '#96621B', fontSize: 12, fontWeight: '600' },
   outText: { color: '#A74737' },
   rank: { width: 22, color: '#176B50', fontSize: 14, fontWeight: '800', textAlign: 'center' },
-  actionRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 14 },
-  primaryAction: { paddingHorizontal: 16, paddingVertical: 10, minHeight: 52, borderRadius: 10, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  actionPlus: { color: '#FFFFFF', fontSize: 21, fontWeight: '500' },
-  primaryActionText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  stockAlert: { flex: 1, minWidth: 0, minHeight: 52, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FFF5D8', flexDirection: 'row', alignItems: 'center', gap: 6 },
-  alertIcon: { color: '#946316', fontSize: 20 },
-  alertCopy: { flex: 1 },
-  alertTitle: { color: '#795A24', fontSize: 14, fontWeight: '700' },
-  alertSub: { color: '#8D7349', fontSize: 11, marginTop: 3 },
-  alertArrow: { color: '#946316', fontSize: 25 },
-  activityHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22, marginBottom: 10 },
+  activityHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 8 },
   activityTitle: { color: '#24332A', fontSize: 17, fontWeight: '800' },
   activityLink: { color: '#176B50', fontSize: 13, fontWeight: '700' },
   activityCard: { backgroundColor: '#FFFFFF', borderRadius: 14, paddingHorizontal: 14, borderWidth: 1, borderColor: '#E1E1E1' },
