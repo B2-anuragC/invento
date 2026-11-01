@@ -14,7 +14,7 @@ describe('selling option units', () => {
   });
   it('keeps an older option’s unit so it can still be edited', () => {
     expect(optionUnitChoices('KG', 'OTHER')).toEqual(['KG', 'GRAM', 'OTHER']);
-    expect(optionShape('KG', option({ unit: 'OTHER' }))).toBe('custom');
+    expect(optionShape('KG', option({ unit: 'OTHER' }), null)).toBe('custom');
   });
   it('starts a new option as a pack for products counted in pieces', () => {
     expect(newSellingOption('n', 'PIECE')).toEqual({ id: 'n', name: '', unit: 'PACK', quantity: '1', sellingPrice: '' });
@@ -31,25 +31,39 @@ describe('selling option units', () => {
 describe('selling option sentence', () => {
   it('reads "1 pack = 10 pieces" with the price per piece', () => {
     const pack = option({ piecesPerUnit: 10, sellingPrice: '1700' });
-    expect(optionShape('PIECE', pack)).toBe('group');
+    expect(optionShape('PIECE', pack, null)).toBe('group');
     expect(money(optionSummary(pack, 'PIECE', null))).toBe('1 pack = 10 pieces for ₹1,700.00 · ₹170.00 per piece');
     expect(defaultOptionName(pack, 'PIECE', null)).toBe('Pack of 10');
-    expect(optionPriceLabel(pack, 'PIECE')).toBe('Price for 1 pack');
+    expect(optionPriceLabel(pack, 'PIECE', null)).toBe('Price for 1 pack');
   });
   it('uses the product’s own box size when the option is the stock unit', () => {
     const box = option({ unit: 'BOX', sellingPrice: '480' });
     expect(money(optionSummary(box, 'BOX', 24))).toBe('1 box = 24 pieces for ₹480.00 · ₹20.00 per piece');
     expect(sellingOptionError(box, 'BOX', 24)).toBe('');
-    expect(sellingOptionError(box, 'BOX', null)).toBe('enter how many pieces are in one box.');
+    expect(sellingOptionError(option({ unit: 'PACK', sellingPrice: '480' }), 'BOX', null)).toBe('enter how many pieces are in one pack.');
+  });
+  it('sells a pack or box product with no pieces per pack by count, as the server allows', () => {
+    const one = option({ unit: 'PACK', sellingPrice: '120' });
+    expect(optionShape('PACK', one, null)).toBe('count');
+    expect(sellingOptionError(one, 'PACK', null)).toBe('');
+    expect(money(optionSummary(one, 'PACK', null))).toBe('1 pack for ₹120.00');
+    expect(optionPriceLabel(one, 'PACK', null)).toBe('Price for 1 pack');
+    const two = option({ unit: 'BOX', quantity: '2', sellingPrice: '900' });
+    expect(optionShape('BOX', two, null)).toBe('count');
+    expect(sellingOptionError(two, 'BOX', null)).toBe('');
+    expect(defaultOptionName(two, 'BOX', null)).toBe('2 boxes');
+    expect(sellingOptionError(newSellingOption('n', 'PACK'), 'PACK', null)).toBe('enter a price greater than zero.');
+    expect(chooseOptionUnit(option({ unit: 'PIECE', quantity: '3' }), 'PACK', 'PACK')).toMatchObject({ unit: 'PACK', quantity: '1' });
+    expect(optionShape('PACK', one, 10)).toBe('group');
   });
   it('shows a dozen as 12 pieces and a count of pieces or a measure as it is', () => {
     expect(money(optionSummary(option({ unit: 'DOZEN', sellingPrice: '170' }), 'PIECE', null))).toBe('1 dozen = 12 pieces for ₹170.00 · ₹14.17 per piece');
     expect(defaultOptionName(option({ unit: 'DOZEN' }), 'PIECE', null)).toBe('Dozen');
     const six = option({ unit: 'PIECE', quantity: '6', sellingPrice: '60' });
-    expect(optionShape('PIECE', six)).toBe('count');
+    expect(optionShape('PIECE', six, null)).toBe('count');
     expect(money(optionSummary(six, 'PIECE', null))).toBe('6 pieces for ₹60.00 · ₹10.00 per piece');
     expect(defaultOptionName(six, 'PIECE', null)).toBe('6 pieces');
-    expect(optionPriceLabel(six, 'PIECE')).toBe('Price for 6 pieces');
+    expect(optionPriceLabel(six, 'PIECE', null)).toBe('Price for 6 pieces');
     expect(defaultOptionName(option({ unit: 'PIECE', quantity: '1' }), 'PIECE', null)).toBe('Single piece');
     expect(money(optionSummary(option({ unit: 'KG', quantity: '5', sellingPrice: '250' }), 'KG', null))).toBe('5 kg for ₹250.00 · ₹50.00 per kg');
   });
@@ -71,7 +85,7 @@ describe('older selling options', () => {
     expect(normalizeSellingOptions(fits, 'PIECE', null)).toEqual(fits);
     const unknownSize = [option({ quantity: '2' })];
     expect(normalizeSellingOptions(unknownSize, 'PIECE', null)).toEqual(unknownSize);
-    expect(optionShape('PIECE', unknownSize[0])).toBe('custom');
+    expect(optionShape('PIECE', unknownSize[0], null)).toBe('custom');
     const measured = [option({ unit: 'KG', quantity: '2.5' })];
     expect(normalizeSellingOptions(measured, 'KG', null)).toBe(measured);
   });

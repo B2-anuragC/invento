@@ -25,9 +25,15 @@ export function optionUnitChoices(stockUnit: string, currentUnit?: string): stri
   return currentUnit && !choices.includes(currentUnit) ? [...choices, currentUnit] : choices;
 }
 
-/** How the form shows an option. Older options that do not fit the simple sentence are "custom" and keep their quantity field. */
-export function optionShape(stockUnit: string, option: Pick<SellingOption, 'unit' | 'quantity'>): OptionShape {
+/**
+ * How the form shows an option. Older options that do not fit the simple
+ * sentence are "custom" and keep their quantity field. A product stocked in
+ * packs or boxes with no pieces per pack sells its own unit by count
+ * ("2 packs"), since a piece count could not be used for it.
+ */
+export function optionShape(stockUnit: string, option: Pick<SellingOption, 'unit' | 'quantity'>, groupSize: number | null): OptionShape {
   if (!optionUnitChoices(stockUnit).includes(option.unit)) return 'custom';
+  if ((stockUnit === 'PACK' || stockUnit === 'BOX') && option.unit === stockUnit && !groupSize) return 'count';
   if (isGroup(stockUnit) && (option.unit === 'PACK' || option.unit === 'BOX')) return Number(option.quantity) === 1 ? 'group' : 'custom';
   if (isGroup(stockUnit) && option.unit === 'DOZEN') return Number(option.quantity) === 1 ? 'dozen' : 'custom';
   return 'count';
@@ -50,7 +56,8 @@ export function newSellingOption(id: string, stockUnit: string): SellingOption {
 export function chooseOptionUnit(option: SellingOption, unit: string, stockUnit: string): SellingOption {
   const { piecesPerUnit: _size, ...rest } = option;
   const single = isGroup(stockUnit) && unit !== 'PIECE';
-  return { ...rest, unit, quantity: single ? '1' : optionShape(stockUnit, option) === 'count' ? option.quantity : '1' };
+  const keep = isGroup(stockUnit) ? option.unit === 'PIECE' : optionShape(stockUnit, option, null) === 'count';
+  return { ...rest, unit, quantity: !single && keep ? option.quantity : '1' };
 }
 
 /**
@@ -75,7 +82,7 @@ export function normalizeSellingOptions(options: SellingOption[], stockUnit: str
 
 /** The name used on bills when none is typed: "Pack of 10", "Dozen", "Single piece", "6 pieces", "5 kg". */
 export function defaultOptionName(option: SellingOption, stockUnit: string, groupSize: number | null): string {
-  const shape = optionShape(stockUnit, option);
+  const shape = optionShape(stockUnit, option, groupSize);
   if (shape === 'group') {
     const pieces = optionPieces(option, stockUnit, groupSize);
     return pieces ? `${capital(unitLabel(option.unit))} of ${pieces}` : capital(unitLabel(option.unit));
@@ -88,8 +95,8 @@ export function defaultOptionName(option: SellingOption, stockUnit: string, grou
 }
 
 /** "Price for 1 pack", "Price for 6 pieces". */
-export function optionPriceLabel(option: SellingOption, stockUnit: string): string {
-  const shape = optionShape(stockUnit, option);
+export function optionPriceLabel(option: SellingOption, stockUnit: string, groupSize: number | null): string {
+  const shape = optionShape(stockUnit, option, groupSize);
   if (shape === 'group' || shape === 'dozen') return `Price for 1 ${unitLabel(option.unit)}`;
   const quantity = Number(option.quantity);
   return quantity > 0 ? `Price for ${formatQuantity(quantity, option.unit)}` : 'Price';
@@ -100,7 +107,7 @@ export function optionSummary(option: SellingOption, stockUnit: string, groupSiz
   const price = Number(option.sellingPrice);
   const quantity = Number(option.quantity);
   if (!(price > 0) || !(quantity > 0)) return null;
-  const shape = optionShape(stockUnit, option);
+  const shape = optionShape(stockUnit, option, groupSize);
   if (shape === 'group' || shape === 'dozen') {
     const pieces = optionPieces(option, stockUnit, groupSize);
     if (!pieces) return null;
@@ -112,7 +119,7 @@ export function optionSummary(option: SellingOption, stockUnit: string, groupSiz
 
 /** Why an option cannot be saved, or '' when it can. */
 export function sellingOptionError(option: SellingOption, stockUnit: string, groupSize: number | null): string {
-  const shape = optionShape(stockUnit, option);
+  const shape = optionShape(stockUnit, option, groupSize);
   if (shape === 'group' && !optionPieces(option, stockUnit, groupSize)) return `enter how many pieces are in one ${unitLabel(option.unit)}.`;
   if (option.piecesPerUnit != null && (!Number.isInteger(option.piecesPerUnit) || option.piecesPerUnit < 1 || option.piecesPerUnit > 100000)) return 'pieces must be a whole number from 1 to 100000.';
   if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(option.quantity) || Number(option.quantity) <= 0) return 'enter a quantity greater than zero.';

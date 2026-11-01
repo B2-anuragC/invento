@@ -510,7 +510,7 @@ export default function ProductDetailsScreen() {
             {sellingOptions.map((option, index) => {
               const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || null;
               const update = (next: SellingOption) => { setSellingOptions((current) => current.map((entry) => entry.id === option.id ? next : entry)); clearErrorOnEdit(); };
-              const shape = optionShape(unit, option);
+              const shape = optionShape(unit, option, groupSize);
               const summary = optionSummary(option, unit, groupSize);
               const number = index + 1;
               const quantityField = <TextInput accessibilityLabel={`Option ${number}: quantity in ${unitLabel(option.unit, 2)}`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) update({ ...option, quantity: value }); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput, styles.optionSmallInput]} />;
@@ -527,8 +527,8 @@ export default function ProductDetailsScreen() {
                   <Text style={styles.optionSentenceText}>{unitLabel(option.unit, Number(option.quantity) === 1 ? 1 : 2)}</Text>
                 </View>}
                 {shape === 'custom' ? <Text style={styles.optionHint}>Saved in an older format. Choose a unit above to switch to the simpler form.</Text> : null}
-                <Text style={styles.label}>{optionPriceLabel(option, unit)}</Text>
-                <View style={styles.optionPriceField}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Option ${number}: ${optionPriceLabel(option, unit).toLowerCase()}`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) update({ ...option, sellingPrice: value }); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View>
+                <Text style={styles.label}>{optionPriceLabel(option, unit, groupSize)}</Text>
+                <View style={styles.optionPriceField}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Option ${number}: ${optionPriceLabel(option, unit, groupSize).toLowerCase()}`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) update({ ...option, sellingPrice: value }); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View>
                 {summary ? <Text style={[styles.optionPreviewText, styles.optionPreview]}>{summary}</Text> : null}
                 <Text style={styles.label}>Name on bills · optional</Text>
                 <TextInput accessibilityLabel={`Option ${number}: name on bills`} maxLength={60} value={option.name} onChangeText={(value) => update({ ...option, name: value })} placeholder={defaultOptionName(option, unit, groupSize) || 'e.g. Pack of 10'} style={[styles.input, styles.optionInput]} />
