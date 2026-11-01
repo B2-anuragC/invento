@@ -152,7 +152,7 @@ Requested 1 November 2026: let people use the phone app without an account, on t
 | G1 | "Continue as guest" on the phone app: the shop runs on the device only, with profile and shop details | Done |
 | G2 | Stock adjustment on the device in guest mode | Done |
 | G3 | Sales and purchase returns (credit and debit notes) on the device in guest mode | Done |
-| G4 | Editing bill items and cancelling bills on the device in guest mode | |
+| G4 | Editing bill items and cancelling bills on the device in guest mode | Done |
 | G5 | Create an account or sign in from guest mode, and upload the guest shop as a new shop on that account | |
 
 ### Phase 7 design

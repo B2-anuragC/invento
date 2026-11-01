@@ -6,7 +6,7 @@ import type { OfflineSnapshot, LocalRecord } from "./offline-model";
 import type { AppSession, ApiUser, BusinessDetails, BusinessDetailsInput, SaleRecord, PurchaseRecord } from "./api";
 import { moneyValue } from "./transaction-accounting";
 import { applyLocalAdjustment, localProductStock } from "./local-stock";
-import { recordLocalReturn, type AllocatedNumber, type LocalBillContext } from "./local-bills";
+import { cancelLocalBill, editLocalBill, recordLocalReturn, type AllocatedNumber, type LocalBillContext } from "./local-bills";
 
 type LocalDatabase = {
   version: 1;
@@ -357,6 +357,13 @@ export function localRequest<T>(
           const done = (collection === "sales" ? snapshot.sales : snapshot.purchases).find((record) => (record as { returns?: { requestId?: string }[] }).returns?.some((note) => note.requestId === input.requestId));
           if (done?.id === decodeURIComponent(id)) return clone(done) as T;
           result = recordLocalReturn(snapshot, collection === "sales" ? "sale" : "purchase", decodeURIComponent(id), input, billContext(state, snapshot));
+        } else if (/^\/(sales|purchases)\/[^/]+\/(items|cancel)$/.test(path) && (method === "PUT" || method === "POST")) {
+          const [, collection, id, action] = path.split("/");
+          const kind = collection === "sales" ? "sale" : "purchase";
+          const bill = (kind === "sale" ? snapshot.sales : snapshot.purchases).find((record) => record.id === decodeURIComponent(id)) as { status?: string; editRequestId?: string } | undefined;
+          // A retried edit, or cancelling a cancelled bill, changes nothing, so it is not stored or journaled again.
+          if (bill && (action === "items" ? bill.editRequestId === input.requestId : bill.status === "CANCELLED")) return clone(bill) as T;
+          result = action === "items" ? editLocalBill(snapshot, kind, decodeURIComponent(id), input, billContext(state, snapshot)) : cancelLocalBill(snapshot, kind, decodeURIComponent(id), input, billContext(state, snapshot));
         } else if (/^\/products\/[^/]+\/stock$/.test(path) && method === "GET") {
           result = localProductStock(snapshot, decodeURIComponent(path.split("/")[2]), new Date().toISOString());
         } else if (path === "/inventory/adjustments" && method === "POST") {

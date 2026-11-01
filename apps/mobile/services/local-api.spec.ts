@@ -278,3 +278,74 @@ describe("returns on the device", () => {
     expect((view.purchases[0] as any).returns).toHaveLength(1);
   });
 });
+describe("editing and cancelling bills on the device", () => {
+  const put = <T>(path: string, body: unknown) => api.localRequest<T>(path, { method: "PUT", body: JSON.stringify(body) }, session);
+  const stock = async () => Number((await send<OfflineSnapshot>("/sync/snapshot")).inventory[0].quantity);
+  const sale = (requestId: string, quantity: string, amountPaid: string, customerId = "customer") => send<any>("/sales", { requestId, customerId, saleDate: "2026-10-16T10:00:00Z", paymentMethod: "UPI", amountPaid, chargeGst: false, items: [{ productId: "product", quantity, sellingPrice: "10.00" }] });
+  const edit = (id: string, requestId: string, quantity: string, extra: Record<string, unknown> = {}) => put<any>(`/sales/${id}/items`, { requestId, reason: "Customer took fewer", chargeGst: false, items: [{ productId: "product", quantity, sellingPrice: "10.00" }], ...extra });
+
+  it("edits a sale's items: stock moves by the difference, overpaid money is refunded, the revision goes up", async () => {
+    await setup();
+    const bill = await sale("local_edit_sale", "2", "20");
+    expect(await stock()).toBe(8);
+    const more = await edit(bill.id, "edit_1", "3", { revision: 1, expectedTotal: "30.00", expectedRefund: "0.00" });
+    expect(more).toMatchObject({ revision: 2, total: "30.00", amountPaid: "20", editReason: "Customer took fewer", documentNumber: bill.documentNumber });
+    expect(await stock()).toBe(7);
+    const fewer = await edit(bill.id, "edit_2", "1", { revision: 2, expectedRefund: "10.00" });
+    expect(fewer).toMatchObject({ revision: 3, total: "10.00", amountPaid: "10.00" });
+    expect(fewer.items).toHaveLength(1);
+    expect(fewer.payments.at(-1)).toMatchObject({ kind: "REFUND", amount: "10.00", method: "UPI" });
+    expect(await stock()).toBe(9);
+    // A retry changes nothing and is journaled once.
+    expect(await edit(bill.id, "edit_2", "1", { revision: 2 })).toMatchObject({ revision: 3 });
+    expect((await api.guestJournal(session.businessId)).filter((entry) => entry.path.endsWith("/items"))).toHaveLength(2);
+    const view = await send<OfflineSnapshot>("/sync/snapshot");
+    expect(view.inventoryActivity.slice(0, 2).map((entry) => [entry.type, entry.note])).toEqual([["RETURN_IN", `Edited sale ${bill.id}`], ["SALE", `Sale ${bill.id}`]]);
+  });
+
+  it("refuses edits the server refuses", async () => {
+    await setup();
+    const bill = await sale("local_refused_edit", "2", "20");
+    await expect(edit(bill.id, "e1", "1", { revision: 5 })).rejects.toThrow("This bill was changed while you were editing it.");
+    await expect(edit(bill.id, "e2", "1", { expectedRefund: "0.00" })).rejects.toThrow("A payment was recorded on this bill while you were editing it.");
+    await expect(edit(bill.id, "e3", "1", { expectedTotal: "12.00" })).rejects.toThrow("Prices changed while you were editing.");
+    await expect(edit(bill.id, "e4", "1", { reason: " " })).rejects.toThrow("Enter why this bill is edited.");
+    await expect(edit(bill.id, "e5", "11")).rejects.toThrow("Not enough Product in stock for this change.");
+    expect(await stock()).toBe(8);
+    // Its product was deactivated since: the bill may keep it.
+    await send("/sync/push", { operationId: "deactivate", entity: "products", entityId: "product", action: "update", baseRevision: 1, payload: { status: "INACTIVE" } });
+    expect(await edit(bill.id, "e6", "1")).toMatchObject({ total: "10.00" });
+    await send(`/sales/${bill.id}/returns`, { requestId: "r1", items: [{ itemId: (await send<any>(`/sales/${bill.id}`)).items[0].id, quantity: "1" }] });
+    await expect(edit(bill.id, "e7", "1")).rejects.toThrow("This bill has returns, so its items cannot be edited.");
+    await send("/sync/push", { operationId: "walk-in", entity: "customers", entityId: "walk-in-customer", action: "create", payload: { name: "Walk-in customer", isWalkIn: true } });
+    await send("/sync/push", { operationId: "reactivate", entity: "products", entityId: "product", action: "update", baseRevision: 2, payload: { status: "ACTIVE" } });
+    const walkIn = await sale("local_walk_in", "1", "10.00", "walk-in-customer");
+    await expect(edit(walkIn.id, "e8", "2")).rejects.toThrow("A walk-in sale must stay paid in full");
+  });
+
+  it("cancels a bill: stock goes back, money paid is refunded and the number stays", async () => {
+    await setup();
+    const bill = await sale("local_cancel_sale", "2", "20");
+    await edit(bill.id, "edit_before_cancel", "3");
+    expect(await stock()).toBe(7);
+    const cancelled = await send<any>(`/sales/${bill.id}/cancel`, { reason: " Wrong customer " });
+    expect(cancelled).toMatchObject({ status: "CANCELLED", cancelReason: "Wrong customer", amountPaid: "0.00", documentNumber: bill.documentNumber });
+    expect(cancelled.payments.at(-1)).toMatchObject({ kind: "REFUND", amount: "20.00", method: "UPI" });
+    expect(await stock()).toBe(10);
+    expect(await send<any>(`/sales/${bill.id}/cancel`, { reason: "Again" })).toMatchObject({ cancelReason: "Wrong customer" });
+    expect((await api.guestJournal(session.businessId)).filter((entry) => entry.path.endsWith("/cancel"))).toHaveLength(1);
+    await expect(edit(bill.id, "edit_after_cancel", "1")).rejects.toThrow("A cancelled bill cannot be edited.");
+    await expect(send(`/sales/${bill.id}/returns`, { requestId: "r_cancelled", items: [{ itemId: cancelled.items[0].id, quantity: "1" }] })).rejects.toThrow("A cancelled bill cannot be returned.");
+  });
+
+  it("refuses to cancel a bill with returns, or a purchase whose goods are gone", async () => {
+    await setup();
+    const bill = await sale("local_returned_sale", "2", "0");
+    await send(`/sales/${bill.id}/returns`, { requestId: "r_before_cancel", items: [{ itemId: bill.items[0].id, quantity: "1" }] });
+    await expect(send(`/sales/${bill.id}/cancel`, { reason: "No" })).rejects.toThrow("This bill has returns, so it cannot be cancelled.");
+    const purchase = await send<any>("/purchases", { requestId: "local_cancel_purchase", supplierId: "supplier", purchaseDate: "2026-10-16T10:00:00Z", amountPaid: "0", chargeGst: false, items: [{ productId: "product", quantity: "5", purchasePrice: "5.00" }] });
+    await sale("local_sell_purchase", "14", "0");
+    await expect(send(`/purchases/${purchase.id}/cancel`, { reason: "Wrong supplier" })).rejects.toThrow("Stock from this purchase has already been sold or used, so the purchase cannot be cancelled.");
+    expect(await stock()).toBe(0);
+  });
+});
