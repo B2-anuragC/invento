@@ -100,10 +100,12 @@ Decisions agreed on 31 October 2026:
 | # | Change | Status |
 |---|---|---|
 | 20 | Stock adjustment screen (damage, expiry, returns, corrections) | Covered by F4 |
-| 21 | Product page shows GST rate, selling options and a low-stock warning | |
+| 21 | Product page shows GST rate, selling options and a low-stock warning | Done |
 | 22 | Overview shows purchases, low stock and top products; Inventory shows stock value | |
 | 23 | Barcode scan in the product form; "Open settings" when camera access was refused | |
 | 24 | Activity date ranges (today, this week, this month, custom) | |
+
+- **Product page (21)**: the phone's product page (read mode) shows the stock card in amber with "Low stock" and how much reaches the minimum level when stock is below it, and in red with "Out of stock" at zero, using the catalog badge's thresholds (only for active products whose stock has been recorded). A "Tax & selling" card shows the GST rate (or "No GST (0%)"), the HSN code (or "Not set"), the default price with GST added (prices exclude GST; GST is per bill), the group size for dozen, box and pack products, and each selling option with its price, the price per unit when the option is more than one unit, and the stock one sale takes when that is in another unit. The text comes from `services/product-summary.ts`.
 
 ## Phase 5 — Admin web
 

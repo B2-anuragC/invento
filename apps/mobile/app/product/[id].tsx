@@ -7,6 +7,7 @@ import { inventoryMovementLabel, inventoryMovementNote, normalizeHsnCode, sellin
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { receiveStockNotice } from '@/services/stock-adjustment';
+import { groupSizeLabel, sellingOptionRows, stockWarning, taxSummary } from '@/services/product-summary';
 import { addedProductNotice, openingStockError, sendAddedProduct } from '@/services/new-product';
 import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
 import {
@@ -344,6 +345,11 @@ export default function ProductDetailsScreen() {
 
   const currentStock = Number(inventory?.quantity ?? 0);
   const needsOpeningStock = !isNew && inventory?.createdAt === null;
+  // Read mode: warn about low or no stock on an active product once its stock has been recorded.
+  const warning = product && product.status === 'ACTIVE' && !needsOpeningStock ? stockWarning(currentStock, Number(product.minimumStock), product.unit) : null;
+  const tax = product ? taxSummary(product) : null;
+  const groupSize = product ? groupSizeLabel(product.unit, product.piecesPerUnit) : null;
+  const optionRows = product ? sellingOptionRows(product, product.sellingOptions) : [];
 
   return (
     <AppScreen>
@@ -563,15 +569,44 @@ export default function ProductDetailsScreen() {
           </>
         ) : (
           <>
-            <View style={styles.stockCard}>
-              <Text style={styles.stockLabel}>Current stock</Text>
-              <Text style={styles.stockValue}>{formatQuantity(currentStock, product?.unit ?? 'PIECE')}</Text>
-              <Text style={styles.stockMeta}>Minimum level: {formatQuantity(Number(product?.minimumStock ?? 0), product?.unit ?? 'PIECE')}</Text>
-              <Text style={styles.stockMeta}>
+            <View style={[styles.stockCard, warning && (warning.tone === 'out' ? styles.stockCardOut : styles.stockCardLow)]}>
+              <Text style={[styles.stockLabel, warning && (warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow)]}>Current stock</Text>
+              <Text style={[styles.stockValue, warning && (warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow)]}>{formatQuantity(currentStock, product?.unit ?? 'PIECE')}</Text>
+              {warning ? (
+                <View accessibilityRole="alert" style={styles.warningBox}>
+                  <Text style={[styles.warningTitle, warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow]}>{warning.tone === 'out' ? '⚠ ' : '▼ '}{warning.title}</Text>
+                  <Text style={[styles.warningText, warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow]}>{warning.message}</Text>
+                </View>
+              ) : null}
+              <Text style={[styles.stockMeta, warning && (warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow)]}>Minimum level: {formatQuantity(Number(product?.minimumStock ?? 0), product?.unit ?? 'PIECE')}</Text>
+              <Text style={[styles.stockMeta, warning && (warning.tone === 'out' ? styles.stockTextOut : styles.stockTextLow)]}>
                 {product?.purchasePrice ? `Buy ${formatMoney(Number(product.purchasePrice))} · ` : ''}
-                Sell {formatMoney(Number(product?.sellingPrice ?? 0))}
+                Sell {formatMoney(Number(product?.sellingPrice ?? 0))} / {formatUnitLabel(product?.unit ?? 'PIECE')}
               </Text>
             </View>
+
+            {tax ? (
+              <View style={styles.detailCard}>
+                <Text style={styles.sectionTitle}>Tax & selling</Text>
+                <View style={styles.detailRow}><Text style={styles.detailLabel}>GST rate</Text><Text style={styles.detailValue}>{tax.gst}</Text></View>
+                <View style={styles.detailRow}><Text style={styles.detailLabel}>HSN code</Text><Text style={[styles.detailValue, !tax.hsn && styles.detailMuted]}>{tax.hsn ?? 'Not set'}</Text></View>
+                {tax.priceWithGst ? <Text style={styles.helperText}>Prices exclude GST. When a bill charges GST: {tax.priceWithGst}.</Text> : null}
+                {groupSize ? <View style={styles.detailRow}><Text style={styles.detailLabel}>Group size</Text><Text style={styles.detailValue}>{groupSize}</Text></View> : null}
+                <Text style={[styles.label, styles.detailHeading]}>Selling options</Text>
+                {optionRows.length ? optionRows.map((option) => (
+                  <View key={option.id} style={styles.optionRow}>
+                    <View style={styles.historyDetails}>
+                      <Text style={styles.historyType}>{option.name}</Text>
+                      {option.stock ? <Text style={styles.historyDate}>{option.stock}</Text> : null}
+                    </View>
+                    <View style={styles.historyAmount}>
+                      <Text style={styles.historyQuantity}>{option.price}</Text>
+                      {option.perUnit ? <Text style={styles.historyBalance}>{option.perUnit}</Text> : null}
+                    </View>
+                  </View>
+                )) : <Text style={styles.helperText}>No selling options. Sales use the default price.</Text>}
+              </View>
+            ) : null}
 
             {!needsOpeningStock && product?.status === 'ACTIVE' && can('inventory.adjust') ? (
               <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/inventory/adjust', params: { productId: product.id } })} style={styles.adjustButton}>
@@ -703,6 +738,20 @@ const styles = StyleSheet.create({
   stockLabel: { color: '#0F766E', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   stockValue: { color: '#0F766E', fontSize: 30, fontWeight: '800', marginTop: 8 },
   stockMeta: { color: '#0F766E', fontSize: 12, marginTop: 8 },
+  stockCardLow: { backgroundColor: '#FFF6E5' },
+  stockCardOut: { backgroundColor: '#FEECEC' },
+  stockTextLow: { color: '#8A5300' },
+  stockTextOut: { color: '#B91C1C' },
+  warningBox: { marginTop: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.7)', padding: 10 },
+  warningTitle: { fontSize: 13, fontWeight: '800' },
+  warningText: { fontSize: 12, lineHeight: 18, marginTop: 3 },
+  detailCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 15, marginBottom: 20 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F2F1' },
+  detailLabel: { color: '#6B7280', fontSize: 13 },
+  detailValue: { color: '#111827', fontSize: 13, fontWeight: '700', flexShrink: 1, textAlign: 'right' },
+  detailMuted: { color: '#9CA3AF', fontWeight: '500' },
+  detailHeading: { marginBottom: 0 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F0F2F1' },
   openingCard: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 15, marginBottom: 22 },
   helperText: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginTop: 8 },
   openingRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 12 },
