@@ -5,7 +5,7 @@ import { StoredImage } from '@/components/stored-image';
 import { fileSource } from '@/services/file-storage';
 import { ListingLayout, ListingViewButton, type ListingView } from '@/components/listing-layout';
 import { ChipRow, FilterButton, HeaderIconButton, ListHeader, SearchField, StickyBar, screenStyles } from '@/components/screen-heading';
-import { filterButtonLabels } from '@/services/list-header';
+import { catalogFilterChips, filterButtonLabels } from '@/services/list-header';
 import { ProductThumbnail } from '@/components/product-photo';
 import { placeFirst, productInitials, readCatalogView, saveCatalogView, stockBadge } from '@/services/catalog-view';
 import { receiveAddedProduct } from '@/services/new-product';
@@ -165,6 +165,12 @@ export default function ProductsScreen() {
     return quantity > 0 && quantity < Number(product.minimumStock);
   }).length;
 
+  const sheetChips = catalogFilterChips({ stock: stockFilter, unit: unitFilter, unitLabel: unitFilter === 'All' ? unitFilter : formatUnitLabel(unitFilter), status });
+  const clearSheetFilter = (key: string) => {
+    if (key === 'stock') setStockFilter('all');
+    else if (key === 'unit') setUnitFilter('All');
+    else if (key === 'status') setStatus('ACTIVE');
+  };
   const filterCount = Number(category !== 'All') + Number(stockFilter !== 'all') + Number(unitFilter !== 'All') + Number(status !== 'ACTIVE');
 
   return (
@@ -176,7 +182,7 @@ export default function ProductsScreen() {
         </>} />
         <StickyBar>
           <SearchField accessibilityLabel="Search products" value={search} onChangeText={setSearch} placeholder="Name, SKU or barcode" trailing={<FilterButton text={filterButtonLabels(filterCount).text} accessibilityLabel={`Filters and sorting${filterCount ? `, ${filterCount} active filters` : ''}`} active={filterCount > 0} onPress={openFilters} />} />
-          {categories.length > 1 ? <ChipRow label="Categories" options={categories.map((value) => ({ key: value, label: value, accessibilityLabel: `Category: ${value}`, selected: category === value, onPress: () => setCategory(value) }))} /> : null}
+          {categories.length > 1 || sheetChips.length ? <ChipRow label={categories.length > 1 ? 'Categories' : 'Filters that are on'} options={categories.length > 1 ? categories.map((value) => ({ key: value, label: value, accessibilityLabel: `Category: ${value}`, selected: category === value, onPress: () => setCategory(value) })) : []} clearable={sheetChips} onClear={clearSheetFilter} /> : null}
           <View style={styles.resultsBar}>
             <Text style={styles.resultCount}>{loading ? 'Loading products…' : `${plural(filteredProducts.length, 'product')}${categories.length > 1 ? ` · ${plural(categories.length - 1, 'category', 'categories')}` : ''}`}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Change product grouping and sort" onPress={openFilters} style={styles.browseButton}><Text style={styles.linkText}>{sortByPrice ? 'Price ↑' : section === 'frequent' ? 'Frequent' : sectionLabels[section]}</Text><Ionicons name="chevron-down" size={14} color="#176B50" /></Pressable>

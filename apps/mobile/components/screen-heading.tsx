@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Href } from 'expo-router';
@@ -7,7 +7,7 @@ import type { Permission } from '@invento/shared';
 import { BackButton } from './back-button';
 import { Ionicons } from './ui/icon';
 import { usePermissions } from '@/services/permissions';
-import { clearChipLabel, statStripLabel, type FilterChip } from '@/services/list-header';
+import { clearChipLabel, statStripFigures, statStripLabel, statStripRows, type FilterChip } from '@/services/list-header';
 
 export function ScreenHeading({ title, subtitle, onBack }: { title: string; subtitle: string; onBack?: () => void }) {
   return (
@@ -101,27 +101,40 @@ export function ChipRow({ options, clearable = [], onClear, label }: { options: 
 }
 
 export type StatStripItem = { label: string; value: string; tone?: 'green' | 'amber' | 'blue' | 'red'; onPress?: () => void; accessibilityLabel?: string };
+const STRIP_CELL_PADDING = 10;
 const tones = { green: '#176B50', amber: '#96621B', blue: '#345B60', red: '#A74737' };
 
 /**
  * Summary figures as one slim strip instead of a block of cards. Read as one
- * sentence by screen readers, unless its parts are buttons.
+ * sentence by screen readers, unless its parts are buttons. Four or more
+ * figures go two to a row, cells share the width by the size of their
+ * figures, and the font size is chosen from the strip's measured width so
+ * money amounts show in full (also on web, which
+ * cannot shrink text to fit).
  */
 export function StatStrip({ items, note }: { items: StatStripItem[]; note?: string | null }) {
+  // A 360 dp phone until the strip has been measured.
+  const [width, setWidth] = useState(328);
   const interactive = items.some((item) => item.onPress);
+  const rows = statStripRows(items);
+  const figures = statStripFigures(rows.map((row) => row.map((item) => item.value)), width, STRIP_CELL_PADDING);
   return (
     <View style={styles.stripWrap}>
-      <View accessible={!interactive} accessibilityLabel={interactive ? undefined : statStripLabel(items)} style={styles.strip}>
-        {items.map((item, index) => {
-          const body = <>
-            <Text adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1} style={[styles.stripValue, { color: tones[item.tone ?? 'green'] }]}>{item.value}</Text>
-            <Text numberOfLines={1} style={styles.stripLabel}>{item.label}</Text>
-          </>;
-          const cellStyle = [styles.stripCell, index > 0 && styles.stripDivider];
-          return item.onPress
-            ? <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={item.accessibilityLabel ?? `${item.label} ${item.value}`} onPress={item.onPress} style={cellStyle}>{body}</Pressable>
-            : <View key={item.label} style={cellStyle}>{body}</View>;
-        })}
+      <View accessible={!interactive} accessibilityLabel={interactive ? undefined : statStripLabel(items)} onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={styles.strip}>
+        {rows.map((row, rowIndex) => (
+          <View key={rowIndex} style={[styles.stripRow, rowIndex > 0 && styles.stripRowDivider]}>
+            {row.map((item, index) => {
+              const body = <>
+                <Text adjustsFontSizeToFit minimumFontScale={0.85} numberOfLines={1} style={[styles.stripValue, { fontSize: figures.fontSize, color: tones[item.tone ?? 'green'] }]}>{item.value}</Text>
+                <Text numberOfLines={1} style={styles.stripLabel}>{item.label}</Text>
+              </>;
+              const cellStyle = [styles.stripCell, { flex: figures.flex[rowIndex][index] }, index > 0 && styles.stripDivider];
+              return item.onPress
+                ? <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={item.accessibilityLabel ?? `${item.label} ${item.value}`} onPress={item.onPress} style={cellStyle}>{body}</Pressable>
+                : <View key={item.label} style={cellStyle}>{body}</View>;
+            })}
+          </View>
+        ))}
       </View>
       {note ? <Text style={styles.stripNote}>{note}</Text> : null}
     </View>
@@ -211,8 +224,10 @@ const styles = StyleSheet.create({
   chipClearable: { borderColor: '#176B50', backgroundColor: '#E7F2ED', paddingRight: 10 },
   chipClearText: { color: '#176B50', fontSize: 13, fontWeight: '700' },
   stripWrap: { marginBottom: 6 },
-  strip: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 13, paddingVertical: 8 },
-  stripCell: { flex: 1, minWidth: 0, paddingHorizontal: 10, justifyContent: 'center', minHeight: 40 },
+  strip: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E2E2', borderRadius: 13 },
+  stripRow: { flexDirection: 'row', paddingVertical: 8 },
+  stripRowDivider: { borderTopWidth: 1, borderTopColor: '#EBEEEC' },
+  stripCell: { flex: 1, minWidth: 0, paddingHorizontal: STRIP_CELL_PADDING, justifyContent: 'center', minHeight: 40 },
   stripDivider: { borderLeftWidth: 1, borderLeftColor: '#EBEEEC' },
   stripValue: { fontSize: 16, fontWeight: '800' },
   stripLabel: { color: '#737B77', fontSize: 11, fontWeight: '600', marginTop: 1 },
