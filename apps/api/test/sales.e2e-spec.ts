@@ -851,6 +851,16 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect((await api('get', '/sync/snapshot').expect(200)).body.data.sales.filter((row: any) => row.status === 'CANCELLED')).toHaveLength(2);
   });
 
+  it('keeps a return date sent with the return (a shop moved from a phone), within the bill date and today', async () => {
+    const sale = (await api('post', '/sales').send({ ...input('2'), saleDate: '2026-04-10T05:00:00.000Z' }).expect(201)).body.data;
+    const item = sale.items[0].id;
+    const dated = (await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), returnDate: '2026-05-01T06:30:00.000Z', items: [{ itemId: item, quantity: '1' }] }).expect(201)).body.data;
+    expect(dated.returns[0]).toMatchObject({ returnDate: '2026-05-01T06:30:00.000Z', financialYear: '2026-27' });
+    expect((await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), returnDate: '2026-04-09T05:00:00.000Z', items: [{ itemId: item, quantity: '1' }] }).expect(400)).body.error.message).toBe('The return date cannot be before the bill date.');
+    expect((await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), returnDate: new Date(Date.now() + 3 * 86_400_000).toISOString(), items: [{ itemId: item, quantity: '1' }] }).expect(400)).body.error.message).toMatch(/Return date is in the future/);
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), returnDate: '1 May', items: [{ itemId: item, quantity: '1' }] }).expect(422);
+  });
+
   it('records sales returns as credit notes: stock back, discount and GST reversed, owed amount first, then a refund', async () => {
     await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
     await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);

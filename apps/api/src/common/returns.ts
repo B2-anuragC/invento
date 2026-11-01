@@ -3,10 +3,12 @@ import { InventoryTransactionType, PaymentMethod, Prisma } from '@prisma/client'
 import { NOTHING_RETURNED, returnLineAmounts, returnQuantityError, returnSettlement, sumAmounts, sumQuantities, type ReturnedSoFar } from '@invento/shared';
 import type { InventoryService } from '../inventory/inventory.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
-import { allocateDocumentNumber } from './document-numbers.js';
+import { allocateDocumentNumber, assertNotFutureDated } from './document-numbers.js';
 import type { CreateReturnDto } from './dto/transaction-finance.dto.js';
 
 export type ReturnKind = 'sale' | 'purchase';
+
+const indiaDay = (date: Date) => new Date(date.getTime() + 19_800_000).toISOString().slice(0, 10);
 
 /** A bill line with what earlier returns took from it. Stock is in ledger units (pieces for grouped products). */
 export type ReturnableBillLine = {
@@ -114,6 +116,8 @@ export const billReturnsInclude = { returns: { include: { items: true }, orderBy
  */
 export async function recordReturn(prisma: PrismaService, inventory: InventoryService, kind: ReturnKind, businessId: string, userId: string, billId: string, input: CreateReturnDto): Promise<void> {
   const reason = input.reason?.trim() || null;
+  const returnDate = input.returnDate === undefined ? new Date() : new Date(input.returnDate);
+  if (input.returnDate !== undefined) assertNotFutureDated(returnDate, 'Return');
   const notFound = kind === 'sale' ? 'Sale not found.' : 'Purchase not found.';
   const existing = async (client: Prisma.TransactionClient | PrismaService) => {
     const where = { businessId_requestId: { businessId, requestId: input.requestId } };
@@ -123,13 +127,14 @@ export async function recordReturn(prisma: PrismaService, inventory: InventorySe
   };
   try {
     await prisma.$transaction(async (tx) => {
-      const [bill] = await tx.$queryRaw<{ status: string; total: Prisma.Decimal; amountPaid: Prisma.Decimal | null; returnedTotal: Prisma.Decimal }[]>(
-        Prisma.sql`SELECT status, total, "amountPaid", "returnedTotal" FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${billId} AND "businessId" = ${businessId} FOR UPDATE`,
+      const [bill] = await tx.$queryRaw<{ status: string; total: Prisma.Decimal; amountPaid: Prisma.Decimal | null; returnedTotal: Prisma.Decimal; billDate: Date }[]>(
+        Prisma.sql`SELECT status, total, "amountPaid", "returnedTotal", ${Prisma.raw(kind === 'sale' ? '"saleDate"' : '"purchaseDate"')} AS "billDate" FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${billId} AND "businessId" = ${businessId} FOR UPDATE`,
       );
       if (!bill) throw new NotFoundException(notFound);
       if (await existing(tx)) return;
       if (bill.status === 'CANCELLED') throw new ConflictException('A cancelled bill cannot be returned.');
       if (bill.status !== 'COMPLETED') throw new ConflictException('Only a completed bill can be returned.');
+      if (input.returnDate !== undefined && indiaDay(returnDate) < indiaDay(bill.billDate)) throw new BadRequestException('The return date cannot be before the bill date.');
 
       const product = { select: { name: true, unit: true, piecesPerUnit: true } };
       const lines: ReturnableBillLine[] = kind === 'sale'
@@ -155,7 +160,6 @@ export async function recordReturn(prisma: PrismaService, inventory: InventorySe
         refundMethod = input.refundMethod ?? last?.method ?? PaymentMethod.CASH;
       }
 
-      const returnDate = new Date();
       const number = await allocateDocumentNumber(tx, businessId, kind === 'sale' ? 'CREDIT_NOTE' : 'DEBIT_NOTE', returnDate);
       const header = { businessId, ...number, returnDate, subtotal: plan.subtotal, taxTotal: plan.taxTotal, total: plan.total, refundAmount: refund, refundMethod, reason, requestId: input.requestId, createdByUserId: userId };
       const created = kind === 'sale'

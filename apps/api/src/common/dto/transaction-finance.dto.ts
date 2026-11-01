@@ -35,4 +35,5 @@ export class CreateReturnDto {
   @ApiProperty({ type: [ReturnItemDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => ReturnItemDto) items!: ReturnItemDto[];
   @ApiPropertyOptional({ description: 'Why the goods came back; printed on the note.' }) @ValidateIf((_o, v) => v !== undefined) @IsString() @MaxLength(200) reason?: string;
   @ApiPropertyOptional({ enum: PaymentMethod, description: 'How any refund is paid; defaults to how the bill was paid. The return first reduces what is still owed.' }) @ValidateIf((_o, v) => v !== undefined) @IsEnum(PaymentMethod) refundMethod?: PaymentMethod;
+  @ApiPropertyOptional({ description: 'When the goods came back; defaults to now. Not before the bill date or in the future. Used when a shop kept on a phone is moved to an account, so its notes keep their dates.' }) @ValidateIf((_o, v) => v !== undefined) @IsDateString({ strict: true }) returnDate?: string;
 }
