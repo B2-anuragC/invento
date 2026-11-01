@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSession } from "./api";
 import type { OfflineSnapshot } from "./offline-model";
 const disk = vi.hoisted(() => new Map<string, string>());
@@ -217,4 +217,64 @@ it("adjusts stock on the device and journals the adjustment", async () => {
   expect(view.inventory[0].quantity).toBe(8);
   expect(view.inventoryActivity[0]).toMatchObject({ type: "DAMAGE", note: "Cracked" });
   expect((await api.guestJournal(session.businessId)).at(-1)).toMatchObject({ method: "POST", path: "/inventory/adjustments", body: { type: "DAMAGE", quantity: "2" } });
+});
+describe("returns on the device", () => {
+  const post = <T>(path: string, body: unknown) => send<T>(path, body);
+  async function gstSale(extra: Record<string, unknown> = {}) {
+    await api.localRequest(`/businesses/${session.businessId}`, { method: "PATCH", body: JSON.stringify({ gstin: "27AAPFU0939F1ZV" }) }, session);
+    // 3 × ₹10 less a ₹3 discount, GST 18% on ₹27: ₹31.86.
+    return post<any>("/sales", { requestId: "local_return_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "UPI", amountPaid: "31.86", chargeGst: true, discountAmount: "3.00", expectedTotal: "31.86", items: [{ productId: "product", quantity: "3", sellingPrice: "10.00" }], ...extra });
+  }
+
+  it("records a credit note with the shared amounts, puts stock back and refunds a paid sale", async () => {
+    await setup();
+    const sale = await gstSale();
+    const line = sale.items[0];
+    expect(line.stockQuantity).toBe("3.000");
+    const bill = await post<any>(`/sales/${sale.id}/returns`, { requestId: "return_1", items: [{ itemId: line.id, quantity: "1" }], reason: " Wrong size " });
+    expect(bill.returns).toHaveLength(1);
+    expect(bill.returns[0]).toMatchObject({ documentNumber: expect.stringMatching(/^CN\/\d{4}-\d{2}\/0001$/), subtotal: "10.00", discountTotal: "1.00", taxTotal: "1.62", total: "10.62", refundAmount: "10.62", refundMethod: "UPI", reason: "Wrong size" });
+    expect(bill.returns[0].items[0]).toMatchObject({ saleItemId: line.id, quantity: "1", stockQuantity: "1.000", lineTotal: "10.00", discountAmount: "1.00", taxAmount: "1.62" });
+    expect(bill).toMatchObject({ returnedTotal: "10.62", netTotal: "21.24", amountPaid: "21.24" });
+    expect(bill.items[0].returnedQuantity).toBe("1");
+    expect(bill.payments.at(-1)).toMatchObject({ kind: "REFUND", amount: "10.62", method: "UPI" });
+    const view = await send<OfflineSnapshot>("/sync/snapshot");
+    expect(view.inventory[0].quantity).toBe(8);
+    expect(view.inventoryActivity[0]).toMatchObject({ type: "RETURN_IN", quantity: 1, balanceAfter: 8, note: bill.returns[0].documentNumber.replace(/^/, "Credit note ") });
+    // Returning the rest takes back exactly what is left, and a retry changes nothing.
+    const rest = await post<any>(`/sales/${sale.id}/returns`, { requestId: "return_2", items: [{ itemId: line.id, quantity: "2" }] });
+    expect(rest.returns[1]).toMatchObject({ documentNumber: expect.stringMatching(/\/0002$/), total: "21.24" });
+    expect(rest).toMatchObject({ returnedTotal: "31.86", netTotal: "0.00", amountPaid: "0.00" });
+    expect(await post<any>(`/sales/${sale.id}/returns`, { requestId: "return_2", items: [{ itemId: line.id, quantity: "2" }] })).toMatchObject({ returnedTotal: "31.86" });
+    await expect(post(`/sales/${sale.id}/returns`, { requestId: "return_3", items: [{ itemId: line.id, quantity: "1" }] })).rejects.toThrow("Product: This item has already been returned in full.");
+    expect((await api.guestJournal(session.businessId)).filter((entry) => entry.path.endsWith("/returns"))).toHaveLength(2);
+  });
+
+  it("lowers what is owed before refunding, and refuses what the server refuses", async () => {
+    await setup();
+    const sale = await post<any>("/sales", { requestId: "local_credit_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "5", items: [{ productId: "product", quantity: "2", sellingPrice: "10.00" }] });
+    const line = sale.items[0];
+    // ₹23.60 with GST, ₹18.60 owed; returning ₹11.80 only lowers the balance.
+    expect(await post<any>(`/sales/${sale.id}/returns`, { requestId: "credit_return", items: [{ itemId: line.id, quantity: "1" }] })).toMatchObject({ returnedTotal: "11.80", amountPaid: "5", returns: [{ refundAmount: "0.00", refundMethod: null }] });
+    await expect(post(`/sales/${sale.id}/returns`, { requestId: "credit_return", items: [{ itemId: line.id, quantity: "1" }] }).then(() => post(`/sales/other/returns`, { requestId: "credit_return", items: [] }))).rejects.toThrow("Sale not found.");
+    const other = await post<any>("/sales", { requestId: "local_other_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "1", sellingPrice: "10.00" }] });
+    await expect(post(`/sales/${other.id}/returns`, { requestId: "credit_return", items: [{ itemId: other.items[0].id, quantity: "1" }] })).rejects.toThrow("This return request has already been used.");
+    await expect(post(`/sales/${sale.id}/returns`, { requestId: "r_x", items: [] })).rejects.toThrow("Choose at least one item to return.");
+    await expect(post(`/sales/${sale.id}/returns`, { requestId: "r_y", items: [{ itemId: "missing", quantity: "1" }] })).rejects.toThrow("A returned item is not on this bill.");
+    await expect(post(`/sales/${sale.id}/returns`, { requestId: "r_z", items: [{ itemId: line.id, quantity: "0.5" }] })).rejects.toThrow("Product must be returned in whole pieces.");
+  });
+
+  it("records a debit note that takes stock out, and changes nothing when the goods are gone", async () => {
+    await setup();
+    const purchase = await post<any>("/purchases", { requestId: "local_return_purchase", supplierId: "supplier", purchaseDate: "2026-10-16T10:00:00Z", amountPaid: "23.60", paymentMethod: "BANK_TRANSFER", items: [{ productId: "product", quantity: "4", purchasePrice: "5.00" }] });
+    const bill = await post<any>(`/purchases/${purchase.id}/returns`, { requestId: "debit_1", items: [{ itemId: purchase.items[0].id, quantity: "2" }] });
+    expect(bill.returns[0]).toMatchObject({ documentNumber: expect.stringMatching(/^DN\//), total: "11.80", refundAmount: "11.80", refundMethod: "BANK_TRANSFER" });
+    expect(bill.returns[0].items[0]).toMatchObject({ purchaseItemId: purchase.items[0].id, quantity: "2" });
+    expect((await send<OfflineSnapshot>("/sync/snapshot")).inventory[0].quantity).toBe(12);
+    await post("/sales", { requestId: "local_sell_all", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "11", sellingPrice: "10.00" }] });
+    await expect(post(`/purchases/${purchase.id}/returns`, { requestId: "debit_2", items: [{ itemId: purchase.items[0].id, quantity: "2" }] })).rejects.toThrow("Not enough Product in stock to return: it has already been sold or used.");
+    const view = await send<OfflineSnapshot>("/sync/snapshot");
+    expect(view.inventory[0].quantity).toBe(1);
+    expect((view.purchases[0] as any).returns).toHaveLength(1);
+  });
 });

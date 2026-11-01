@@ -1,4 +1,4 @@
-import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
+import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, type DocumentSeries, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
 import { deleteOfflineState, readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
@@ -6,6 +6,7 @@ import type { OfflineSnapshot, LocalRecord } from "./offline-model";
 import type { AppSession, ApiUser, BusinessDetails, BusinessDetailsInput, SaleRecord, PurchaseRecord } from "./api";
 import { moneyValue } from "./transaction-accounting";
 import { applyLocalAdjustment, localProductStock } from "./local-stock";
+import { recordLocalReturn, type AllocatedNumber, type LocalBillContext } from "./local-bills";
 
 type LocalDatabase = {
   version: 1;
@@ -109,6 +110,24 @@ function updatedLocalBusiness(current: BusinessDetails, input: BusinessDetailsIn
   }
   return next;
 }
+
+/**
+ * The next number in a series for the date's financial year. The counter is
+ * written in the same storage write as the document, and a retried request
+ * returns before numbering, so numbers are consecutive like the server's.
+ */
+function allocateNumber(state: LocalDatabase, snapshot: OfflineSnapshot, series: DocumentSeries, date: string): AllocatedNumber {
+  const financialYear = financialYearOf(date);
+  const counterKey = `${snapshot.business.id}|${series}|${financialYear}`;
+  state.documentCounters ??= {};
+  const documentSeq = (state.documentCounters[counterKey] ?? 0) + 1;
+  state.documentCounters[counterKey] = documentSeq;
+  // Credit and debit notes always use CN and DN.
+  const prefixes = snapshot.business as { invoicePrefix?: string; purchasePrefix?: string };
+  const prefix = (series === "SALE" ? prefixes.invoicePrefix : series === "PURCHASE" ? prefixes.purchasePrefix : undefined) ?? DEFAULT_DOCUMENT_PREFIX[series];
+  return { documentNumber: formatDocumentNumber(prefix, financialYear, documentSeq), financialYear, documentSeq };
+}
+const billContext = (state: LocalDatabase, snapshot: OfflineSnapshot): LocalBillContext => ({ now: new Date().toISOString(), newId: randomUUID, allocate: (series, date) => allocateNumber(state, snapshot, series, date) });
 
 /** Device-only request handler. No fetch, credentials, cloud account or server is used. */
 export function localRequest<T>(
@@ -261,21 +280,12 @@ export function localRequest<T>(
             );
           // The device numbers its own bills. The counter is written in the same
           // storage write as the bill, and a retried request returned above.
-          const series = kind === "sale" ? "SALE" : "PURCHASE";
-          const financialYear = financialYearOf(kind === "sale" ? input.saleDate : input.purchaseDate);
-          const counterKey = `${snapshot.business.id}|${series}|${financialYear}`;
-          state.documentCounters ??= {};
-          const documentSeq = (state.documentCounters[counterKey] ?? 0) + 1;
-          state.documentCounters[counterKey] = documentSeq;
-          const prefixes = snapshot.business as { invoicePrefix?: string; purchasePrefix?: string };
-          const prefix = (kind === "sale" ? prefixes.invoicePrefix : prefixes.purchasePrefix) ?? DEFAULT_DOCUMENT_PREFIX[series];
           const record = {
             ...built.record,
             id: randomUUID(),
             syncState: undefined,
-            documentNumber: formatDocumentNumber(prefix, financialYear, documentSeq),
-            financialYear,
-            documentSeq,
+            status: "COMPLETED",
+            ...allocateNumber(state, snapshot, kind === "sale" ? "SALE" : "PURCHASE", kind === "sale" ? input.saleDate : input.purchaseDate),
           };
           if (kind === "sale") snapshot.sales.push(record as SaleRecord);
           else snapshot.purchases.push(record as PurchaseRecord);
@@ -341,6 +351,12 @@ export function localRequest<T>(
             collection === "sales" ? snapshot.sales : snapshot.purchases
           ).find((entry) => entry.id === id);
           if (!result) throw new Error("Transaction not found on this device.");
+        } else if (/^\/(sales|purchases)\/[^/]+\/returns$/.test(path) && method === "POST") {
+          const [, collection, id] = path.split("/");
+          // A retried return changes nothing, so it is not stored or journaled again.
+          const done = (collection === "sales" ? snapshot.sales : snapshot.purchases).find((record) => (record as { returns?: { requestId?: string }[] }).returns?.some((note) => note.requestId === input.requestId));
+          if (done?.id === decodeURIComponent(id)) return clone(done) as T;
+          result = recordLocalReturn(snapshot, collection === "sales" ? "sale" : "purchase", decodeURIComponent(id), input, billContext(state, snapshot));
         } else if (/^\/products\/[^/]+\/stock$/.test(path) && method === "GET") {
           result = localProductStock(snapshot, decodeURIComponent(path.split("/")[2]), new Date().toISOString());
         } else if (path === "/inventory/adjustments" && method === "POST") {

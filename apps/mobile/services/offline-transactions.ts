@@ -238,6 +238,8 @@ export function buildOfflineTransaction(
             optionName: option?.name,
             unitsPerOption: option?.quantity ?? "1",
             hsnCode: product.hsnCode || null,
+            // Stock the line takes, as the server keeps it (pieces for grouped products), for returns.
+            stockQuantity: (Math.round(stockQuantity * (product.piecesPerUnit ?? 1) * 1000) / 1000).toFixed(3),
           }
         : { purchasePrice: price }),
       gstRate: rate,

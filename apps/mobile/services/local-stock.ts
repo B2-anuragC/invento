@@ -2,14 +2,15 @@ import type { StockAdjustmentRequest } from '@invento/shared';
 
 import type { OfflineSnapshot } from './offline-model';
 
-// Stock adjustments for a shop kept only on this device, with the server's
-// rules and messages (InventoryService.applyMovement). Amounts are worked out
+// Stock movements for a shop kept only on this device (adjustments, returns,
+// bill edits), with the server's rules and messages (InventoryService.applyMovement). Amounts are worked out
 // in thousandths, or in whole pieces for a product kept in packs, boxes or
 // dozens, so they are exact like the server's decimals.
 
 const invalid = (message: string, status = 400) => Object.assign(new Error(message), { status });
 const QUANTITY_RULE = 'Inventory quantity must be finite, within range, and positive (zero is allowed for opening stock).';
-const inflow = new Set(['ADJUSTMENT_IN']);
+// The server's inflow types (inventory.movement-types.ts); everything else takes stock out.
+const inflow = new Set(['OPENING_STOCK', 'PURCHASE', 'RETURN_IN', 'ADJUSTMENT_IN']);
 const adjustmentTypes = new Set(['ADJUSTMENT_IN', 'ADJUSTMENT_OUT', 'DAMAGE', 'EXPIRED']);
 
 /** A quantity with up to three decimals in thousandths, or null when it is not one. */
@@ -23,13 +24,23 @@ const fromThousandths = (value: number) => `${Math.trunc(value / 1000)}${value %
 
 type LocalProduct = { id: string; unit: string; piecesPerUnit?: number | null };
 
+/** A stock movement on the device, in the product's unit or in pieces (`unit: 'PIECE'`) for a grouped product. */
+export type LocalMovementInput = { id: string; productId: string; type: string; quantity: string; unit?: string; note?: string | null; expectedQuantity?: string };
+
 /** Applies a stock adjustment to the device snapshot and returns the stock movement, as the server would. */
 export function applyLocalAdjustment(snapshot: OfflineSnapshot, input: StockAdjustmentRequest & { id: string }, now: string) {
+  if (!snapshot.products.some((record) => record.id === input.productId)) throw invalid('Product not found.', 404);
+  if (!adjustmentTypes.has(input.type)) throw invalid('Choose a valid adjustment type.', 422);
+  if (thousandths(input.quantity) === 0) throw invalid('Adjustment quantity must be greater than zero.');
+  return applyLocalMovement(snapshot, input, now);
+}
+
+/** Moves stock on the device snapshot and records the movement in its history. */
+export function applyLocalMovement(snapshot: OfflineSnapshot, input: LocalMovementInput, now: string) {
   const product = snapshot.products.find((record) => record.id === input.productId) as LocalProduct | undefined;
   if (!product) throw invalid('Product not found.', 404);
-  if (!adjustmentTypes.has(input.type)) throw invalid('Choose a valid adjustment type.', 422);
   const amount = thousandths(input.quantity);
-  if (amount === null || amount === 0) throw invalid(amount === 0 ? 'Adjustment quantity must be greater than zero.' : QUANTITY_RULE);
+  if (amount === null || amount === 0) throw invalid(QUANTITY_RULE);
   const size = product.piecesPerUnit || null;
   if (input.unit !== undefined && input.unit !== product.unit && !(input.unit === 'PIECE' && size)) throw invalid('Unsupported inventory movement unit for this product.');
   const stock = snapshot.inventory.find((record) => record.productId === product.id);

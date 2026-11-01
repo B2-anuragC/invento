@@ -123,7 +123,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   const returnedTotal = Number(data.returnedTotal ?? 0);
   const returnBill = (source: ReceiptData): ReturnBill => ({ id: source.id, kind: source.kind, status: source.status, syncState: source.syncState, total: source.total, netTotal: source.netTotal, returnedTotal: source.returnedTotal, amountPaid: source.amountPaid, returns: source.returns, items: source.items.map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, lineTotal: item.lineTotal, discountAmount: item.discountAmount, taxAmount: item.taxAmount, returnedQuantity: item.returnedQuantity })) });
   // Returns need a connection, like cancelling; a bill with returns can no longer be cancelled.
-  const mayReturn = !isDeviceOnly(appSession.current) && canReturnBill(returnBill(data), can(data.kind === 'sale' ? 'sales.return' : 'purchases.return'));
+  const mayReturn = canReturnBill(returnBill(data), can(data.kind === 'sale' ? 'sales.return' : 'purchases.return'));
   const mayCancel = can(data.kind === 'sale' ? 'sales.cancel' : 'purchases.cancel') && !data.syncState && !cancelled && !isDeviceOnly(appSession.current) && !notes.length && !(returnedTotal > 0);
   // Editing items needs a connection; purchases also need cost prices to be visible.
   const mayEdit = !isDeviceOnly(appSession.current) && canEditBill({ id: data.id, status: data.status, syncState: data.syncState, total: data.total, returnedTotal: data.returnedTotal, returns: data.returns }, can(data.kind === 'sale' ? 'sales.edit' : 'purchases.edit') && (data.kind === 'sale' || can('pricing.view')));
