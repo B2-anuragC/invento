@@ -482,10 +482,11 @@ td button {
   align-items: center;
   justify-content: flex-end;
   gap: 9px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--muted);
 }
-.pagination span {
+.pagination > span:first-child {
   margin-right: auto;
 }
 .pagination select {

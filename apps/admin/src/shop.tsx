@@ -12,7 +12,8 @@ import { codeName, formatCell, quantity, unitName } from "./format";
 import { billRow, partyBalances, partyBalanceText, type DetailBill } from "./bill-details";
 import { BillView, PartyView } from "./record-details";
 import { AccessManagement } from "./access-management";
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
+import { PAGE_SIZES, pageOf, pageSummary, searchRows } from "./table-view";
 import { api, type PanelAccess } from "./api";
 import { changedFields, istDateInput } from "./transaction-edit";
 import {
@@ -224,8 +225,34 @@ function Records({
   view?: (row: Row) => void;
 }) {
   const actions = !!(edit || view);
+  const searchId = useId();
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+  const found = searchRows(rows, keys, query, formatCell);
+  const shown = pageOf(found, page, pageSize);
   return (
     <section className="panel">
+      {(rows.length > 0 || query) && (
+        <div className="table-tools">
+          <form role="search" onSubmit={(e) => e.preventDefault()}>
+            <label className="sr-only" htmlFor={searchId}>
+              Search this table
+            </label>
+            <input
+              id={searchId}
+              type="search"
+              placeholder="Search…"
+              value={query}
+              maxLength={100}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+            />
+          </form>
+        </div>
+      )}
       <div className="table-scroll">
         <table>
           <thead>
@@ -237,7 +264,7 @@ function Records({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {shown.rows.map((row, i) => (
               <tr key={String(row.id ?? i)}>
                 {keys.map((k) => (
                   <td key={k}>
@@ -273,6 +300,37 @@ function Records({
         </table>
       </div>
       {!rows.length && <p className="notice">No records yet.</p>}
+      {rows.length > 0 && !found.length && <p className="notice">Nothing matches “{query.trim()}”.</p>}
+      {found.length > 0 && (
+        <footer className="pagination">
+          <span role="status">{pageSummary(shown, !!query.trim())}</span>
+          {rows.length > PAGE_SIZES[0] && (
+            <>
+              <select
+                aria-label="Rows per page"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                {PAGE_SIZES.map((size) => (
+                  <option key={size}>{size}</option>
+                ))}
+              </select>
+              <button disabled={shown.page === 1} onClick={() => setPage(shown.page - 1)}>
+                Previous
+              </button>
+              <span className="page-number">
+                Page {shown.page} of {shown.pages}
+              </span>
+              <button disabled={shown.page === shown.pages} onClick={() => setPage(shown.page + 1)}>
+                Next
+              </button>
+            </>
+          )}
+        </footer>
+      )}
     </section>
   );
 }
