@@ -6,6 +6,7 @@ import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo
 import { normalizeHsnCode, sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { addedProductNotice, openingStockError, sendAddedProduct } from '@/services/new-product';
 import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
 import {
   ActivityIndicator,
@@ -52,7 +53,7 @@ function decimalValue(value: string, precision: number) {
 export default function ProductDetailsScreen() {
   const router = useRouter();
   const { can } = usePermissions();
-  const { id, created } = useLocalSearchParams<{ id: string; created?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === 'new';
   const [product, setProduct] = useState<ProductRecord | null>(null);
   const [inventory, setInventory] = useState<InventoryRecord | null>(null);
@@ -81,13 +82,13 @@ export default function ProductDetailsScreen() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
+  const [notice, setNotice] = useState('');
   const navigation = useNavigation();
   const [leaveAction, setLeaveAction] = useState<Parameters<typeof navigation.dispatch>[0] | null>(null);
   const leavingAfterSave = useRef(false);
 
   // Unsaved changes: compare the editable fields with the snapshot taken when editing began.
-  const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, hsnCode, minimumStock });
+  const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, hsnCode, minimumStock, openingStock });
   const baselineForm = useRef<string | undefined>(isNew ? currentForm : undefined);
   useEffect(() => {
     if (!editing) baselineForm.current = currentForm;
@@ -164,7 +165,7 @@ export default function ProductDetailsScreen() {
         setInventory(stockData);
         setTransactions(transactionData);
         setEditing(false);
-        setNotice(created === '1' ? 'Product added. Record its opening stock to enable sales and purchases.' : '');
+        setNotice('');
         fillForm(productData);
       })
       .catch((loadError: unknown) => {
@@ -175,7 +176,7 @@ export default function ProductDetailsScreen() {
       });
 
     return () => { active = false; };
-  }, [created, id, isNew, router]);
+  }, [id, isNew, router]);
 
   const saveProduct = async () => {
     const session = appSession.current;
@@ -207,6 +208,9 @@ export default function ProductDetailsScreen() {
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
     const hsnError = hsnCodeError(hsnCode);
     if (hsnError) { setError(hsnError); return; }
+    const recordStock = isNew && openingStock !== '' && can('inventory.adjust');
+    const openingError = recordStock ? openingStockError(openingStock, unit, ['BOX', 'PACK'].includes(unit) ? Number(piecesPerUnit) || null : null) : '';
+    if (openingError) { setError(openingError); return; }
     const input: ProductInput = {
       ...photo,
       gstRate,
@@ -229,8 +233,20 @@ export default function ProductDetailsScreen() {
     try {
       if (isNew) {
         const createdProduct = await createProduct(session, input);
+        // Opening stock is a separate ledger entry; if it fails the product still exists and can get it later.
+        let opening: { quantity: string; error?: string } | null = null;
+        if (recordStock) {
+          try {
+            await recordOpeningStock(session, createdProduct.id, openingStock);
+            opening = { quantity: openingStock };
+          } catch (stockError) {
+            opening = { quantity: openingStock, error: stockError instanceof Error ? stockError.message : 'Could not record opening stock.' };
+          }
+        }
+        sendAddedProduct({ id: createdProduct.id, name: createdProduct.name, notice: addedProductNotice(createdProduct.name, createdProduct.unit, opening, can('inventory.adjust')) });
         leavingAfterSave.current = true;
-        router.replace(`/product/${createdProduct.id}?created=1`);
+        if (router.canGoBack()) router.back();
+        else router.replace('/products');
       } else {
         const updated = await updateProduct(session, id, input);
         setProduct(updated);
@@ -502,6 +518,26 @@ export default function ProductDetailsScreen() {
               placeholderTextColor="#9CA3AF"
               keyboardType="decimal-pad"
             />
+            {isNew && can('inventory.adjust') ? (
+              <>
+                <Text style={styles.label}>Opening stock (optional)</Text>
+                <TextInput
+                  accessibilityLabel="Opening stock"
+                  value={openingStock}
+                  onChangeText={(value) => {
+                    if (quantityPattern.test(value)) {
+                      setOpeningStock(value);
+                    }
+                    clearErrorOnEdit();
+                  }}
+                  style={styles.input}
+                  placeholder={`Quantity in ${formatUnitLabel(unit)}`}
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.helperText}>Recorded as the first stock entry when the product is created. You can also add it later.</Text>
+              </>
+            ) : null}
 
             </View>
             <FormError message={error} />

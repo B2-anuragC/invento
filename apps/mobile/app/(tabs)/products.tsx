@@ -6,7 +6,8 @@ import { StoredImage } from '@/components/stored-image';
 import { fileSource } from '@/services/file-storage';
 import { ListingLayout, type ListingView } from '@/components/listing-layout';
 import { ProductThumbnail } from '@/components/product-photo';
-import { productInitials, readCatalogView, saveCatalogView, stockBadge } from '@/services/catalog-view';
+import { placeFirst, productInitials, readCatalogView, saveCatalogView, stockBadge } from '@/services/catalog-view';
+import { receiveAddedProduct } from '@/services/new-product';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -32,6 +33,7 @@ export default function ProductsScreen() {
   const resetFilters = () => { setCategory('All'); setStockFilter('all'); setUnitFilter('All'); setStatus('ACTIVE'); setSortByPrice(false); setSection('frequent'); };
   const [listingView, setListingView] = useState<ListingView>('list');
   const isGrid = listingView === 'grid';
+  const [added, setAdded] = useState<{ id: string; notice: string } | null>(null);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [products, setProducts] = useState<ProductRecord[]>([]);
@@ -57,6 +59,18 @@ export default function ProductsScreen() {
     const session = appSession.current;
     if (session) void saveCatalogView(session, view).catch(() => undefined);
   };
+
+  // A product created from the catalog comes back here: say so, and show it first with nothing hiding it.
+  useFocusEffect(
+    useCallback(() => {
+      const product = receiveAddedProduct();
+      if (product) {
+        setAdded({ id: product.id, notice: product.notice });
+        setSearch(''); setCategory('All'); setStockFilter('all'); setUnitFilter('All'); setStatus('ACTIVE'); setSortByPrice(false); setSection('frequent');
+      }
+      return () => setAdded(null);
+    }, []),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -138,13 +152,13 @@ export default function ProductsScreen() {
         (section !== 'favorites' || favorites[item.id]);
     });
 
-    return result.sort((left, right) => {
+    return placeFirst(result.sort((left, right) => {
       if (sortByPrice) return Number(left.sellingPrice) - Number(right.sellingPrice);
       if (section === 'frequent') return (salesFrequency[right.id] ?? 0) - (salesFrequency[left.id] ?? 0) || left.name.localeCompare(right.name);
       if (section === 'recent') return right.updatedAt.localeCompare(left.updatedAt);
       return left.name.localeCompare(right.name);
-    });
-  }, [category, favorites, inventory, products, salesFrequency, search, section, sortByPrice, stockFilter, unitFilter]);
+    }), added?.id ?? null);
+  }, [added, category, favorites, inventory, products, salesFrequency, search, section, sortByPrice, stockFilter, unitFilter]);
 
   const lowStockCount = products.filter((product) => {
     const quantity = Number(inventory[product.id]?.quantity ?? 0);
@@ -187,6 +201,13 @@ export default function ProductsScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel={isGrid ? 'Show list view' : 'Show tile view'} onPress={() => changeView(isGrid ? 'list' : 'grid')} style={styles.viewButton}><Ionicons name={isGrid ? 'list-outline' : 'grid-outline'} size={21} color="#176B50" /></Pressable>
         </View>
 
+        {added ? (
+          <View accessibilityRole="alert" style={styles.addedNotice}>
+            <Ionicons name="checkmark-circle" size={20} color="#0F766E" />
+            <Text style={styles.addedNoticeText}>{added.notice}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notice" onPress={() => setAdded(null)} style={styles.clearButton}><Ionicons name="close" size={18} color="#0F766E" /></Pressable>
+          </View>
+        ) : null}
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.stateMessage} /> : null}
         {!loading && error ? <Text style={styles.errorMessage}>{error}</Text> : null}
         {salesError ? <Text style={styles.activityMessage}>{salesError}</Text> : null}
@@ -203,6 +224,7 @@ export default function ProductsScreen() {
         {!loading && !error ? <ListingLayout view={listingView} maxColumns={2}>{filteredProducts.map((product) => {
           const quantity = Number(inventory[product.id]?.quantity ?? 0);
           const low = quantity < Number(product.minimumStock);
+          const isAdded = product.id === added?.id;
           const open = () => router.push(`/product/${product.id}`);
           const favoriteButton = (
             <Pressable
@@ -221,10 +243,11 @@ export default function ProductsScreen() {
           if (isGrid) {
             const badge = stockBadge(quantity, Number(product.minimumStock));
             return (
-              <View key={product.id} style={styles.tile}>
+              <View key={product.id} style={[styles.tile, isAdded && styles.addedCard]}>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${product.name}, ${formatMoney(Number(product.sellingPrice))} per ${formatUnitLabel(product.unit)}, ${badge.label}`} onPress={open}>
                   <View style={styles.tilePhoto}>
                     {product.imageThumbnail ? <StoredImage accessibilityLabel={product.name} source={fileSource(product.imageThumbnail)} style={styles.tileImage} resizeMode="cover" /> : <Text style={styles.tileInitials}>{productInitials(product.name)}</Text>}
+                    {isAdded ? <Text style={styles.newTag}>New</Text> : null}
                   </View>
                   <View style={styles.tileBody}>
                     <Text numberOfLines={2} style={styles.tileName}>{product.name}</Text>
@@ -240,13 +263,13 @@ export default function ProductsScreen() {
             );
           }
           return (
-            <View key={product.id} style={styles.productCard}>
+            <View key={product.id} style={[styles.productCard, isAdded && styles.addedCard]}>
               <View style={styles.cardTop}>
                 <Pressable style={styles.productMain} onPress={open}>
                   <View style={styles.productIcon}>{product.imageThumbnail ? <ProductThumbnail uri={product.imageThumbnail} size={44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
                   <View style={styles.productTitleWrap}>
                     <Text numberOfLines={1} style={styles.productName}>{product.name}</Text>
-                    <Text numberOfLines={1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text>
+                    <Text numberOfLines={1} style={styles.productMeta}>{isAdded ? 'New · ' : ''}{product.category || 'Uncategorized'} · {product.sku}</Text>
                   </View>
                 </Pressable>
                 {favoriteButton}
@@ -357,6 +380,10 @@ const styles = StyleSheet.create({
   badge_available: { color: '#0F6B4C', backgroundColor: '#E2F3EA' },
   badge_low: { color: '#96621B', backgroundColor: '#FBF0DC' },
   badge_out: { color: '#A74737', backgroundColor: '#F6E9E6' },
+  newTag: { position: 'absolute', top: 8, left: 8, overflow: 'hidden', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#176B50', color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  addedCard: { borderColor: '#1F9D68', borderWidth: 2 },
+  addedNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#E9F9F1', borderRadius: 12, paddingLeft: 12, marginBottom: 10 },
+  addedNoticeText: { flex: 1, color: '#0F766E', fontSize: 13, lineHeight: 19, paddingVertical: 10 },
 
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 16, backgroundColor: '#FFFFFF' },
