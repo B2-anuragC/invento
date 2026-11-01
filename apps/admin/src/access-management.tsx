@@ -1,5 +1,14 @@
 import React, { useState } from "react";
 import {
+  type AccessConfirmation,
+  addMemberConfirmation,
+  assignableRoles,
+  membershipStatusConfirmation,
+  ROLE_DESCRIPTIONS,
+  roleChangeConfirmation,
+  roleDeletion,
+  roleDescription,
+  roleName,
   type EffectiveAccess,
   type BusinessRoleRecord,
   type MembershipRecord,
@@ -7,7 +16,15 @@ import {
   PERMISSIONS,
 } from "@invento/shared";
 import { api } from "./api";
-import { useLoad, Notice } from "./components";
+import { useLoad, Notice, ConfirmDialog } from "./components";
+
+type Pending = {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  run?: () => void;
+};
 
 export function AccessManagement({
   id,
@@ -20,9 +37,14 @@ export function AccessManagement({
 }) {
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<BusinessRoleRecord | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  // Role chosen in a member's picker but not saved yet, by user id.
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [newRole, setNewRole] = useState("");
+  const [pending, setPending] = useState<Pending | null>(null);
   const base = `/businesses/${encodeURIComponent(id)}/access`;
   const can = (p: Permission) => access.permissions.includes(p);
   const roles = useLoad<BusinessRoleRecord[]>(
@@ -33,22 +55,31 @@ export function AccessManagement({
     `${base}/${can("members.view") ? "members" : "me"}`,
     revision,
   );
+  const roleList = Array.isArray(roles.data) ? roles.data : [];
+  const memberList = Array.isArray(members.data) ? members.data : null;
+  const choices = assignableRoles(roleList, access);
+  const chosenNewRole = choices.some((r) => r.key === newRole)
+    ? newRole
+    : (choices.find((r) => r.key === "VIEWER") ?? choices[0])?.key ?? "";
   const canManageMember = (member: MembershipRecord) => {
     if (
       member.user.id === access.userId ||
       (member.role === "OWNER" && access.role !== "OWNER")
     )
       return false;
-    return (
-      Array.isArray(roles.data) &&
-      !!roles.data.find(
-        (role) =>
-          role.key === member.role && role.permissions.every((p) => can(p)),
-      )
+    return !!roleList.find(
+      (role) =>
+        role.key === member.role && role.permissions.every((p) => can(p)),
     );
   };
-  async function write(path: string, method: string, data?: unknown) {
+  async function write(
+    path: string,
+    method: string,
+    data?: unknown,
+    done?: string,
+  ) {
     setError("");
+    setMessage("");
     setBusy(true);
     try {
       await api(`${base}${path}`, {
@@ -56,32 +87,60 @@ export function AccessManagement({
         ...(data ? { body: JSON.stringify(data) } : {}),
       });
       setEditing(null);
+      setPicked({});
       setRevision((v) => v + 1);
+      if (done) setMessage(done);
       refreshAccess();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
+  // Runs the change at once, or after the person confirms it.
+  function confirmFirst(confirmation: AccessConfirmation | null, run: () => void) {
+    if (confirmation) setPending({ ...confirmation, run });
+    else run();
+  }
+  const memberPath = (m: MembershipRecord) =>
+    `/members/${encodeURIComponent(m.user.id)}`;
   return (
     <>
       <h2>Users, roles and permissions</h2>
       <p className="muted">
         Changes apply to the same account on web and mobile. Your role:{" "}
-        {access.role}.
+        {roleName(roleList, access.role)}.
       </p>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
+      {message && (
+        <p role="status" className="notice">
+          {message}
+        </p>
+      )}
+      {pending && (
+        <ConfirmDialog
+          {...pending}
+          onClose={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            pending.run?.();
+          }}
+        />
+      )}
       {can("members.view") && (
         <section className="panel access-panel">
           <h2>Shop memberships</h2>
           <Notice {...members} />
-          {Array.isArray(members.data) &&
-            members.data.map((m) => (
+          {memberList?.map((m) => {
+            const choice = picked[m.user.id] ?? m.role;
+            const choiceRole = roleList.find((r) => r.key === choice);
+            return (
               <div key={m.id} className="access-member">
                 <div>
                   <strong>{m.user.name}</strong>
@@ -90,47 +149,79 @@ export function AccessManagement({
                     {!m.user.isActive ? " · Account suspended" : ""}
                   </p>
                 </div>
-                {canManageMember(m) &&
-                can("members.update") &&
-                Array.isArray(roles.data) ? (
-                  <select
-                    aria-label={`Role for ${m.user.name}`}
-                    disabled={busy}
-                    value={m.role}
-                    onChange={(e) =>
-                      void write(
-                        `/members/${encodeURIComponent(m.user.id)}`,
-                        "PATCH",
-                        { role: e.target.value },
-                      )
-                    }
-                  >
-                    {roles.data
-                      .filter(
-                        (r) =>
-                          (r.key !== "OWNER" || access.role === "OWNER") &&
-                          r.permissions.every((p) => can(p)),
-                      )
-                      .map((r) => (
+                {canManageMember(m) && can("members.update") && roleList.length ? (
+                  <div className="role-picker">
+                    <select
+                      aria-label={`Role for ${m.user.name}`}
+                      aria-describedby={`role-help-${m.id}`}
+                      disabled={busy}
+                      value={choice}
+                      onChange={(e) =>
+                        setPicked({ ...picked, [m.user.id]: e.target.value })
+                      }
+                    >
+                      {choices.map((r) => (
                         <option key={r.key} value={r.key}>
                           {r.name}
+                          {r.key === m.role ? " (current)" : ""}
                         </option>
                       ))}
-                  </select>
+                    </select>
+                    <small id={`role-help-${m.id}`} className="muted">
+                      {choiceRole ? roleDescription(choiceRole) : ""}
+                    </small>
+                    {choice !== m.role && (
+                      <span className="actions">
+                        <button
+                          className="primary"
+                          disabled={busy}
+                          onClick={() =>
+                            confirmFirst(
+                              roleChangeConfirmation(m, choice, roleList),
+                              () =>
+                                void write(
+                                  memberPath(m),
+                                  "PATCH",
+                                  { role: choice },
+                                  `${m.user.name} is now ${roleName(roleList, choice)}.`,
+                                ),
+                            )
+                          }
+                        >
+                          Change role
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            const rest = { ...picked };
+                            delete rest[m.user.id];
+                            setPicked(rest);
+                          }}
+                        >
+                          Keep {roleName(roleList, m.role)}
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 ) : (
-                  <span>{m.role}</span>
+                  <span>{roleName(roleList, m.role)}</span>
                 )}
                 {m.user.id !== access.userId &&
                   (m.role !== "OWNER" || access.role === "OWNER") &&
                   can("members.update") &&
                   (!m.isActive || can("members.remove")) && (
                     <button
+                      className={m.isActive ? "danger" : ""}
+                      aria-label={`${m.isActive ? "Deactivate" : "Reactivate"} membership of ${m.user.name}`}
                       disabled={busy || (!m.isActive && !m.user.isActive)}
                       onClick={() =>
-                        void write(
-                          `/members/${encodeURIComponent(m.user.id)}`,
-                          "PATCH",
-                          { isActive: !m.isActive },
+                        confirmFirst(membershipStatusConfirmation(m), () =>
+                          void write(
+                            memberPath(m),
+                            "PATCH",
+                            { isActive: !m.isActive },
+                            `${m.user.name}'s membership is ${m.isActive ? "deactivated" : "active again"}.`,
+                          ),
                         )
                       }
                     >
@@ -140,7 +231,8 @@ export function AccessManagement({
                     </button>
                   )}
               </div>
-            ))}
+            );
+          })}
         </section>
       )}
       {can("members.invite") && can("roles.view") && (
@@ -148,11 +240,16 @@ export function AccessManagement({
           className="panel access-panel shop-fields"
           onSubmit={(e) => {
             e.preventDefault();
-            const d = new FormData(e.currentTarget);
-            void write("/members", "POST", {
-              email: d.get("email"),
-              role: d.get("role"),
-            });
+            const email = String(new FormData(e.currentTarget).get("email") ?? "");
+            const form = e.currentTarget;
+            confirmFirst(addMemberConfirmation(email, chosenNewRole), () =>
+              void write(
+                "/members",
+                "POST",
+                { email, role: chosenNewRole },
+                `${email.trim()} was added as ${roleName(roleList, chosenNewRole)}.`,
+              ).then((saved) => saved && form.reset()),
+            );
           }}
         >
           <h2>Add existing account</h2>
@@ -162,37 +259,41 @@ export function AccessManagement({
           </label>
           <label>
             Role
-            <select name="role">
-              {Array.isArray(roles.data) &&
-                roles.data
-                  .filter(
-                    (r) =>
-                      (r.key !== "OWNER" || access.role === "OWNER") &&
-                      r.permissions.every((p) => can(p)),
-                  )
-                  .map((r) => (
-                    <option key={r.key} value={r.key}>
-                      {r.name}
-                    </option>
-                  ))}
+            <select
+              name="role"
+              aria-describedby="new-member-role-help"
+              value={chosenNewRole}
+              onChange={(e) => setNewRole(e.target.value)}
+            >
+              {choices.map((r) => (
+                <option key={r.key} value={r.key}>
+                  {r.name}
+                </option>
+              ))}
             </select>
+            <small id="new-member-role-help" className="muted">
+              {(() => {
+                const role = roleList.find((r) => r.key === chosenNewRole);
+                return role ? roleDescription(role) : "";
+              })()}
+            </small>
           </label>
-          <button disabled={busy || !Array.isArray(roles.data)}>
-            Add to shop
-          </button>
+          <button disabled={busy || !roleList.length}>Add to shop</button>
         </form>
       )}
       {can("roles.view") && (
         <section className="panel access-panel">
           <h2>Business roles</h2>
           <Notice {...roles} />
-          {Array.isArray(roles.data) &&
-            roles.data.map((r) => (
+          {roleList.map((r) => (
               <div key={r.key} className="access-member">
                 <div>
                   <strong>{r.name}</strong>
                   <p>
-                    {r.permissions.length} permissions · {r.key}
+                    {roleDescription(r)}
+                    {ROLE_DESCRIPTIONS[r.key]
+                      ? ` · ${r.permissions.length} permissions`
+                      : ""}
                   </p>
                 </div>
                 {can("roles.manage") &&
@@ -201,6 +302,7 @@ export function AccessManagement({
                     <>
                       <button
                         disabled={busy}
+                        aria-label={`Configure the ${r.name} role`}
                         onClick={() => {
                           setEditing(r);
                           setPermissions([...r.permissions]);
@@ -209,20 +311,33 @@ export function AccessManagement({
                         Configure
                       </button>
                       <button
+                        className="danger"
                         disabled={busy}
-                        onClick={() =>
-                          void write(
-                            `/roles/${encodeURIComponent(r.key)}`,
-                            "DELETE",
-                          )
-                        }
+                        aria-label={`Delete the ${r.name} role`}
+                        onClick={() => {
+                          const check = roleDeletion(r, memberList);
+                          if ("blocked" in check)
+                            setPending({
+                              title: `The ${r.name} role is still in use`,
+                              message: check.blocked,
+                            });
+                          else
+                            confirmFirst(check.confirm, () =>
+                              void write(
+                                `/roles/${encodeURIComponent(r.key)}`,
+                                "DELETE",
+                                undefined,
+                                `The ${r.name} role was deleted.`,
+                              ),
+                            );
+                        }}
                       >
                         Delete role
                       </button>
                     </>
                   )}
               </div>
-            ))}
+          ))}
           {can("roles.manage") && (
             <button
               onClick={() => {

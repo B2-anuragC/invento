@@ -344,3 +344,57 @@ export function Manage({
     </>
   );
 }
+
+/**
+ * Asks before an access change that is hard to take back. Without
+ * `confirmLabel` it only explains why something cannot be done.
+ */
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  danger,
+  onConfirm,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm?: () => void;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby="confirm-title"
+      aria-describedby="confirm-message"
+      className="modal"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
+      <h2 id="confirm-title">{title}</h2>
+      <p id="confirm-message">{message}</p>
+      <div className="actions">
+        <button type="button" autoFocus onClick={onClose}>
+          {confirmLabel ? "Cancel" : "Close"}
+        </button>
+        {confirmLabel && onConfirm && (
+          <button
+            type="button"
+            className={danger ? "danger" : "primary"}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        )}
+      </div>
+    </dialog>
+  );
+}

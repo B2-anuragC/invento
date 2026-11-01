@@ -736,6 +736,21 @@ details.panel > .panel {
   width: auto;
   max-width: 220px;
 }
+.role-picker {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+}
+.role-picker .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shop-fields label small {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+}
 .access-panel.shop-fields {
   align-items: end;
 }
