@@ -4,6 +4,7 @@ import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from '@
 import { TransactionFinanceFields, type DiscountMode } from '@/components/transaction-finance-fields';
 import { saleDiscountInput, transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
+import { discardBillDialog } from '@/services/unsaved-changes';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
 import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
@@ -414,7 +415,7 @@ export default function CreateSaleScreen() {
               <Text style={styles.title}>{step === 3 ? 'Review sale' : repeatSaleId ? 'Repeat sale' : 'New sale'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · SELL PRICES'}</Text>
             </View>
-            <Pressable accessibilityLabel="Sale options" onPress={() => setLeaveConfirm(true)} style={styles.moreButton}><Text style={styles.moreText}>•••</Text></Pressable>
+            {hasChanges ? <Pressable accessibilityRole="button" accessibilityLabel="Discard sale" disabled={saving} onPress={() => { if (!submitting.current) setLeaveConfirm(true); }} style={styles.discardButton}><Text style={styles.discardText}>Discard</Text></Pressable> : <View style={styles.discardButton} />}
           </View>
           <View style={styles.steps}>
             {(['Items & quantities', 'Review'] as const).map((label, index) => {
@@ -639,10 +640,7 @@ export default function CreateSaleScreen() {
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}
-          title="Leave this sale?"
-          message="Your selected customer and items will be discarded."
-          confirmLabel="Leave sale"
-          cancelLabel="Keep editing"
+          {...discardBillDialog('sale', { contactName: selectedCustomer?.name, itemCount: saleItems.length, hasFile: Boolean(referenceImage) })}
           onCancel={() => setLeaveConfirm(false)}
           onConfirm={() => { discardDraftWrites.current = true; if (appSession.current) void clearDraft(appSession.current, 'sale'); setLeaveConfirm(false); router.back(); }}
         />
@@ -672,8 +670,8 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },
-  moreButton: { width: 34, alignItems: 'flex-end', paddingVertical: 8 },
-  moreText: { color: '#24332A', fontSize: 17, fontWeight: '800' },
+  discardButton: { minWidth: 64, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  discardText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
   steps: { minHeight: 59, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
   step: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },

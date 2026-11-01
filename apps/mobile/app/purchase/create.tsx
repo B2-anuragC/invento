@@ -6,6 +6,7 @@ import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
+import { discardBillDialog } from '@/services/unsaved-changes';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { ApiError } from '@/services/api';
 import { TransactionReceipt, type ReceiptData } from '@/components/transaction-receipt';
@@ -16,9 +17,9 @@ import { transactionSaveLabel } from '@/services/save-label';
 import { receiveMeasurement } from '@/services/measurement-handoff';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { AppScreen, appColors, formatUnitLabel } from '@/components/invento-ui';
+import { AppScreen, ConfirmationDialog, appColors, formatUnitLabel } from '@/components/invento-ui';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import {
   appSession, type FileAttachment,
@@ -72,6 +73,7 @@ export default function CreatePurchaseScreen() {
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [error, setError] = useState('');
   const [receiptVisible, setReceiptVisible] = useState(false);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [saveOutcome, setSaveOutcome] = useState<'rejected' | 'unknown' | null>(null);
   const submitting = useRef(false);
@@ -154,6 +156,17 @@ export default function CreatePurchaseScreen() {
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
   const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
   const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
+  const hasChanges = Boolean(supplierId || attachment) || purchaseItems.length > 0;
+
+  // Leaving a purchase with unsaved items asks first, as the sale screen does.
+  useEffect(() => {
+    if (!hasChanges || receiptVisible || Platform.OS === 'web') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!submitting.current) setLeaveConfirm(true);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [hasChanges, receiptVisible]);
   const linesValid = purchaseItems.every((item) => supplierOffersProduct(selectedSupplier, item.product) && item.quantity > 0 && item.price > 0 &&
     !(item.product.unit === 'PIECE' && !Number.isInteger(item.quantity)));
 
@@ -309,6 +322,7 @@ export default function CreatePurchaseScreen() {
   const goBack = () => {
     if (submitting.current) return;
     if (step > 1) setStep(step === 3 ? 2 : 1);
+    else if (hasChanges) setLeaveConfirm(true);
     else router.back();
   };
 
@@ -331,7 +345,7 @@ export default function CreatePurchaseScreen() {
               <Text style={styles.title}>{step === 3 ? 'Review purchase' : 'New purchase'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · BUY PRICES'}</Text>
             </View>
-            <Text style={styles.moreText}>•••</Text>
+            {hasChanges ? <Pressable accessibilityRole="button" accessibilityLabel="Discard purchase" disabled={saving} onPress={() => { if (!submitting.current) setLeaveConfirm(true); }} style={styles.discardButton}><Text style={styles.discardText}>Discard</Text></Pressable> : <View style={styles.discardButton} />}
           </View>
           <View style={styles.steps}>
             {(['Products', 'Quantity', 'Review'] as const).map((label, index) => {
@@ -528,6 +542,12 @@ export default function CreatePurchaseScreen() {
         <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
           {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setPurchaseDay(dateKey(new Date())); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
+        <ConfirmationDialog
+          visible={leaveConfirm}
+          {...discardBillDialog('purchase', { contactName: selectedSupplier?.name, itemCount: purchaseItems.length, hasFile: Boolean(attachment) })}
+          onCancel={() => setLeaveConfirm(false)}
+          onConfirm={() => { discardDraftWrites.current = true; if (appSession.current) void clearDraft(appSession.current, 'purchase'); setLeaveConfirm(false); router.back(); }}
+        />
       </View>
     </AppScreen>
   );
@@ -543,7 +563,8 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },
-  moreText: { color: '#24332A', fontSize: 17, fontWeight: '800' },
+  discardButton: { minWidth: 64, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  discardText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
   steps: { minHeight: 59, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingHorizontal: 9 },
   step: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   stepNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F0F0F0', alignItems: 'center', justifyContent: 'center' },

@@ -75,7 +75,7 @@ Decisions agreed on 31 October 2026:
 
 | # | Change | Status |
 |---|---|---|
-| F1 | No "•••" button that only discards: new sale and new purchase get a labelled Discard action with a confirmation | |
+| F1 | No "•••" button that only discards: new sale and new purchase get a labelled Discard action with a confirmation | Done |
 | F2 | Creating a product returns to the catalog list (opening stock can be entered in the create form) | |
 | F3 | Catalog tile view: photo tiles, two per row, replacing the grid (list view stays) | |
 | F4 | Stock adjustment: counted quantity, add or remove stock with a reason (count correction, damage, expiry, other); phone Inventory and admin; covers step 20 | |
