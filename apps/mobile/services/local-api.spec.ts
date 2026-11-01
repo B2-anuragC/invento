@@ -208,3 +208,13 @@ it("deletes everything on the device and returns the businesses it held", async 
   expect(await send("/businesses")).toEqual([]);
   expect(await api.guestJournal(id)).toEqual([]);
 });
+it("adjusts stock on the device and journals the adjustment", async () => {
+  await setup();
+  expect(await send<any>("/products/product/stock")).toMatchObject({ productId: "product", quantity: "10" });
+  const movement = await send<any>("/inventory/adjustments", { productId: "product", type: "DAMAGE", quantity: "2", note: "Cracked" });
+  expect(movement).toMatchObject({ type: "DAMAGE", quantity: -2, balanceAfter: 8, note: "Cracked" });
+  const view = await send<OfflineSnapshot>("/sync/snapshot");
+  expect(view.inventory[0].quantity).toBe(8);
+  expect(view.inventoryActivity[0]).toMatchObject({ type: "DAMAGE", note: "Cracked" });
+  expect((await api.guestJournal(session.businessId)).at(-1)).toMatchObject({ method: "POST", path: "/inventory/adjustments", body: { type: "DAMAGE", quantity: "2" } });
+});

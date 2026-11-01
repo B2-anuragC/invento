@@ -5,6 +5,7 @@ import { buildOfflineTransaction } from "./offline-transactions";
 import type { OfflineSnapshot, LocalRecord } from "./offline-model";
 import type { AppSession, ApiUser, BusinessDetails, BusinessDetailsInput, SaleRecord, PurchaseRecord } from "./api";
 import { moneyValue } from "./transaction-accounting";
+import { applyLocalAdjustment, localProductStock } from "./local-stock";
 
 type LocalDatabase = {
   version: 1;
@@ -340,6 +341,10 @@ export function localRequest<T>(
             collection === "sales" ? snapshot.sales : snapshot.purchases
           ).find((entry) => entry.id === id);
           if (!result) throw new Error("Transaction not found on this device.");
+        } else if (/^\/products\/[^/]+\/stock$/.test(path) && method === "GET") {
+          result = localProductStock(snapshot, decodeURIComponent(path.split("/")[2]), new Date().toISOString());
+        } else if (path === "/inventory/adjustments" && method === "POST") {
+          result = applyLocalAdjustment(snapshot, { ...input, id: randomUUID() }, new Date().toISOString());
         } else if (path.endsWith("/pricing-access")) {
           if (method === "PATCH")
             snapshot.access.membersCanViewPurchasePrice = Boolean(
