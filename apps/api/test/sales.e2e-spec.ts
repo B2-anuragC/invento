@@ -966,6 +966,35 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(listed.returns.map((note: any) => [note.documentNumber, note.total])).toEqual([[returned.returns[0].documentNumber, '118'], [second.returns[1].documentNumber, '23.6']]);
   });
 
+  it('lets only owners and admins record returns, and only on their own shop\'s bills', async () => {
+    const supplier = (await api('post', '/suppliers').send({ name: 'Return access supplier' }).expect(201)).body.data;
+    const sale = (await api('post', '/sales').send({ ...input(), items: [{ productId: products[0], quantity: '2', sellingPrice: '10' }] }).expect(201)).body.data;
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, purchaseDate: new Date().toISOString(), items: [{ productId: products[0], quantity: '2', purchasePrice: '5' }] }).expect(201)).body.data;
+    const saleReturn = () => ({ requestId: randomUUID(), items: [{ itemId: sale.items[0].id, quantity: '1' }] });
+    const purchaseReturn = () => ({ requestId: randomUUID(), items: [{ itemId: purchase.items[0].id, quantity: '1' }] });
+
+    // Another shop of the same owner cannot reach these bills.
+    const other = await api('post', '/businesses').send({ name: 'Return tenant', slug: randomUUID() }).expect(201);
+    businessIds.push(other.body.data.id);
+    await api('post', `/sales/${sale.id}/returns`, other.body.data.id).send(saleReturn()).expect(404);
+    await api('post', `/purchases/${purchase.id}/returns`, other.body.data.id).send(purchaseReturn()).expect(404);
+
+    // Managers and members may not return; nothing is recorded.
+    for (const role of ['MANAGER', 'MEMBER'] as const) {
+      await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role } });
+      await api('post', `/sales/${sale.id}/returns`).send(saleReturn()).expect(403);
+      await api('post', `/purchases/${purchase.id}/returns`).send(purchaseReturn()).expect(403);
+    }
+    expect(await prisma.saleReturn.count({ where: { saleId: sale.id } })).toBe(0);
+    expect(await prisma.purchaseReturn.count({ where: { purchaseId: purchase.id } })).toBe(0);
+
+    // An admin may.
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'ADMIN' } });
+    await api('post', `/sales/${sale.id}/returns`).send(saleReturn()).expect(201);
+    await api('post', `/purchases/${purchase.id}/returns`).send(purchaseReturn()).expect(201);
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'OWNER' } });
+  });
+
   it('records when a payment was made, within the bill date and today', async () => {
     const sale = (await api('post', '/sales').send({ ...input('2'), saleDate: '2026-09-20T06:00:00Z', amountPaid: '0' }).expect(201)).body.data;
     const pay = (paidAt: string) => api('post', `/sales/${sale.id}/payments`).send({ amount: '10', method: 'UPI', requestId: randomUUID(), paidAt });
