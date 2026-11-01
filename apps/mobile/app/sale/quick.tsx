@@ -8,7 +8,8 @@ import {
 } from "@/services/transaction-drafts";
 import { Ionicons } from "@expo/vector-icons";
 import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { BarcodeScanner } from "@/components/barcode-scanner";
+import { productForCode } from "@/services/camera-access";
 import { useRouter } from "expo-router";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
 import { useEffect, useRef, useState } from "react";
@@ -99,7 +100,6 @@ export default function QuickBillScreen() {
   const [panel, setPanel] = useState<"customer" | "payment" | "scanner" | null>(
     null,
   );
-  const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [draftReady, setDraftReady] = useState(false);
@@ -126,7 +126,6 @@ export default function QuickBillScreen() {
   const requestId = useRef(requestKey());
   const pendingInput = useRef<CreateSaleInput | null>(null);
   const submitting = useRef(false);
-  const scanned = useRef(false);
   const locked = saving || outcome === "unknown";
   const dirty = !receipt && (lines.length > 0 || Boolean(customerId));
   usePreventRemove(dirty || saving, ({ data }) => {
@@ -620,10 +619,7 @@ export default function QuickBillScreen() {
                 {icon(
                   "scan-outline",
                   "Scan barcode",
-                  () => {
-                    scanned.current = false;
-                    setPanel("scanner");
-                  },
+                  () => setPanel("scanner"),
                   locked,
                 )}
               </View>
@@ -1087,60 +1083,19 @@ export default function QuickBillScreen() {
                     <ActionButton title="Done" onPress={() => setPanel(null)} />
                   </>
                 ) : panel === "scanner" ? (
-                  permission?.granted ? (
-                    <>
-                      <CameraView
-                        style={{ height: 300 }}
-                        barcodeScannerSettings={{
-                          barcodeTypes: [
-                            "ean13",
-                            "ean8",
-                            "code128",
-                            "code39",
-                            "upc_a",
-                            "upc_e",
-                            "qr",
-                          ],
-                        }}
-                        onBarcodeScanned={({ data }) => {
-                          if (scanned.current) return;
-                          scanned.current = true;
-                          const p = products.find(
-                            (product) =>
-                              product.barcode === data || product.sku === data,
-                          );
-                          setPanel(null);
-                          if (p) add(p);
-                          else {
-                            setSearch(data);
-                            setError(
-                              "No product matched that barcode. Search by name or SKU.",
-                            );
-                          }
-                        }}
-                      />
-                      <Text style={styles.meta}>
-                        Point the camera at a product barcode.
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.meta}>
-                        Allow camera access to scan, or close this panel and
-                        enter the barcode in search.
-                      </Text>
-                      <ActionButton
-                        title="Allow camera"
-                        onPress={() => {
-                          void requestPermission().catch(() =>
-                            setError(
-                              "Camera access unavailable. Enter the barcode in search.",
-                            ),
-                          );
-                        }}
-                      />
-                    </>
-                  )
+                  <BarcodeScanner
+                    onScanned={(code) => {
+                      const p = productForCode(products, code);
+                      setPanel(null);
+                      if (p) add(p);
+                      else {
+                        setSearch(code);
+                        setError(
+                          "No product matched that barcode. Search by name or SKU.",
+                        );
+                      }
+                    }}
+                  />
                 ) : null}
               </ScrollView>
             </View>

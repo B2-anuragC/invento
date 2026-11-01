@@ -1,5 +1,5 @@
 import { InAppCamera } from '@/components/in-app-camera';
-import { useCameraPermissions } from 'expo-camera';
+import { CameraAccessPrompt, useCameraAccess } from '@/components/barcode-scanner';
 import type { ImagePickerResult } from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, Platform, Pressable, Text, View } from 'react-native';
@@ -7,6 +7,9 @@ import { useFocusEffect, usePathname, useRouter, type Href } from 'expo-router';
 import { appSession } from '@/services/api';
 import { storePickedFile, type StoredFile, type UploadKind } from '@/services/file-storage';
 import { capturePhoto, clearCameraPhoto, getCameraRecovery, matchesCapture, recoverCameraPhoto, subscribeCameraRecovery } from '@/services/camera-recovery';
+
+/** Thrown when camera access is refused, so the form offers to allow it or open settings. */
+class CameraRefused extends Error {}
 
 export function CameraRecoveryNotice() {
   const photo = useSyncExternalStore(subscribeCameraRecovery, getCameraRecovery, getCameraRecovery);
@@ -30,7 +33,8 @@ export function CameraPhoto({ kind, onChange, onBusy, disabled }: { kind: Upload
   const route = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [permission, requestPermission] = useCameraPermissions();
+  const camera = useCameraAccess('photo');
+  const [refused, setRefused] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const pendingCapture = useRef<((result: ImagePickerResult) => void) | null>(null);
   const mounted = useRef(true);
@@ -49,8 +53,8 @@ export function CameraPhoto({ kind, onChange, onBusy, disabled }: { kind: Upload
     setCameraOpen(false);
   };
   const openCamera = async (): Promise<ImagePickerResult> => {
-    const allowed = permission?.granted || (await requestPermission()).granted;
-    if (!allowed) throw new Error('Allow camera access in your device settings to take a photo.');
+    const allowed = camera.permission?.granted || (await camera.requestPermission()).granted;
+    if (!allowed) throw new CameraRefused();
     if (!mounted.current) return { canceled: true, assets: null };
     return new Promise((resolve) => { pendingCapture.current = resolve; setCameraOpen(true); });
   };
@@ -58,7 +62,7 @@ export function CameraPhoto({ kind, onChange, onBusy, disabled }: { kind: Upload
   const attachPhoto = async (recovered: boolean) => {
     const session = appSession.current;
     if (!session || disabled || busy) return;
-    setBusy(true); onBusy(true); setError('');
+    setBusy(true); onBusy(true); setError(''); setRefused(false);
     try {
       const asset = recovered ? photo?.asset : await capturePhoto(session, kind, route, Platform.OS === 'web' ? undefined : openCamera);
       if (!asset || !mounted.current) return;
@@ -68,13 +72,17 @@ export function CameraPhoto({ kind, onChange, onBusy, disabled }: { kind: Upload
       if (!mounted.current) return;
       onChange(stored);
       await clearCameraPhoto(session);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the camera photo.'); }
+    } catch (cause) {
+      if (cause instanceof CameraRefused) setRefused(true);
+      else setError(cause instanceof Error ? cause.message : 'Could not attach the camera photo.');
+    }
     finally { setBusy(false); onBusy(false); }
   };
   return <View>
     {cameraOpen ? <InAppCamera onResult={finishCapture} /> : null}
     <Pressable accessibilityRole="button" disabled={disabled || busy} onPress={() => void attachPhoto(available)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: '#176B50', fontWeight: '700' }}>{busy ? 'Preparing photo…' : available ? 'Use recovered photo' : 'Take photo'}</Text></Pressable>
     {available ? <Pressable accessibilityRole="button" disabled={disabled || busy} onPress={() => { const session = appSession.current; if (session) void clearCameraPhoto(session).catch(() => setError('Could not discard this photo.')); }} style={{ minHeight: 44, justifyContent: 'center' }}><Text>Discard recovered photo</Text></Pressable> : null}
+    {refused && camera.access.state !== 'granted' ? <CameraAccessPrompt {...camera} /> : null}
     {error ? <Text accessibilityRole="alert" style={{ color: '#A74737' }}>{error}</Text> : null}
   </View>;
 }

@@ -13,6 +13,7 @@ import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,11 +23,16 @@ import {
 } from 'react-native';
 
 import { AppScreen, ConfirmationDialog, formatUnitLabel } from '@/components/invento-ui';
+import { BarcodeScanner } from '@/components/barcode-scanner';
+import { barcodeOwner } from '@/services/camera-access';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formSnapshot, hasUnsavedChanges } from '@/services/unsaved-changes';
 import {
   appSession,
   createProduct,
   deactivateProduct,
+  fetchProducts,
   fetchProduct,
   fetchProductCategories,
   fetchProductStock,
@@ -65,6 +71,9 @@ export default function ProductDetailsScreen() {
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [barcodeNotice, setBarcodeNotice] = useState<{ text: string; warning: boolean } | null>(null);
+  const insets = useSafeAreaInsets();
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -107,6 +116,7 @@ export default function ProductDetailsScreen() {
     setName(productData.name);
     setSku(productData.sku);
     setBarcode(productData.barcode ?? '');
+    setBarcodeNotice(null);
     setCategory(productData.category ?? '');
     setUnit(productData.unit);
     setSellingOptions(productData.sellingOptions ?? []);
@@ -133,6 +143,22 @@ export default function ProductDetailsScreen() {
 
   const clearErrorOnEdit = () => {
     if (error) setError('');
+  };
+
+  // A scan fills the barcode field; the shop's products (active and inactive) are checked so a duplicate shows before saving.
+  const applyScannedBarcode = (code: string) => {
+    setScanning(false);
+    setBarcode(code);
+    clearErrorOnEdit();
+    setBarcodeNotice({ text: `Scanned ${code}.`, warning: false });
+    const session = appSession.current;
+    if (!session) return;
+    void Promise.all([fetchProducts(session, { search: code }), fetchProducts(session, { search: code, status: 'INACTIVE' })])
+      .then(([active, inactive]) => {
+        const owner = barcodeOwner([...active, ...inactive], code, isNew ? undefined : id);
+        if (owner) setBarcodeNotice({ text: `${owner.name} already uses this barcode. Each product needs its own barcode.`, warning: true });
+      })
+      .catch(() => undefined);
   };
 
   useEffect(() => {
@@ -423,19 +449,41 @@ export default function ProductDetailsScreen() {
               maxLength={64}
             />
             <Text style={styles.label}>Barcode (optional)</Text>
-            <TextInput
-              value={barcode}
-              onChangeText={(value) => {
-                setBarcode(value);
-                clearErrorOnEdit();
-              }}
-              style={styles.input}
-              placeholder="Scan or enter barcode"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="number-pad"
-              maxLength={100}
-            />
+            <View style={styles.barcodeRow}>
+              <TextInput
+                accessibilityLabel="Barcode"
+                value={barcode}
+                onChangeText={(value) => {
+                  setBarcode(value);
+                  setBarcodeNotice(null);
+                  clearErrorOnEdit();
+                }}
+                style={[styles.input, styles.barcodeInput]}
+                placeholder="Scan or enter barcode"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="number-pad"
+                maxLength={100}
+              />
+              <Pressable accessibilityRole="button" accessibilityLabel="Scan barcode" disabled={saving} onPress={() => setScanning(true)} style={[styles.scanButton, saving && styles.disabledButton]}>
+                <Ionicons name="scan-outline" size={20} color="#176B50" />
+                <Text style={styles.scanButtonText}>Scan</Text>
+              </Pressable>
+            </View>
+            {barcodeNotice ? <Text accessibilityRole={barcodeNotice.warning ? 'alert' : undefined} style={[styles.helperText, barcodeNotice.warning && styles.barcodeWarning]}>{barcodeNotice.text}</Text> : null}
             <Text style={styles.helperText}>Use a unique SKU or barcode to avoid duplicate items.</Text>
+            <Modal visible={scanning} transparent animationType="slide" onRequestClose={() => setScanning(false)}>
+              <View style={styles.scanBackdrop}>
+                <View style={[styles.scanSheet, { paddingBottom: Math.max(20, insets.bottom) }]}>
+                  <View style={styles.scanHeader}>
+                    <Text style={styles.sectionTitle}>Scan barcode</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Close scanner" onPress={() => setScanning(false)} style={styles.scanClose}>
+                      <Ionicons name="close" size={22} color="#24332A" />
+                    </Pressable>
+                  </View>
+                  {scanning ? <BarcodeScanner onScanned={applyScannedBarcode} hint="Point the camera at the product's barcode. It fills the barcode field." /> : null}
+                </View>
+              </View>
+            </Modal>
 
             </View>
             <View style={[styles.form, styles.formGap]}>
@@ -682,6 +730,16 @@ export default function ProductDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+  barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barcodeInput: { flex: 1 },
+  scanButton: { minHeight: 49, minWidth: 49, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: '#BFD8CC', backgroundColor: '#EDF4F0' },
+  scanButtonText: { color: '#176B50', fontSize: 14, fontWeight: '700' },
+  barcodeWarning: { color: '#9A5B00' },
+  scanBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  scanSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 },
+  scanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  disabledButton: { opacity: 0.5 },
+  scanClose: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   categoryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   categoryDropdown: { marginTop: 6, borderWidth: 1, borderColor: '#DFE7E2', borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   categoryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 12 },
