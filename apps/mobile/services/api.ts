@@ -1,3 +1,4 @@
+import type { PurchaseEditInput, SaleEditInput } from './bill-edit';
 import { planStockAdjustment, type EffectiveAccess, type Permission, type GstTaxType, type StockAdjustmentInput } from '@invento/shared';
 import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
@@ -155,6 +156,12 @@ type BillReturns = { returnedTotal?: string | number; netTotal?: string | number
 export type SaleRecord = BillReturns & {
   /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
   status?: string;
+  /** Raised by each edit of the items; the edit form sends the revision it was opened at. */
+  revision?: number;
+  /** When, by whom and why the items were last edited; null when never. */
+  editedAt?: string | null;
+  editedByUserId?: string | null;
+  editReason?: string | null;
   cancelledAt?: string | null;
   cancelReason?: string | null;
   syncState?: 'pending' | 'conflict';
@@ -186,7 +193,7 @@ export type SaleRecord = BillReturns & {
   total: string | number;
   paymentMethod: string;
   note?: string | null;
-  customer: { id: string; name: string; phone?: string | null; address?: string | null };
+  customer: { id: string; name: string; phone?: string | null; address?: string | null; isWalkIn?: boolean };
   items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null; sellingPrice: string | number; returnedQuantity?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
@@ -228,6 +235,12 @@ export type FileAttachment = { name: string; mimeType: string; url?: string; thu
 export type PurchaseRecord = BillReturns & {
   /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
   status?: string;
+  /** Raised by each edit of the items; the edit form sends the revision it was opened at. */
+  revision?: number;
+  /** When, by whom and why the items were last edited; null when never. */
+  editedAt?: string | null;
+  editedByUserId?: string | null;
+  editReason?: string | null;
   cancelledAt?: string | null;
   cancelReason?: string | null;
   syncState?: 'pending' | 'conflict';
@@ -893,6 +906,41 @@ export async function recordBillReturn(session: AppSession, kind: 'sale' | 'purc
     record = await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}/returns`, { method: 'POST', body: JSON.stringify(input) }, session);
   } catch (error) {
     if (isServerUnreachable(error)) throw new Error('Returning items needs a connection. Try again when you are online.');
+    throw error;
+  }
+  if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
+  return record;
+}
+
+/**
+ * The server's copy of a bill, to edit its items from: the form must start
+ * from the bill's current lines and revision. Needs a connection.
+ */
+export async function fetchBillForEdit(session: AppSession, kind: 'sale' | 'purchase', id: string): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.edit' : 'purchases.edit');
+  if (id.startsWith('local_')) throw new Error('Wait for this bill to sync before editing its items.');
+  try {
+    return await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}`, { method: 'GET' }, session);
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Editing a bill needs a connection. Try again when you are online.');
+    throw error;
+  }
+}
+
+/**
+ * Saves new items for a completed bill: the server moves stock by the
+ * difference, refunds money paid above the new total and raises the revision.
+ * It needs a connection; the device copy is refreshed afterwards. A retry with
+ * the same requestId is safe.
+ */
+export async function editBillItems(session: AppSession, kind: 'sale' | 'purchase', id: string, input: SaleEditInput | PurchaseEditInput): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.edit' : 'purchases.edit');
+  if (id.startsWith('local_')) throw new Error('Wait for this bill to sync before editing its items.');
+  let record: SaleRecord | PurchaseRecord;
+  try {
+    record = await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}/items`, { method: 'PUT', body: JSON.stringify(input) }, session);
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Editing a bill needs a connection. Try again when you are online.');
     throw error;
   }
   if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);

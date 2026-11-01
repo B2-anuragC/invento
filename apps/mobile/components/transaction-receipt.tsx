@@ -3,11 +3,14 @@ import { LOCAL_ONLY } from '@/services/runtime-mode';
 import { PurchaseAttachment } from './purchase-attachment';
 import { CancelBillModal } from './cancel-bill-modal';
 import { ReturnItemsModal } from './return-items-modal';
+import { EditBillItemsModal } from './edit-bill-items-modal';
+import { formatUnitLabel } from './invento-ui';
 import { ReturnNoteView } from './return-note-view';
 import { SaleReferencePhoto } from './sale-reference-photo';
 import type { PaymentRecord, FileAttachment, BusinessDetails, SaleRecord, PurchaseRecord, ReturnNoteRecord } from '@/services/api';
 import { paymentBalance, isOverdue, netAmount } from '@/services/transaction-accounting';
 import { canReturnBill, noteName, noteSettlement, type ReturnBill } from '@/services/bill-returns';
+import { canEditBill, editedSummary } from '@/services/bill-edit';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
 import { receiptIdentity } from '@/services/transaction-labels';
@@ -19,7 +22,7 @@ import { chargesGst } from '@invento/shared';
 import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
-import { appSession, fetchBillForReturn, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
+import { appSession, fetchBillForEdit, fetchBillForReturn, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,6 +34,10 @@ export type ReceiptData = {
   status?: string;
   cancelReason?: string | null;
   cancelledAt?: string | null;
+  /** When and why the items were last edited, and the bill's revision. */
+  editedAt?: string | null;
+  editReason?: string | null;
+  revision?: number;
   syncError?: string;
   referenceImage?: string | null;
   attachment?: FileAttachment | null;
@@ -50,7 +57,15 @@ export type ReceiptData = {
 
 /** The receipt for the server's copy of a bill, keeping what the screen already knew about each line. */
 export function receiptFromRecord(base: ReceiptData, record: SaleRecord | PurchaseRecord): ReceiptData {
-  return { ...base, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, gst: base.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, chargeGst: record.chargeGst ?? base.chargeGst, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, discountTotal: 'discountTotal' in record ? record.discountTotal : undefined, discountPercent: 'discountPercent' in record ? record.discountPercent : undefined, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, returns: record.returns, returnedTotal: record.returnedTotal, netTotal: record.netTotal, items: record.items.map((item, index) => ({ ...(base.items.find((entry) => entry.lineKey === savedLineKey(base.kind, item)) ?? base.items[index]), id: item.id, name: item.product?.name ?? base.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: 'discountAmount' in item ? item.discountAmount : undefined, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined, returnedQuantity: item.returnedQuantity })) };
+  return { ...base, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, editedAt: record.editedAt, editReason: record.editReason, revision: record.revision, gst: base.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, chargeGst: record.chargeGst ?? base.chargeGst, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, discountTotal: 'discountTotal' in record ? record.discountTotal : undefined, discountPercent: 'discountPercent' in record ? record.discountPercent : undefined, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, returns: record.returns, returnedTotal: record.returnedTotal, netTotal: record.netTotal, items: record.items.map((item, index) => {
+    // An edited bill can hold other lines than the screen knew, so a line the
+    // server describes takes its name and unit from the server.
+    const known = base.items.find((entry) => entry.lineKey === savedLineKey(base.kind, item));
+    const optionName = 'optionName' in item ? item.optionName : undefined;
+    const unit = ('unit' in item ? item.unit : undefined) ?? item.product?.unit;
+    const described = item.product?.name ? { name: item.product.name, sku: item.product.sku, label: optionName ?? formatUnitLabel(unit ?? 'PIECE'), unit: optionName ? undefined : unit ?? 'PIECE' } : undefined;
+    return { ...(known ?? (described ? {} : base.items[index])), ...described, lineKey: savedLineKey(base.kind, item), label: described?.label ?? known?.label ?? base.items[index]?.label ?? formatUnitLabel('PIECE'), id: item.id, name: item.product?.name ?? known?.name ?? base.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: 'discountAmount' in item ? item.discountAmount : undefined, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined, returnedQuantity: item.returnedQuantity };
+  }) };
 }
 /** What a payment is recorded against: the bill's net amount after returns and what was paid. */
 export type PaymentTarget = { total: string | number; amountPaid?: string | number | null };
@@ -89,6 +104,8 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   const [returning, setReturning] = useState<ReturnBill | null>(null);
   const [loadingReturn, setLoadingReturn] = useState(false);
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<SaleRecord | PurchaseRecord | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
   const heading = receiptTitle(data.kind, data.gst, data.documentNumber, data.chargeGst);
   const taxed = chargesGst(data.chargeGst);
@@ -106,6 +123,9 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   // Returns need a connection, like cancelling; a bill with returns can no longer be cancelled.
   const mayReturn = !LOCAL_ONLY && canReturnBill(returnBill(data), can(data.kind === 'sale' ? 'sales.return' : 'purchases.return'));
   const mayCancel = can(data.kind === 'sale' ? 'sales.cancel' : 'purchases.cancel') && !data.syncState && !cancelled && !LOCAL_ONLY && !notes.length && !(returnedTotal > 0);
+  // Editing items needs a connection; purchases also need cost prices to be visible.
+  const mayEdit = !LOCAL_ONLY && canEditBill({ id: data.id, status: data.status, syncState: data.syncState, total: data.total, returnedTotal: data.returnedTotal, returns: data.returns }, can(data.kind === 'sale' ? 'sales.edit' : 'purchases.edit') && (data.kind === 'sale' || can('pricing.view')));
+  const edited = editedSummary(data);
   const lastPaidMethod = [...(data.payments ?? [])].reverse().find((payment) => payment.kind === 'PAYMENT')?.method ?? data.paymentMethod;
   // The form starts from the server's copy, so its lines and what is left to return are current.
   const startReturn = async () => {
@@ -122,6 +142,22 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
       setError(cause instanceof Error ? cause.message : 'Could not load this bill. Please try again.');
     } finally {
       setLoadingReturn(false);
+    }
+  };
+  // The edit form starts from the server's copy: its lines, payments and revision are current.
+  const startEdit = async () => {
+    const session = appSession.current;
+    if (!session || loadingEdit) return;
+    setLoadingEdit(true);
+    setError('');
+    try {
+      const record = await fetchBillForEdit(session, data.kind, data.id);
+      setData(receiptFromRecord(data, record));
+      setEditing(record);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load this bill. Please try again.');
+    } finally {
+      setLoadingEdit(false);
     }
   };
   const viewedNote = noteId ? notes.find((note) => note.id === noteId) : undefined;
@@ -165,6 +201,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       {cancelled ? <View style={[styles.success, styles.cancelledBanner]}><Ionicons name="close-circle-outline" size={21} color="#A74737" /><View style={{ flex: 1 }}><Text style={[styles.greenTitle, { color: '#A74737' }]}>Cancelled{data.cancelledAt ? ` · ${formatDate(data.cancelledAt)}` : ''}</Text>{data.cancelReason ? <Text style={[styles.greenCopy, { color: '#7A3A2F' }]}>Reason: {data.cancelReason}</Text> : null}<Text style={[styles.greenCopy, { color: '#7A3A2F' }]}>Stock was reversed{refunded > 0 ? ` and ${money(refunded)} refunded` : ''}. The bill keeps its number.</Text></View></View> : <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>{data.syncState === 'conflict' ? 'Needs attention · Saved on device' : data.syncState ? LOCAL_ONLY ? 'Saved on device · Finalizing' : 'Saved on device · Pending sync' : `Saved · ${title} recorded`}</Text><Text style={styles.greenCopy}>{LOCAL_ONLY ? 'This bill and its stock changes are stored only on this device.' : data.syncState ? 'Provisional receipt. Stock is adjusted on this device; the server has not confirmed this transaction.' : 'This is a saved transaction. Inventory has been updated.'}</Text>{data.syncError ? <Text style={styles.error}>{data.syncError}</Text> : null}{data.syncState ? <Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.greenTitle}>View sync status →</Text></Pressable> : null}</View></View>}
+      {edited ? <View style={[styles.success, styles.editedBanner]}><Ionicons name="create-outline" size={21} color="#9C5B12" /><View style={{ flex: 1 }}><Text style={[styles.greenTitle, { color: '#7A4A0E' }]}>{edited.title}</Text>{edited.reason ? <Text style={[styles.greenCopy, { color: '#7A4A0E' }]}>Reason: {edited.reason}</Text> : null}<Text style={[styles.greenCopy, { color: '#7A4A0E' }]}>The items below are the edited ones; stock was corrected by the difference.</Text></View></View> : null}
       {data.kind === 'sale' && shop ? <View style={[styles.card, styles.shopCard]}><Text style={styles.shopName}>{shop.name}</Text>{shop.address ? <Text style={styles.meta}>{shop.address}</Text> : null}{shop.phone || shop.email ? <Text style={styles.meta}>{[shop.phone, shop.email].filter(Boolean).join(' · ')}</Text> : null}{data.gst?.sellerGstin ? <Text style={styles.meta}>GSTIN {data.gst.sellerGstin}{data.gst.sellerStateCode ? ` · ${stateLabel(data.gst.sellerStateCode)}` : ''}</Text> : null}</View> : null}
       <View style={styles.card}><Text style={styles.caption}>{identity.caption}</Text><Text selectable style={styles.identifier}>{identifier}</Text>{identity.note ? <Text style={styles.meta}>{identity.note}</Text> : null}<Text style={styles.meta}>{formatDate(data.date)} · {data.syncState ? 'Provisional' : 'Saved'} {data.kind}</Text>{taxed && data.gst && data.gst.taxType !== 'UNREGISTERED' && data.gst.placeOfSupply ? <Text style={styles.meta}>Place of supply · {stateLabel(data.gst.placeOfSupply)}</Text> : null}</View>
       <View style={[styles.card, styles.contact]}><View style={styles.contactIcon}><Ionicons name={data.kind === 'sale' ? 'person-outline' : 'cube-outline'} size={22} color="#176B50" /></View><View style={{ flex: 1 }}><Text style={styles.meta}>{data.kind === 'sale' ? 'Customer' : 'Supplier'}</Text><Text style={styles.bold}>{data.contact}</Text>{data.gst?.buyerGstin ? <Text style={styles.meta}>GSTIN {data.gst.buyerGstin}</Text> : null}</View></View>
@@ -200,11 +237,13 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
       {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
     <SaleReferencePhoto value={data.referenceImage} />
       {mayReturn ? <Pressable accessibilityRole="button" accessibilityState={{ busy: loadingReturn, disabled: loadingReturn }} disabled={loadingReturn} onPress={() => void startReturn()} style={[styles.secondary, styles.returnButton, loadingReturn && { opacity: 0.6 }]}><Text style={styles.buttonText}>{loadingReturn ? 'Loading…' : 'Return items'}</Text></Pressable> : null}
+      {mayEdit ? <Pressable accessibilityRole="button" accessibilityState={{ busy: loadingEdit, disabled: loadingEdit }} disabled={loadingEdit} onPress={() => void startEdit()} style={[styles.secondary, styles.returnButton, loadingEdit && { opacity: 0.6 }]}><Text style={styles.buttonText}>{loadingEdit ? 'Loading…' : 'Edit items'}</Text></Pressable> : null}
       {mayCancel ? <Pressable accessibilityRole="button" onPress={() => setCancelling(true)} style={styles.cancelLink}><Text style={styles.cancelLinkText}>Cancel this {data.kind}</Text></Pressable> : null}
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>
     {cancelling ? <CancelBillModal kind={data.kind} id={data.id} number={identifier} paid={Number(data.amountPaid ?? 0)} paidMethod={lastPaidMethod} onClose={() => setCancelling(false)} onCancelled={(record) => { setCancelling(false); setData((current) => ({ ...current, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, amountPaid: record.amountPaid, payments: record.payments })); }} /> : null}
     {returning ? <ReturnItemsModal bill={returning} number={identifier} units={Object.fromEntries(data.items.map((item) => [item.id, { unit: item.unit, label: item.label }]))} paidMethod={lastPaidMethod} onClose={() => setReturning(null)} onReturned={(record) => { setReturning(null); const next = receiptFromRecord(data, record); setData(next); const latest = next.returns?.[next.returns.length - 1]; if (latest) setNoteId(latest.id); }} /> : null}
+    {editing ? <EditBillItemsModal kind={data.kind} record={editing} number={identifier} paidMethod={lastPaidMethod} onClose={() => setEditing(null)} onEdited={(record) => { setEditing(null); setData(receiptFromRecord(data, record)); }} /> : null}
     {viewedNote ? <ReturnNoteView note={returnNoteSource(data, viewedNote)} shop={shop ?? { name: shopName }} onClose={() => setNoteId(null)} /> : null}
     <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
       <View style={styles.actions}>
@@ -223,7 +262,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   </View>;
 }
 const styles = StyleSheet.create({
-  cancelledBanner: { backgroundColor: '#FBEAE7' }, returned: { color: '#9C5B12', fontSize: 12, fontWeight: '700', lineHeight: 18 }, noteRow: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8E4', minHeight: 44 }, returnButton: { alignSelf: 'center', paddingHorizontal: 20, marginTop: 8 }, cancelLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }, cancelLinkText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
+  cancelledBanner: { backgroundColor: '#FBEAE7' }, editedBanner: { backgroundColor: '#FDF3E3' }, returned: { color: '#9C5B12', fontSize: 12, fontWeight: '700', lineHeight: 18 }, noteRow: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8E4', minHeight: 44 }, returnButton: { alignSelf: 'center', paddingHorizontal: 20, marginTop: 8 }, cancelLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }, cancelLinkText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
   screen: { flex: 1, backgroundColor: '#F3F5F4' }, header: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, minHeight: 64, backgroundColor: '#FFFFFF' }, back: { minHeight: 44, minWidth: 32, justifyContent: 'center' }, title: { color: '#24332A', fontSize: 24, fontWeight: '800' }, content: { padding: 20, width: '100%', maxWidth: 680, alignSelf: 'center' },
   productCard: { backgroundColor: '#EDF5F0', borderColor: '#CFDFD5', borderLeftWidth: 4, borderLeftColor: '#80AB94', padding: 10, marginBottom: 8, gap: 3 },
   productName: { flex: 1, minWidth: 0 },
