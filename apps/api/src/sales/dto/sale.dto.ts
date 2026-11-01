@@ -44,6 +44,7 @@ export class EditSaleItemsDto {
   @ApiPropertyOptional({ description: 'Bill discount as a percentage of the subtotal; send discountAmount or this, not both.' }) @ValidateIf((_object, value) => value !== undefined) @IsString() @Matches(/^\d{1,3}(?:\.\d{1,2})?$/, { message: DISCOUNT_PERCENT_RULE_MESSAGE }) discountPercent?: string;
   @ApiPropertyOptional({ description: 'The new total the person saw; refused (409) if prices changed it.' }) @ValidateIf((_object, value) => value !== undefined) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) expectedTotal?: string;
   @ApiPropertyOptional({ enum: PaymentMethod, description: 'How money paid above the new total is refunded; defaults to how the bill was paid.' }) @ValidateIf((_object, value) => value !== undefined) @IsEnum(PaymentMethod) refundMethod?: PaymentMethod;
+  @ApiPropertyOptional({ description: 'The refund the person saw (0.00 when none); refused (409) if a payment recorded since changes it.' }) @ValidateIf((_object, value) => value !== undefined) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) expectedRefund?: string;
   @ApiProperty({ type: [SaleItemDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => SaleItemDto) items!: SaleItemDto[];
 }
 

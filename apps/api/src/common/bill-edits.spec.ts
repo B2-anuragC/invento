@@ -84,6 +84,20 @@ describe('applyBillEdit', () => {
     }
   });
 
+  it('refuses an edit whose refund differs from the one shown because a payment was recorded meanwhile', async () => {
+    // Credit sale of 1000 lowered to 800: the form showed no refund, then 1000 was paid.
+    const h = harness({ amountPaid: '1000.00' });
+    const edit = applyBillEdit(h.prisma, h.inventoryService, 'sale', 'b1', 'u1', 's1', { ...input, expectedRefund: '0.00' }, h.plan({ total: D('800.00') }));
+    await expect(edit).rejects.toThrow(/payment was recorded/);
+    expect(h.inventory.applyMovement).not.toHaveBeenCalled();
+    expect(h.payments).toEqual([]);
+    expect(h.write).not.toHaveBeenCalled();
+    // The refund shown is the one recorded.
+    const shown = harness({ amountPaid: '1000.00' });
+    await applyBillEdit(shown.prisma, shown.inventoryService, 'sale', 'b1', 'u1', 's1', { ...input, expectedRefund: '200', refundMethod: 'CASH' }, shown.plan({ total: D('800.00') }));
+    expect(shown.payments).toEqual([expect.objectContaining({ amount: D('200.00'), method: 'CASH', kind: 'REFUND' })]);
+  });
+
   it('turns a stock shortage into a conflict naming the product', async () => {
     const h = harness({ ledger: [{ productId: 'p1', quantity: D(10) }] });
     h.inventory.applyMovement.mockRejectedValueOnce(new BadRequestException('Insufficient stock for this operation.'));

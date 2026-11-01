@@ -1043,6 +1043,17 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     const counter = (await api('post', '/sales').send({ ...input('1'), customerId: walkIn.id, saleDate: now, amountPaid: '50', chargeGst: false }).expect(201)).body.data;
     expect((await api('put', `/sales/${counter.id}/items`).send({ requestId: randomUUID(), reason: 'More', chargeGst: false, items: [{ productId: products[2], quantity: '2', sellingPrice: '50' }] }).expect(400)).body.error.message).toMatch(/walk-in sale must stay paid in full/);
     await api('put', `/sales/${counter.id}/items`).send({ requestId: randomUUID(), reason: 'Cheaper', chargeGst: false, items: [{ productId: products[2], quantity: '1', sellingPrice: '40' }] }).expect(200);
+
+    // A payment recorded while the form was open (it does not raise the revision) changes the refund: the edit is refused, not refunded unseen.
+    const credit = (await api('post', '/sales').send({ ...input('2'), saleDate: now, amountPaid: '0', chargeGst: false }).expect(201)).body.data;
+    expect(credit).toMatchObject({ total: '100', amountPaid: '0', revision: 1 });
+    await api('post', `/sales/${credit.id}/payments`).send({ amount: '100', method: 'UPI', requestId: randomUUID() }).expect(201);
+    const lower = { requestId: randomUUID(), revision: 1, reason: 'One sheet less', chargeGst: false, expectedTotal: '50.00', items: [{ productId: products[0], quantity: '1', sellingPrice: '50' }] };
+    expect((await api('put', `/sales/${credit.id}/items`).send({ ...lower, expectedRefund: '0.00' }).expect(409)).body.error.message).toMatch(/payment was recorded on this bill while you were editing/);
+    expect((await api('get', `/sales/${credit.id}`).expect(200)).body.data).toMatchObject({ revision: 1, amountPaid: '100', payments: [expect.objectContaining({ kind: 'PAYMENT' })] });
+    const settled = (await api('put', `/sales/${credit.id}/items`).send({ ...lower, requestId: randomUUID(), expectedRefund: '50.00', refundMethod: 'CASH' }).expect(200)).body.data;
+    expect(settled).toMatchObject({ total: '50', amountPaid: '50', revision: 2 });
+    expect(settled.payments.map((payment: any) => [payment.kind, payment.amount, payment.method])).toEqual([['PAYMENT', '100', 'UPI'], ['REFUND', '50', 'CASH']]);
   });
 
   it('edits the items of a purchase, refused only when stock it added is really gone', async () => {

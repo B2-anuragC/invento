@@ -38,6 +38,7 @@ export class EditPurchaseItemsDto {
   @ApiProperty({ description: 'Whether the supplier charged GST. False: tax 0 on every line.' }) @Transform(({ obj, key }) => obj[key]) @IsBoolean() chargeGst!: boolean;
   @ApiPropertyOptional({ description: 'The new total the person saw; refused (409) if prices changed it.' }) @ValidateIf((_o, v) => v !== undefined) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) expectedTotal?: string;
   @ApiPropertyOptional({ enum: PaymentMethod, description: 'How money paid above the new total is refunded; defaults to how the bill was paid.' }) @ValidateIf((_o, v) => v !== undefined) @IsEnum(PaymentMethod) refundMethod?: PaymentMethod;
+  @ApiPropertyOptional({ description: 'The refund the person saw (0.00 when none); refused (409) if a payment recorded since changes it.' }) @ValidateIf((_o, v) => v !== undefined) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) expectedRefund?: string;
   @ApiProperty({ type: [PurchaseItemDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => PurchaseItemDto) items!: PurchaseItemDto[];
 }
 

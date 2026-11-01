@@ -46,7 +46,7 @@ export async function readBillStockEffect(tx: Prisma.TransactionClient, kind: Bi
   return billStockEffect(kind, rows);
 }
 
-export type BillEditInput = { requestId: string; reason: string; refundMethod?: PaymentMethod };
+export type BillEditInput = { requestId: string; reason: string; refundMethod?: PaymentMethod; expectedRefund?: string };
 
 export type BillEditPlan = {
   /** The bill's revision when it was priced; the edit is refused if it changed since. */
@@ -63,8 +63,11 @@ export type BillEditPlan = {
  * Edits the items of a completed sale or purchase in one transaction. The bill
  * row is locked (as payments, returns and cancelling do), so nothing can
  * change it in between; the bill must still be at the revision it was priced
- * at. Stock moves by the difference between what the bill holds and what its
- * new lines need (refused when it is short), the lines and totals are
+ * at, and when the client sends the refund it showed (expectedRefund), the
+ * refund worked out from the locked amount paid must match it: a payment
+ * recorded while the form was open does not change the revision, so this is
+ * what stops an edit from refunding money the person never saw. Stock moves
+ * by the difference between what the bill holds and what its new lines need (refused when it is short), the lines and totals are
  * replaced, money paid above the new total is refunded, and the revision goes
  * up with who edited it, when and why. The same requestId edits only once:
  * a retry returns without changing anything. Lock order: bill row, then stock
@@ -84,6 +87,9 @@ export async function applyBillEdit(prisma: PrismaService, inventory: InventoryS
     const blocked = billEditBlockReason({ status: bill.status, returnedTotal: bill.returnedTotal.toFixed(), returnCount });
     if (blocked) throw new ConflictException(blocked);
     if (bill.revision !== plan.revision) throw new ConflictException('This bill was changed while you were editing it. Reload it and try again.');
+    const settlement = billEditSettlement({ amountPaid: bill.amountPaid?.toFixed() ?? null, total: plan.total.toFixed(2) });
+    const refund = new Prisma.Decimal(settlement.refund);
+    if (input.expectedRefund !== undefined && !refund.equals(input.expectedRefund)) throw new ConflictException('A payment was recorded on this bill while you were editing it. Reload it, check the refund and save again.');
 
     const current = await readBillStockEffect(tx, kind, businessId, id);
     for (const movement of stockEditMovements(current, plan.stock)) {
@@ -112,8 +118,6 @@ export async function applyBillEdit(prisma: PrismaService, inventory: InventoryS
       }
     }
 
-    const settlement = billEditSettlement({ amountPaid: bill.amountPaid?.toFixed() ?? null, total: plan.total.toFixed(2) });
-    const refund = new Prisma.Decimal(settlement.refund);
     const revision = bill.revision + 1;
     if (refund.gt(0)) {
       const link = kind === 'sale' ? { saleId: id } : { purchaseId: id };
