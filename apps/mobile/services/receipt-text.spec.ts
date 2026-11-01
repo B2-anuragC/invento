@@ -31,4 +31,10 @@ describe('receiptShareText', () => {
     expect(text).toContain('Subtotal: Restricted\nGST: Restricted\nTotal: Restricted price');
     expect(receiptShareText({ kind: 'purchase', date: '2026-10-31T09:00:00Z', contact: 'S', chargeGst: false, total: null, items: [] }, { title: 'Purchase receipt', identifier: 'P' })).not.toContain('GST');
   });
+
+  it('gives the returned value and the net amount after a credit note', () => {
+    const text = receiptShareText({ ...taxed, total: '424.80', returnedTotal: '212.40', netTotal: '212.40', amountPaid: '212.40' }, heading);
+    expect(text).toContain('Total: ₹424.80\nReturned: −₹212.40\nNet amount: ₹212.40\nPaid: ₹212.40\nBalance: ₹0.00');
+    expect(receiptShareText(taxed, heading)).not.toContain('Returned');
+  });
 });

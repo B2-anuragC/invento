@@ -2,7 +2,7 @@ import { usePermissions } from '@/services/permissions';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
-import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
+import { paymentBalance, isOverdue, countedAmount, netAmount } from '@/services/transaction-accounting';
 import { useCallback, useState } from 'react';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -129,8 +129,8 @@ export default function ContactDetailsScreen() {
 
   const history = contactKind === 'customers' ? sales : purchases;
   const total = contactKind === 'customers'
-    ? sales.reduce((sum, item) => sum + Number(item.total), 0)
-    : purchases.reduce((sum, item) => sum + Number(item.total ?? 0), 0);
+    ? sales.reduce((sum, item) => sum + countedAmount(item), 0)
+    : purchases.reduce((sum, item) => sum + countedAmount(item), 0);
   const purchaseTotalsHidden = contactKind === 'suppliers' && purchases.some((item) => item.total == null);
 
   const openPhone = async (action: 'tel' | 'whatsapp') => {
@@ -168,7 +168,7 @@ export default function ContactDetailsScreen() {
   const outstanding = knownBalances.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   const unknownPayments = knownBalances.some((value) => value === null);
   const recordableTransactions = history.filter((record) => record.total != null && paymentBalance(record) !== 0);
-  const paymentModal = paymentTarget && paymentTarget.total != null ? <RecordPaymentModal kind={contactKind === 'customers' ? 'sale' : 'purchase'} id={paymentTarget.id} total={paymentTarget.total} amountPaid={paymentTarget.amountPaid} billDate={'saleDate' in paymentTarget ? paymentTarget.saleDate : paymentTarget.purchaseDate} onClose={() => setPaymentTarget(null)} onSaved={() => { setPaymentTarget(null); loadDetails(); }} /> : null;
+  const paymentModal = paymentTarget && paymentTarget.total != null ? <RecordPaymentModal kind={contactKind === 'customers' ? 'sale' : 'purchase'} id={paymentTarget.id} total={netAmount(paymentTarget) ?? paymentTarget.total} amountPaid={paymentTarget.amountPaid} billDate={'saleDate' in paymentTarget ? paymentTarget.saleDate : paymentTarget.purchaseDate} onClose={() => setPaymentTarget(null)} onSaved={() => { setPaymentTarget(null); loadDetails(); }} /> : null;
   if (contactKind === 'customers' && contact && !loading && !editing) {
     const latestSale = [...sales].sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())[0];
     return (

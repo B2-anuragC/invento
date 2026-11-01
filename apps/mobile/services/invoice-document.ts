@@ -2,12 +2,14 @@ import { chargesGst, gstRateSummary, halfRate, splitLineTax } from '@invento/sha
 
 import { formatDate, formatMoney, formatQuantity } from './format';
 import { receiptTitle, stateLabel, taxTotalRows, type SaleGstDetails } from './gst';
+import { noteName, noteSettlement } from './bill-returns';
 import { paymentMethodsSummary } from './payment-methods';
 import { paymentBalance } from './transaction-accounting';
 import { receiptIdentity, transactionTitle } from './transaction-labels';
 
 // The A4 document printed or saved as a PDF from a receipt (CGST Rule 46 for
-// tax invoices). Everything a person typed (shop, contact and product names,
+// tax invoices), and the credit or debit note for goods returned on a bill
+// (Rule 53), built from the same layout. Everything a person typed (shop, contact and product names,
 // notes) is escaped, so the document stays plain markup whatever it contains.
 
 export type InvoiceShop = { name: string; address?: string | null; phone?: string | null; email?: string | null };
@@ -37,6 +39,11 @@ export type InvoiceSource = {
   payments?: { method?: string | null; kind?: string | null }[];
   paymentMethod?: string;
   note?: string | null;
+  /** The bill's credit or debit notes, listed under its totals with the net amount. */
+  returns?: { documentNumber: string; returnDate: string; total?: string | number | null }[];
+  netTotal?: string | number | null;
+  /** Set on a credit or debit note: the bill the goods came from and how the note's value was settled. */
+  returnOf?: { number: string; date: string; settlement: string; reason?: string | null };
   items: { id: string; name: string; quantity: number; label: string; unit?: string; price?: number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null }[];
 };
 
@@ -53,14 +60,42 @@ export function invoiceFileName(source: Pick<InvoiceSource, 'kind' | 'id' | 'doc
   return `${base || 'invoice'}.pdf`;
 }
 
+type NoteSource = Omit<InvoiceSource, 'items'> & { items: (InvoiceSource['items'][number] & { lineKey?: string })[] };
+type NoteRecord = { id: string; documentNumber: string; returnDate: string; subtotal?: string | number; discountTotal?: string | number; taxTotal?: string | number; total?: string | number; refundAmount?: string | number; refundMethod?: string | null; reason?: string | null; items: { saleItemId?: string; purchaseItemId?: string; quantity: string | number; lineTotal?: string | number; discountAmount?: string | number; gstRate?: string | number; taxAmount?: string | number }[] };
+
+/**
+ * The credit note (sale) or debit note (purchase) for one return on a bill:
+ * the returned lines with their amounts, under the note's own number and date,
+ * with the shop, contact and GST details of the bill it refers to.
+ */
+export function returnNoteSource(bill: NoteSource, note: NoteRecord): InvoiceSource {
+  const lines = new Map(bill.items.map((item) => [item.id, item]));
+  const priced = note.total != null && bill.total != null;
+  return {
+    ...bill, id: note.id, documentNumber: note.documentNumber, invoice: null, date: note.returnDate, status: undefined, cancelReason: null, syncState: undefined,
+    subtotal: note.subtotal, discountTotal: note.discountTotal, discountPercent: null, taxTotal: note.taxTotal, total: priced ? note.total : null,
+    amountPaid: null, dueDate: null, payments: [], paymentMethod: undefined, note: null, returns: undefined, netTotal: undefined,
+    returnOf: { number: transactionTitle(bill.kind, { id: bill.id, documentNumber: bill.documentNumber, invoiceNumber: bill.invoice }), date: bill.date, settlement: noteSettlement(bill.kind, note), reason: note.reason },
+    items: note.items.map((item, index) => {
+      const line = lines.get((bill.kind === 'sale' ? item.saleItemId : item.purchaseItemId) ?? '');
+      return { id: `${note.id}:${index}`, name: line?.name ?? 'Product', label: line?.label ?? '', unit: line?.unit, hsnCode: line?.hsnCode, quantity: Number(item.quantity), price: priced ? line?.price : undefined, gstRate: item.gstRate ?? line?.gstRate, lineTotal: item.lineTotal, discountAmount: item.discountAmount, taxAmount: item.taxAmount };
+    }),
+  };
+}
+
 export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
   const sale = source.kind === 'sale';
   const gst = sale ? source.gst ?? null : null;
   const taxType = gst?.taxType;
-  const title = receiptTitle(source.kind, gst, source.documentNumber, source.chargeGst);
+  const returnOf = source.returnOf;
+  const billTitle = receiptTitle(source.kind, gst, source.documentNumber, source.chargeGst);
+  const title = returnOf ? (sale ? 'Credit note' : 'Debit note') : billTitle;
   const taxed = chargesGst(source.chargeGst);
-  const identity = receiptIdentity(source.kind, { id: source.id, documentNumber: source.documentNumber, invoiceNumber: source.invoice, syncState: source.syncState });
-  const taxInvoice = title === 'Tax invoice';
+  const identity = returnOf
+    ? { caption: `${title} number`, value: source.documentNumber ?? '', note: `Against ${sale ? 'invoice' : 'purchase'} ${returnOf.number} dated ${formatDate(returnOf.date)}` }
+    : receiptIdentity(source.kind, { id: source.id, documentNumber: source.documentNumber, invoiceNumber: source.invoice, syncState: source.syncState });
+  // A note against a tax invoice carries the same GST details.
+  const taxInvoice = billTitle === 'Tax invoice';
   // A role that cannot see purchase prices gets quantities only.
   const restricted = source.total == null || source.items.some((item) => item.price == null);
   // A bill without GST has no tax columns, and its taxable value is simply the amount.
@@ -91,11 +126,14 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
     ? `<table class="summary"><thead><tr><th class="num">GST rate</th><th class="num">Taxable value</th>${heads.map((head) => `<th class="num">${head}</th>`).join('')}</tr></thead><tbody>${rates.map((row) => `<tr><td class="num">${row.rate}%</td><td class="num">${money(row.taxableValue)}</td>${(taxType === 'INTRA_STATE' ? [row.cgst, row.sgst] : [row.igst]).map((amount) => `<td class="num">${money(amount)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
     : '';
 
+  // A bill with returns lists its notes and its net amount under the total; the bill itself stays as issued.
+  const notes = restricted || returnOf ? [] : source.returns ?? [];
+  const returnRows = notes.length ? `${notes.map((entry) => `<tr><td>Returned · ${sale ? 'Credit' : 'Debit'} note ${escapeHtml(entry.documentNumber)} · ${escapeHtml(formatDate(entry.returnDate))}</td><td class="num">−${money(entry.total ?? 0)}</td></tr>`).join('')}<tr class="grand"><td>Net amount</td><td class="num">${money(source.netTotal ?? 0)}</td></tr>` : '';
   const balance = paymentBalance(source);
   const methods = paymentMethodsSummary(source.payments, source.paymentMethod);
   const totals = restricted
     ? '<p class="muted">Prices are hidden for your role.</p>'
-    : `<table class="totals"><tbody>${discounted ? `<tr><td>Subtotal</td><td class="num">${money(source.subtotal)}</td></tr><tr><td>Discount${Number(source.discountPercent ?? 0) > 0 ? ` (${Number(source.discountPercent)}%)` : ''}</td><td class="num">−${money(source.discountTotal)}</td></tr>` : ''}${taxed ? `<tr><td>Taxable value</td><td class="num">${money(Number(source.subtotal ?? 0) - Number(source.discountTotal ?? 0))}</td></tr>` : ''}${taxTotalRows(source.items, taxType, source.taxTotal ?? 0, source.chargeGst).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr></tbody></table>`;
+    : `<table class="totals"><tbody>${discounted ? `<tr><td>Subtotal</td><td class="num">${money(source.subtotal)}</td></tr><tr><td>Discount${Number(source.discountPercent ?? 0) > 0 ? ` (${Number(source.discountPercent)}%)` : ''}</td><td class="num">−${money(source.discountTotal)}</td></tr>` : ''}${taxed ? `<tr><td>Taxable value</td><td class="num">${money(Number(source.subtotal ?? 0) - Number(source.discountTotal ?? 0))}</td></tr>` : ''}${taxTotalRows(source.items, taxType, source.taxTotal ?? 0, source.chargeGst).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr>${returnRows}</tbody></table>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -152,17 +190,18 @@ ${lines(`${escapeHtml(sentenceCase(identity.caption))}: <strong>${escapeHtml(ide
 ${lines(escapeHtml(source.contactAddress), escapeHtml(source.contactPhone), gst?.buyerGstin && `GSTIN ${escapeHtml(gst.buyerGstin)}`)}
 </div>
 <div class="box">
-<div class="label">Payment</div>
-${lines(methods && escapeHtml(methods), balance != null && `Paid ${money(source.amountPaid ?? 0)} · Balance ${money(balance)}`, balance != null && balance > 0 && source.dueDate && `Due ${escapeHtml(formatDate(source.dueDate))}`) || '<div class="muted">Not recorded</div>'}
+<div class="label">${returnOf ? 'Settlement' : 'Payment'}</div>
+${(returnOf ? lines(returnOf.settlement && escapeHtml(returnOf.settlement)) : lines(methods && escapeHtml(methods), balance != null && `Paid ${money(source.amountPaid ?? 0)} · Balance ${money(balance)}`, balance != null && balance > 0 && source.dueDate && `Due ${escapeHtml(formatDate(source.dueDate))}`)) || '<div class="muted">Not recorded</div>'}
 </div>
 </section>
 <table class="items"><thead><tr>${itemHead.join('')}</tr></thead><tbody>${itemRows.join('')}</tbody></table>
 ${rateSummary}
 ${totals}
 ${source.note ? `<p class="note"><span class="label">Note</span><br>${escapeHtml(source.note)}</p>` : ''}
+${returnOf?.reason ? `<p class="note"><span class="label">Reason</span><br>${escapeHtml(returnOf.reason)}</p>` : ''}
 <footer class="footer">
-<div class="muted">Computer-generated ${sale ? (taxInvoice ? 'tax invoice' : title === 'Bill of supply' ? 'bill of supply' : 'sale receipt') : 'purchase record'}.</div>
-${sale ? `<div class="sign">For ${escapeHtml(shop.name)}<div class="line">Authorised signatory</div></div>` : ''}
+<div class="muted">Computer-generated ${returnOf ? noteName(source.kind) : sale ? (taxInvoice ? 'tax invoice' : title === 'Bill of supply' ? 'bill of supply' : 'sale receipt') : 'purchase record'}.</div>
+${sale || returnOf ? `<div class="sign">For ${escapeHtml(shop.name)}<div class="line">Authorised signatory</div></div>` : ''}
 </footer>
 </body>
 </html>`;

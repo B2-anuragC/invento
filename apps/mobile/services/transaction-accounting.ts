@@ -29,9 +29,15 @@ export function saleDiscountInput(mode: 'amount' | 'percent', value: string): { 
   return mode === 'percent' ? { discountPercent: text } : { discountAmount: text };
 }
 export const requestKey = () => `req_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
-/** What is still owed; none for a cancelled bill, whose payments were refunded. */
-export const paymentBalance = (record: { total?: string | number | null; amountPaid?: string | number | null; status?: string }) => record.status === 'CANCELLED' || record.total == null || record.amountPaid == null ? null : Math.max(0, moneyValue(Number(record.total) - Number(record.amountPaid)));
-export function isOverdue(record: { total?: string | number | null; amountPaid?: string | number | null; dueDate?: string | null; status?: string }) {
+/** A bill's amounts as the API sends them: returns (credit or debit notes) lower the net amount. */
+type BillAmounts = { total?: string | number | null; netTotal?: string | number | null; returnedTotal?: string | number | null; amountPaid?: string | number | null; status?: string };
+/** The bill's amount after returns; null when its prices are hidden. */
+export const netAmount = (record: BillAmounts): number | null => record.total == null ? null : record.netTotal != null ? Number(record.netTotal) : moneyValue(Number(record.total) - Number(record.returnedTotal ?? 0));
+/** What a bill adds to totals: its net amount, nothing when it is cancelled or its price is hidden. */
+export const countedAmount = (record: BillAmounts): number => record.status === 'CANCELLED' ? 0 : netAmount(record) ?? 0;
+/** What is still owed on the net amount; none for a cancelled bill, whose payments were refunded. */
+export const paymentBalance = (record: BillAmounts) => record.status === 'CANCELLED' || record.total == null || record.amountPaid == null ? null : Math.max(0, moneyValue(netAmount(record)! - Number(record.amountPaid)));
+export function isOverdue(record: BillAmounts & { dueDate?: string | null }) {
   const today = new Date();
   const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   return Boolean((paymentBalance(record) ?? 0) > 0 && record.dueDate && record.dueDate.slice(0, 10) < date);

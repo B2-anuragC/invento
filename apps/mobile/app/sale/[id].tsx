@@ -1,5 +1,5 @@
 import { RecordPaymentModal } from '@/components/record-payment-modal';
-import { TransactionReceipt } from '@/components/transaction-receipt';
+import { TransactionReceipt, type PaymentTarget } from '@/components/transaction-receipt';
 import { savedLineKey } from '@/services/bill-lines';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -21,7 +21,8 @@ export default function SaleDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [paymentOpen, setPaymentOpen] = useState(false);
+  // The receipt passes the bill as it now stands, after any return made on it.
+  const [paymentFor, setPaymentFor] = useState<PaymentTarget | null>(null);
   const [canRecordPayment, setCanRecordPayment] = useState(false);
 
   useFocusEffect(useCallback(() => {
@@ -52,7 +53,7 @@ export default function SaleDetailsScreen() {
   }, [id, retry]));
 
     if (!loading && !error && sale) {
-    return <><TransactionReceipt data={{ syncState: sale.syncState, syncError: sale.syncError, referenceImage: sale.referenceImage, status: sale.status, cancelReason: sale.cancelReason, cancelledAt: sale.cancelledAt, gst: saleGstDetails(sale), chargeGst: sale.chargeGst, id: sale.id, kind: 'sale', date: sale.saleDate, invoice: sale.invoiceNumber, documentNumber: sale.documentNumber, contact: sale.customer.name, contactPhone: sale.customer.phone, contactAddress: sale.customer.address, total: sale.total, subtotal: sale.subtotal, discountTotal: sale.discountTotal, discountPercent: sale.discountPercent, taxTotal: sale.taxTotal, amountPaid: sale.amountPaid, dueDate: sale.dueDate, payments: sale.payments, paymentMethod: sale.paymentMethod, note: sale.note, items: sale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: item.discountAmount, hsnCode: item.hsnCode, label: item.optionName ?? formatUnitLabel(item.unit ?? item.product?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? item.product?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/sale/quick')} onRepeat={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} onPayment={!sale.syncState && canRecordPayment && sale.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && sale.total != null ? <RecordPaymentModal kind="sale" id={sale.id} total={sale.total} amountPaid={sale.amountPaid} billDate={sale.saleDate} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
+    return <><TransactionReceipt data={{ syncState: sale.syncState, syncError: sale.syncError, referenceImage: sale.referenceImage, status: sale.status, cancelReason: sale.cancelReason, cancelledAt: sale.cancelledAt, gst: saleGstDetails(sale), chargeGst: sale.chargeGst, id: sale.id, kind: 'sale', date: sale.saleDate, invoice: sale.invoiceNumber, documentNumber: sale.documentNumber, contact: sale.customer.name, contactPhone: sale.customer.phone, contactAddress: sale.customer.address, total: sale.total, subtotal: sale.subtotal, discountTotal: sale.discountTotal, discountPercent: sale.discountPercent, taxTotal: sale.taxTotal, amountPaid: sale.amountPaid, dueDate: sale.dueDate, payments: sale.payments, paymentMethod: sale.paymentMethod, note: sale.note, returns: sale.returns, returnedTotal: sale.returnedTotal, netTotal: sale.netTotal, items: sale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: item.discountAmount, hsnCode: item.hsnCode, label: item.optionName ?? formatUnitLabel(item.unit ?? item.product?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? item.product?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), returnedQuantity: item.returnedQuantity })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/sale/quick')} onRepeat={() => router.push(`/sale/create?saleId=${encodeURIComponent(sale.id)}`)} onPayment={!sale.syncState && canRecordPayment && sale.total != null ? setPaymentFor : undefined} />{paymentFor ? <RecordPaymentModal kind="sale" id={sale.id} total={paymentFor.total} amountPaid={paymentFor.amountPaid} billDate={sale.saleDate} onClose={() => setPaymentFor(null)} onSaved={() => { setPaymentFor(null); setRetry((value) => value + 1); }} /> : null}</>;
   }
 
   return (

@@ -40,6 +40,10 @@ describe('transactionSearchText', () => {
     const text = transactionSearchText({ ...numberedPurchase, name: 'Saint Glass' });
     for (const query of ['saint', 'pur/2026-27/0003', '0003', 'sup-77', 'skex1pr9']) expect(text).toContain(query);
   });
+
+  it('finds a bill by its credit or debit note number', () => {
+    expect(transactionSearchText({ ...numberedPurchase, returns: [{ documentNumber: 'DN/2026-27/0001' }] })).toContain('dn/2026-27/0001');
+  });
 });
 
 describe('receiptIdentity', () => {

@@ -2,15 +2,18 @@ import { usePermissions } from '@/services/permissions';
 import { LOCAL_ONLY } from '@/services/runtime-mode';
 import { PurchaseAttachment } from './purchase-attachment';
 import { CancelBillModal } from './cancel-bill-modal';
+import { ReturnItemsModal } from './return-items-modal';
+import { ReturnNoteView } from './return-note-view';
 import { SaleReferencePhoto } from './sale-reference-photo';
-import type { PaymentRecord, FileAttachment, BusinessDetails, SaleRecord } from '@/services/api';
-import { paymentBalance, isOverdue } from '@/services/transaction-accounting';
+import type { PaymentRecord, FileAttachment, BusinessDetails, SaleRecord, PurchaseRecord, ReturnNoteRecord } from '@/services/api';
+import { paymentBalance, isOverdue, netAmount } from '@/services/transaction-accounting';
+import { canReturnBill, noteName, noteSettlement, type ReturnBill } from '@/services/bill-returns';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { paymentMethodLabel, paymentMethodsSummary } from '@/services/payment-methods';
 import { receiptIdentity } from '@/services/transaction-labels';
 import { savedLineKey } from '@/services/bill-lines';
 import { lineTaxText, receiptTitle, saleGstDetails, stateLabel, taxTotalRows, type SaleGstDetails } from '@/services/gst';
-import { invoiceFileName, invoiceHtml } from '@/services/invoice-document';
+import { invoiceFileName, invoiceHtml, returnNoteSource } from '@/services/invoice-document';
 import { receiptShareText } from '@/services/receipt-text';
 import { chargesGst } from '@invento/shared';
 import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
@@ -39,11 +42,20 @@ export type ReceiptData = {
   chargeGst?: boolean | null;
   id: string; kind: 'sale' | 'purchase'; date: string; invoice?: string | null; documentNumber?: string | null; contact: string; total?: string | number | null; paymentMethod?: string; note?: string | null;
   subtotal?: string | number; discountTotal?: string | number; discountPercent?: string | number | null; taxTotal?: string | number; amountPaid?: string | number | null; dueDate?: string | null; payments?: PaymentRecord[];
+  /** Credit notes (sale) or debit notes (purchase) on this bill, and its amount after them. */
+  returns?: ReturnNoteRecord[]; returnedTotal?: string | number; netTotal?: string | number;
   /** lineKey matches a line to the server's copy, which lists lines in another order. */
-  items: { id: string; lineKey?: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null }[];
+  items: { id: string; lineKey?: string; name: string; sku?: string; quantity: number; label: string; unit?: string; price?: number; stockAfter?: number; stockUnit?: string; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null; returnedQuantity?: string | number }[];
 };
+
+/** The receipt for the server's copy of a bill, keeping what the screen already knew about each line. */
+export function receiptFromRecord(base: ReceiptData, record: SaleRecord | PurchaseRecord): ReceiptData {
+  return { ...base, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, gst: base.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, chargeGst: record.chargeGst ?? base.chargeGst, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, discountTotal: 'discountTotal' in record ? record.discountTotal : undefined, discountPercent: 'discountPercent' in record ? record.discountPercent : undefined, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, returns: record.returns, returnedTotal: record.returnedTotal, netTotal: record.netTotal, items: record.items.map((item, index) => ({ ...(base.items.find((entry) => entry.lineKey === savedLineKey(base.kind, item)) ?? base.items[index]), id: item.id, name: item.product?.name ?? base.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: 'discountAmount' in item ? item.discountAmount : undefined, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined, returnedQuantity: item.returnedQuantity })) };
+}
+/** What a payment is recorded against: the bill's net amount after returns and what was paid. */
+export type PaymentTarget = { total: string | number; amountPaid?: string | number | null };
 const money = formatMoney;
-export function TransactionReceipt({ data: initialData, inModal = false, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; inModal?: boolean; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: () => void }) {
+export function TransactionReceipt({ data: initialData, inModal = false, onBack, onNew, onRepeat, onPayment }: { data: ReceiptData; inModal?: boolean; onBack: () => void; onView?: () => void; onNew: () => void; onRepeat?: () => void; onPayment?: (bill: PaymentTarget) => void }) {
   const { can } = usePermissions();
   const mayCreate = can(initialData.kind === 'sale' ? 'sales.create' : 'purchases.create');
   const insets = useSafeAreaInsets();
@@ -67,13 +79,16 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     const load = initialData.kind === 'sale' ? fetchSale(session, initialData.id) : fetchPurchase(session, initialData.id);
     void load.then((record) => {
       if (!active) return;
-      setData({ ...initialData, id: record.id, invoice: record.invoiceNumber, documentNumber: record.documentNumber, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, gst: initialData.kind === 'sale' ? saleGstDetails(record as SaleRecord) : undefined, chargeGst: record.chargeGst ?? initialData.chargeGst, syncState: record.syncState, syncError: record.syncError, total: record.total, subtotal: record.subtotal, discountTotal: 'discountTotal' in record ? record.discountTotal : undefined, discountPercent: 'discountPercent' in record ? record.discountPercent : undefined, taxTotal: record.taxTotal, amountPaid: record.amountPaid, dueDate: record.dueDate, payments: record.payments, items: record.items.map((item, index) => ({ ...(initialData.items.find((entry) => entry.lineKey === savedLineKey(initialData.kind, item)) ?? initialData.items[index]), id: item.id, name: item.product?.name ?? initialData.items[index]?.name ?? 'Product', quantity: Number(item.quantity), price: 'sellingPrice' in item ? Number(item.sellingPrice) : item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: 'discountAmount' in item ? item.discountAmount : undefined, hsnCode: 'hsnCode' in item ? item.hsnCode : undefined })) });
+      setData(receiptFromRecord(initialData, record));
     }).catch(() => {});
     return () => { active = false; };
   }, [initialData, sync.syncing, sync.pending, sync.conflicts]);
   const [error, setError] = useState('');
   const [preparing, setPreparing] = useState<'print' | 'pdf' | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [returning, setReturning] = useState<ReturnBill | null>(null);
+  const [loadingReturn, setLoadingReturn] = useState(false);
+  const [noteId, setNoteId] = useState<string | null>(null);
   const title = data.kind === 'sale' ? 'Sale' : 'Purchase';
   const heading = receiptTitle(data.kind, data.gst, data.documentNumber, data.chargeGst);
   const taxed = chargesGst(data.chargeGst);
@@ -85,7 +100,31 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   const overdue = isOverdue(data);
   const cancelled = data.status === 'CANCELLED';
   const refunded = (data.payments ?? []).filter((payment) => payment.kind === 'REFUND').reduce((sum, payment) => sum + Number(payment.amount), 0);
-  const mayCancel = can(data.kind === 'sale' ? 'sales.cancel' : 'purchases.cancel') && !data.syncState && !cancelled && !LOCAL_ONLY;
+  const notes = data.returns ?? [];
+  const returnedTotal = Number(data.returnedTotal ?? 0);
+  const returnBill = (source: ReceiptData): ReturnBill => ({ id: source.id, kind: source.kind, status: source.status, syncState: source.syncState, total: source.total, netTotal: source.netTotal, returnedTotal: source.returnedTotal, amountPaid: source.amountPaid, returns: source.returns, items: source.items.map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, lineTotal: item.lineTotal, discountAmount: item.discountAmount, taxAmount: item.taxAmount, returnedQuantity: item.returnedQuantity })) });
+  // Returns need a connection, like cancelling; a bill with returns can no longer be cancelled.
+  const mayReturn = !LOCAL_ONLY && canReturnBill(returnBill(data), can(data.kind === 'sale' ? 'sales.return' : 'purchases.return'));
+  const mayCancel = can(data.kind === 'sale' ? 'sales.cancel' : 'purchases.cancel') && !data.syncState && !cancelled && !LOCAL_ONLY && !notes.length && !(returnedTotal > 0);
+  const lastPaidMethod = [...(data.payments ?? [])].reverse().find((payment) => payment.kind === 'PAYMENT')?.method ?? data.paymentMethod;
+  // The form starts from the server's copy, so its lines and what is left to return are current.
+  const startReturn = async () => {
+    const session = appSession.current;
+    if (!session || loadingReturn) return;
+    setLoadingReturn(true);
+    setError('');
+    try {
+      const record = data.kind === 'sale' ? await fetchSale(session, data.id) : await fetchPurchase(session, data.id);
+      const fresh = receiptFromRecord(data, record);
+      setData(fresh);
+      setReturning(returnBill(fresh));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load this bill. Please try again.');
+    } finally {
+      setLoadingReturn(false);
+    }
+  };
+  const viewedNote = noteId ? notes.find((note) => note.id === noteId) : undefined;
   const total = data.total == null ? 'Restricted price' : money(Number(data.total));
   const share = async () => {
     setError('');
@@ -144,22 +183,29 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
           {taxed && item.taxAmount != null ? (
             <Text style={styles.meta}>{lineTaxText(item, data.gst?.taxType)}</Text>
           ) : null}
+          {Number(item.returnedQuantity ?? 0) > 0 ? (
+            <Text style={styles.returned}>Returned {item.unit ? formatQuantity(Number(item.returnedQuantity), item.unit) : `${Number(item.returnedQuantity)} ${item.label}`} of {item.unit ? formatQuantity(item.quantity, item.unit) : item.quantity}</Text>
+          ) : null}
           {item.stockAfter !== undefined ? (
             <Text style={styles.greenCopy}>{data.kind === 'sale' ? 'Stock remaining' : 'Stock after receipt'}: {formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text>
           ) : null}
         </View>
       ))}
-      <View style={styles.card}>{data.subtotal != null ? <View style={styles.row}><Text style={styles.meta}>{taxed ? 'Subtotal · excluding GST' : 'Subtotal'}</Text><Text style={styles.bold}>{money(Number(data.subtotal))}</Text></View> : null}{Number(data.discountTotal ?? 0) > 0 ? <View style={styles.row}><Text style={styles.meta}>Discount{Number(data.discountPercent ?? 0) > 0 ? ` (${Number(data.discountPercent)}%)` : ''}{taxed ? ' · before GST' : ''}</Text><Text style={styles.bold}>−{money(Number(data.discountTotal))}</Text></View> : null}{taxRows.map((row) => <View key={row.key} style={styles.row}><Text style={styles.meta}>{row.key === 'gst' ? 'GST · saved item rates' : row.label}</Text><Text style={styles.bold}>{money(row.amount)}</Text></View>)}{!taxed && data.total != null ? <Text style={styles.meta}>No GST charged on this {data.kind}.</Text> : null}<View style={styles.row}><Text style={styles.meta}>Total amount</Text><Text style={styles.total}>{total}</Text></View></View>
-      <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{cancelled ? (refunded > 0 ? `Cancelled · ${money(refunded)} refunded` : 'Cancelled · nothing was paid') : balance == null ? 'Payment history not confirmed' : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{!data.syncState && !cancelled && onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={onPayment} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
+      <View style={styles.card}>{data.subtotal != null ? <View style={styles.row}><Text style={styles.meta}>{taxed ? 'Subtotal · excluding GST' : 'Subtotal'}</Text><Text style={styles.bold}>{money(Number(data.subtotal))}</Text></View> : null}{Number(data.discountTotal ?? 0) > 0 ? <View style={styles.row}><Text style={styles.meta}>Discount{Number(data.discountPercent ?? 0) > 0 ? ` (${Number(data.discountPercent)}%)` : ''}{taxed ? ' · before GST' : ''}</Text><Text style={styles.bold}>−{money(Number(data.discountTotal))}</Text></View> : null}{taxRows.map((row) => <View key={row.key} style={styles.row}><Text style={styles.meta}>{row.key === 'gst' ? 'GST · saved item rates' : row.label}</Text><Text style={styles.bold}>{money(row.amount)}</Text></View>)}{!taxed && data.total != null ? <Text style={styles.meta}>No GST charged on this {data.kind}.</Text> : null}<View style={styles.row}><Text style={styles.meta}>Total amount</Text><Text style={returnedTotal > 0 ? styles.bold : styles.total}>{total}</Text></View>{returnedTotal > 0 && data.total != null ? <><View style={styles.row}><Text style={styles.meta}>Returned · {notes.length === 1 ? notes[0].documentNumber : `${notes.length} ${noteName(data.kind)}s`}</Text><Text style={[styles.bold, { color: '#9C5B12' }]}>−{money(returnedTotal)}</Text></View><View style={styles.row}><Text style={styles.meta}>Net amount</Text><Text style={styles.total}>{money(netAmount(data) ?? 0)}</Text></View></> : null}</View>
+      {notes.length ? <View style={styles.card}><Text style={styles.bold}>{data.kind === 'sale' ? 'Credit notes' : 'Debit notes'} · {notes.length}</Text><Text style={styles.meta}>{data.kind === 'sale' ? 'Goods returned by the customer.' : 'Goods returned to the supplier.'} The bill keeps its items; returned quantities are shown on each line.</Text>{notes.map((note) => <Pressable key={note.id} accessibilityRole="button" accessibilityLabel={`View ${noteName(data.kind)} ${note.documentNumber}`} onPress={() => setNoteId(note.id)} style={styles.noteRow}><View style={{ flex: 1 }}><Text style={styles.bold}>{note.documentNumber}</Text><Text style={styles.meta}>{formatDate(note.returnDate)} · {note.items.length} item{note.items.length === 1 ? '' : 's'}{note.reason ? ` · ${note.reason}` : ''}</Text>{noteSettlement(data.kind, note) ? <Text style={styles.meta}>{noteSettlement(data.kind, note)}</Text> : null}</View><View style={{ alignItems: 'flex-end' }}>{note.total != null ? <Text style={styles.bold}>−{money(Number(note.total))}</Text> : null}<Text style={styles.greenTitle}>View ›</Text></View></Pressable>)}</View> : null}
+      <View style={styles.card}><Text style={styles.meta}>Payment status</Text><Text style={styles.bold}>{cancelled ? (refunded > 0 ? `Cancelled · ${money(refunded)} refunded` : 'Cancelled · nothing was paid') : balance == null ? 'Payment history not confirmed' : returnedTotal > 0 && netAmount(data) === 0 ? `Returned in full · nothing to ${data.kind === 'sale' ? 'collect' : 'pay'}` : balance === 0 ? 'Fully paid' : Number(data.amountPaid) === 0 ? 'Full credit · No payment recorded' : 'Partial payment'}</Text>{balance != null ? <><View style={styles.row}><Text style={styles.meta}>Amount {data.kind === 'sale' ? 'received' : 'paid'}</Text><Text style={styles.bold}>{money(Number(data.amountPaid))}</Text></View><View style={styles.row}><Text style={styles.meta}>{data.kind === 'sale' ? 'To collect' : 'To pay'}</Text><Text style={styles.greenTitle}>{money(balance)}</Text></View></> : null}{data.dueDate ? <View style={styles.row}><Text style={styles.meta}>Due {data.dueDate.slice(0, 10)}</Text><Text style={[styles.greenTitle, overdue && { color: '#A74737' }]}>{overdue ? 'Overdue' : balance === 0 ? 'Settled' : 'Not overdue'}</Text></View> : null}{!data.syncState && !cancelled && onPayment && balance !== 0 ? <Pressable accessibilityRole="button" onPress={() => onPayment({ total: netAmount(data) ?? data.total ?? 0, amountPaid: data.amountPaid })} style={styles.secondary}><Text style={styles.buttonText}>Record payment</Text></Pressable> : null}</View>
       {data.payments?.length ? <View style={styles.card}><Text style={styles.bold}>Payment history</Text>{data.payments.map((payment) => <View key={payment.id} style={styles.row}><View style={{ flex: 1 }}><Text style={styles.meta}>{payment.kind === 'OPENING_BALANCE' ? 'Confirmed prior balance' : payment.kind === 'REFUND' ? `Refund · ${paymentMethodLabel(payment.method)}` : paymentMethodLabel(payment.method)}</Text><Text style={styles.meta}>{formatDate(payment.paidAt)}</Text></View><Text style={styles.bold}>{payment.kind === 'REFUND' ? '−' : ''}{money(Number(payment.amount))}</Text></View>)}</View> : null}
       {methods ? <View style={styles.card}><Text style={styles.meta}>{methods.includes(' + ') ? 'Payment methods' : 'Payment method'}</Text><Text style={styles.bold}>{methods}</Text></View> : null}
       {data.note ? <View style={styles.card}><Text style={styles.meta}>Note</Text><Text style={styles.bold}>{data.note}</Text></View> : null}
       {data.items.some((item) => item.stockAfter !== undefined) ? <View style={styles.stock}><Text style={styles.greenTitle}>{data.syncState ? 'Stock adjusted on this device' : 'Stock updated'} for this {data.kind}</Text>{data.items.map((item) => item.stockAfter !== undefined ? <View key={item.id} style={styles.row}><Text style={[styles.meta, { flex: 1 }]}>{item.name}</Text><Text style={styles.greenTitle}>{formatQuantity(Math.max(0, item.stockAfter), item.stockUnit ?? 'PIECE')}</Text></View> : null)}</View> : null}
     <SaleReferencePhoto value={data.referenceImage} />
+      {mayReturn ? <Pressable accessibilityRole="button" accessibilityState={{ busy: loadingReturn, disabled: loadingReturn }} disabled={loadingReturn} onPress={() => void startReturn()} style={[styles.secondary, styles.returnButton, loadingReturn && { opacity: 0.6 }]}><Text style={styles.buttonText}>{loadingReturn ? 'Loading…' : 'Return items'}</Text></Pressable> : null}
       {mayCancel ? <Pressable accessibilityRole="button" onPress={() => setCancelling(true)} style={styles.cancelLink}><Text style={styles.cancelLinkText}>Cancel this {data.kind}</Text></Pressable> : null}
       <PurchaseAttachment value={data.attachment} />
       </ScrollView>
-    {cancelling ? <CancelBillModal kind={data.kind} id={data.id} number={identifier} paid={Number(data.amountPaid ?? 0)} paidMethod={[...(data.payments ?? [])].reverse().find((payment) => payment.kind === 'PAYMENT')?.method ?? data.paymentMethod} onClose={() => setCancelling(false)} onCancelled={(record) => { setCancelling(false); setData((current) => ({ ...current, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, amountPaid: record.amountPaid, payments: record.payments })); }} /> : null}
+    {cancelling ? <CancelBillModal kind={data.kind} id={data.id} number={identifier} paid={Number(data.amountPaid ?? 0)} paidMethod={lastPaidMethod} onClose={() => setCancelling(false)} onCancelled={(record) => { setCancelling(false); setData((current) => ({ ...current, status: record.status, cancelReason: record.cancelReason, cancelledAt: record.cancelledAt, amountPaid: record.amountPaid, payments: record.payments })); }} /> : null}
+    {returning ? <ReturnItemsModal bill={returning} number={identifier} units={Object.fromEntries(data.items.map((item) => [item.id, { unit: item.unit, label: item.label }]))} paidMethod={lastPaidMethod} onClose={() => setReturning(null)} onReturned={(record) => { setReturning(null); const next = receiptFromRecord(data, record); setData(next); const latest = next.returns?.[next.returns.length - 1]; if (latest) setNoteId(latest.id); }} /> : null}
+    {viewedNote ? <ReturnNoteView note={returnNoteSource(data, viewedNote)} shop={shop ?? { name: shopName }} onClose={() => setNoteId(null)} /> : null}
     <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
       <View style={styles.actions}>
         {data.syncState ? (
@@ -177,7 +223,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   </View>;
 }
 const styles = StyleSheet.create({
-  cancelledBanner: { backgroundColor: '#FBEAE7' }, cancelLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }, cancelLinkText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
+  cancelledBanner: { backgroundColor: '#FBEAE7' }, returned: { color: '#9C5B12', fontSize: 12, fontWeight: '700', lineHeight: 18 }, noteRow: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8E4', minHeight: 44 }, returnButton: { alignSelf: 'center', paddingHorizontal: 20, marginTop: 8 }, cancelLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }, cancelLinkText: { color: '#A74737', fontSize: 14, fontWeight: '700' },
   screen: { flex: 1, backgroundColor: '#F3F5F4' }, header: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, minHeight: 64, backgroundColor: '#FFFFFF' }, back: { minHeight: 44, minWidth: 32, justifyContent: 'center' }, title: { color: '#24332A', fontSize: 24, fontWeight: '800' }, content: { padding: 20, width: '100%', maxWidth: 680, alignSelf: 'center' },
   productCard: { backgroundColor: '#EDF5F0', borderColor: '#CFDFD5', borderLeftWidth: 4, borderLeftColor: '#80AB94', padding: 10, marginBottom: 8, gap: 3 },
   productName: { flex: 1, minWidth: 0 },

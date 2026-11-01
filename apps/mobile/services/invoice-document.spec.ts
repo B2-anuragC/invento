@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { escapeHtml, invoiceFileName, invoiceHtml, type InvoiceSource } from './invoice-document';
+import { escapeHtml, invoiceFileName, invoiceHtml, returnNoteSource, type InvoiceSource } from './invoice-document';
 
 const shop = { name: 'QA Glass & Hardware', address: 'Shop 12, Station Road, Pune 411001', phone: '+91 98765 43210', email: null };
 const glass = { id: 'line-1', name: 'Clear Float Glass 5mm', quantity: 2, label: 'sq ft', unit: 'SQUARE_FOOT', price: 90, gstRate: '18', taxAmount: '32.4', lineTotal: '180', hsnCode: '700529' };
@@ -127,5 +127,46 @@ describe('invoiceFileName', () => {
     expect(invoiceFileName({ kind: 'purchase', id: 'x', documentNumber: 'PUR/2026-27/0001' })).toBe('PUR-2026-27-0001.pdf');
     expect(invoiceFileName({ kind: 'sale', id: 'cmvvzivll0005aa7bgbgvjik4', documentNumber: null, invoice: null })).toBe('Sale-GBGVJIK4.pdf');
     expect(invoiceFileName({ kind: 'sale', id: 'x', documentNumber: null, invoice: 'Bill #12 / Patil' })).toBe('Bill-12-Patil.pdf');
+  });
+});
+
+describe('credit and debit notes', () => {
+  const handles = { id: 'line-h', name: 'Aluminium Door Handle', quantity: 2, label: 'pcs', unit: 'PIECE', price: 180, gstRate: '18', taxAmount: '64.8', lineTotal: '360', hsnCode: '830241' };
+  const bill: InvoiceSource = { ...intraState, items: [glass, handles], subtotal: '540', taxTotal: '97.2', total: '637.2', amountPaid: '637.2', dueDate: null };
+  const note = { id: 'cn-1', documentNumber: 'CN/2026-27/0001', returnDate: '2026-11-01T03:16:00Z', subtotal: '180', discountTotal: '0', taxTotal: '32.4', total: '212.4', refundAmount: '100', refundMethod: 'CASH', reason: 'Damaged <in transit>', items: [{ saleItemId: 'line-h', quantity: '1', lineTotal: '180', discountAmount: '0', gstRate: '18', taxAmount: '32.4' }] };
+
+  it('prints a credit note against its invoice with only the returned lines', () => {
+    const source = returnNoteSource(bill, note);
+    expect(invoiceFileName(source)).toBe('CN-2026-27-0001.pdf');
+    const html = invoiceHtml(source, shop);
+    const body = text(html);
+    for (const expected of [
+      'Credit note', 'Credit note number: CN/2026-27/0001', 'Against invoice INV/2026-27/0005 dated 31 Oct 2026', 'Date: 1 Nov 2026', 'Place of supply: Maharashtra (27)',
+      'Bill to Patil Constructions', 'GSTIN 27AAPFU0939F1ZV', 'Settlement Refunded ₹100.00 · Cash and ₹112.40 off the amount due',
+      'Aluminium Door Handle 830241 1 piece ₹180.00 ₹180.00 ₹16.20 9% ₹16.20 9% ₹212.40', 'CGST ₹16.20', 'Total ₹212.40',
+      'Reason Damaged &lt;in transit&gt;', 'Computer-generated credit note.', 'Authorised signatory',
+    ]) expect(body).toContain(expected);
+    expect(body).not.toContain('Clear Float Glass');
+    expect(body).not.toContain('Net amount');
+    expect(html).toContain('<title>CN-2026-27-0001</title>');
+  });
+
+  it('lists the notes and the net amount under the bill total, leaving the bill as issued', () => {
+    const body = text(invoiceHtml({ ...bill, returns: [note], netTotal: '424.8', amountPaid: '424.8' }, shop));
+    expect(body).toContain('Total ₹637.20 Returned · Credit note CN/2026-27/0001 · 1 Nov 2026 −₹212.40 Net amount ₹424.80');
+    expect(body).toContain('Clear Float Glass 5mm');
+    expect(body).toContain('Paid ₹424.80 · Balance ₹0.00');
+  });
+
+  it('prints a debit note to the supplier, without amounts for a role that cannot see prices', () => {
+    const purchase: InvoiceSource = { id: 'pur-1', kind: 'purchase', date: '2026-10-30T09:00:00Z', documentNumber: 'PUR/2026-27/0003', contact: 'Saint Glass Distributors', chargeGst: false, subtotal: '900', taxTotal: '0', total: '900', amountPaid: '0', items: [{ ...glass, price: 90, lineTotal: '900', taxAmount: '0', quantity: 10, hsnCode: null }] };
+    const debit = { id: 'dn-1', documentNumber: 'DN/2026-27/0001', returnDate: '2026-11-01T04:00:00Z', subtotal: '180', taxTotal: '0', total: '180', refundAmount: '0', refundMethod: null, items: [{ purchaseItemId: 'line-1', quantity: '2', lineTotal: '180', gstRate: '18', taxAmount: '0' }] };
+    const body = text(invoiceHtml(returnNoteSource(purchase, debit), shop));
+    for (const expected of ['Debit note', 'Debit note number: DN/2026-27/0001', 'Against purchase PUR/2026-27/0003 dated 30 Oct 2026', 'Supplier Saint Glass Distributors', 'Settlement ₹180.00 off the amount owed', 'Clear Float Glass 5mm 2 sq ft ₹90.00 ₹180.00', 'Total ₹180.00', 'Computer-generated debit note.']) expect(body).toContain(expected);
+    expect(body).not.toContain('GST');
+    const hidden = text(invoiceHtml(returnNoteSource({ ...purchase, total: null, items: purchase.items.map((item) => ({ ...item, price: undefined })) }, { id: 'dn-1', documentNumber: 'DN/2026-27/0001', returnDate: debit.returnDate, items: [{ purchaseItemId: 'line-1', quantity: '2' }] }), shop));
+    expect(hidden).toContain('Clear Float Glass 5mm 2 sq ft');
+    expect(hidden).toContain('Prices are hidden for your role.');
+    expect(hidden).toContain('Settlement Not recorded');
   });
 });

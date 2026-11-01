@@ -8,6 +8,8 @@ import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@
 import { appSession, fetchPurchases, type PurchaseRecord } from '@/services/api';
 import { formatDateTime, formatMoney } from '@/services/format';
 import { transactionSearchText, transactionTitle } from '@/services/transaction-labels';
+import { countedAmount, netAmount } from '@/services/transaction-accounting';
+import { returnSummary } from '@/services/bill-returns';
 
 
 export default function PurchasesScreen() {
@@ -54,7 +56,8 @@ export default function PurchasesScreen() {
   );
 
   const restrictedPrice = purchases.some((purchase) => purchase.total == null);
-  const totalPurchases = purchases.filter((purchase) => purchase.status !== 'CANCELLED').reduce((total, purchase) => total + Number(purchase.total ?? 0), 0);
+  // Net of returns; cancelled bills count nothing.
+  const totalPurchases = purchases.reduce((total, purchase) => total + countedAmount(purchase), 0);
   const supplierCount = new Set(purchases.map((purchase) => purchase.supplier?.id).filter(Boolean)).size;
 
   const filteredRecords = purchases.filter((record) =>
@@ -91,12 +94,13 @@ export default function PurchasesScreen() {
                   </Text>
                   <Text style={styles.supplier}>{purchase.supplier?.name ?? 'Supplier'}</Text>
                   {purchase.status === 'CANCELLED' ? <Text style={styles.cancelledLabel}>Cancelled</Text> : null}
+                  {returnSummary(purchase) ? <Text style={styles.returnedLabel}>{returnSummary(purchase)}</Text> : null}
                   <Text style={styles.date}>
                     {purchase.syncState ? `${purchase.syncState === 'conflict' ? 'Needs attention' : 'Pending sync'} · ` : ''}{formatDateTime(purchase.purchaseDate)}
                     {' · '}{purchase.items.length} item{purchase.items.length === 1 ? '' : 's'}
                   </Text>
                 </View>
-                <Text style={styles.amount}>{purchase.total == null ? 'Restricted' : formatMoney(Number(purchase.total))} ›</Text>
+                <Text style={styles.amount}>{purchase.total == null ? 'Restricted' : formatMoney(netAmount(purchase) ?? 0)} ›</Text>
               </Pressable>
             ))
           ) : (
@@ -110,6 +114,7 @@ export default function PurchasesScreen() {
 
 const styles = StyleSheet.create({
   cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
+  returnedLabel: { color: '#9C5B12', fontSize: 12, fontWeight: '700', marginTop: 4 },
   content: {
     padding: 20,
     paddingBottom: 32,

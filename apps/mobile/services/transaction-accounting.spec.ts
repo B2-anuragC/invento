@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { saleDiscountInput, transactionTotals, paymentBalance, validDueDate } from './transaction-accounting';
+import { countedAmount, netAmount, saleDiscountInput, transactionTotals, paymentBalance, validDueDate } from './transaction-accounting';
 describe('Transaction accounting preview', () => {
   it('preserves decimal quantities and rounds each tax line', () => {
     expect(transactionTotals([{ quantity: 0.8, price: 50, product: { gstRate: '18' } }, { quantity: 2, price: 40, product: { gstRate: '5' } }])).toEqual({ subtotal: 120, discount: 0, tax: 11.2, total: 131.2 });
@@ -7,6 +7,19 @@ describe('Transaction accounting preview', () => {
     expect(paymentBalance({ total: '100', amountPaid: '30' })).toBe(70);
     expect(paymentBalance({ total: '100', amountPaid: '0', status: 'CANCELLED' })).toBeNull();
     expect(validDueDate('2026-02-30')).toBe(false);
+  });
+
+  it('owes and counts the net amount after returns', () => {
+    const returned = { total: '424.8', returnedTotal: '212.4', netTotal: '212.4', amountPaid: '100' };
+    expect(netAmount(returned)).toBe(212.4);
+    expect(netAmount({ total: '424.8', returnedTotal: '212.4' })).toBe(212.4);
+    expect(netAmount({ total: '100' })).toBe(100);
+    expect(netAmount({ total: null })).toBeNull();
+    expect(paymentBalance(returned)).toBe(112.4);
+    expect(paymentBalance({ ...returned, amountPaid: '212.4' })).toBe(0);
+    expect(countedAmount(returned)).toBe(212.4);
+    expect(countedAmount({ ...returned, status: 'CANCELLED' })).toBe(0);
+    expect(countedAmount({ total: null })).toBe(0);
   });
 
   it('matches the API for a discount split before GST', () => {

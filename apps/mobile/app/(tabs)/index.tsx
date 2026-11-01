@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { AppScreen, appColors } from '@/components/invento-ui';
 import { formatMoney, plural } from '@/services/format';
+import { netAmount } from '@/services/transaction-accounting';
 import {
   appSession,
   fetchDashboardSummary,
@@ -55,7 +56,7 @@ export default function DashboardScreen() {
           name: sale.customer.name,
           date: sale.saleDate,
           itemCount: sale.items.length,
-          total: Number(sale.total),
+          total: netAmount(sale) ?? 0,
           route: `/sale/${sale.id}` as const,
         })),
       ].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 2));

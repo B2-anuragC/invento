@@ -145,7 +145,13 @@ export type InventoryTransactionRecord = {
 };
 
 export type PaymentRecord = { id: string; amount: string | number; method: string; kind: string; paidAt: string };
-export type SaleRecord = {
+/** A line of a credit note (sales return) or debit note (purchase return). Amounts are missing on debit notes for roles that cannot see purchase prices. */
+export type ReturnNoteItem = { id: string; saleItemId?: string; purchaseItemId?: string; productId: string; quantity: string | number; lineTotal?: string | number; discountAmount?: string | number; gstRate?: string | number; taxAmount?: string | number };
+/** A credit note (sale) or debit note (purchase): goods that came back, numbered CN/… or DN/…. */
+export type ReturnNoteRecord = { id: string; documentNumber: string; returnDate: string; subtotal?: string | number; discountTotal?: string | number; taxTotal?: string | number; total?: string | number; refundAmount?: string | number; refundMethod?: string | null; reason?: string | null; items: ReturnNoteItem[] };
+/** What returns did to a bill: the bill keeps its lines and total; these give what went back. */
+type BillReturns = { returnedTotal?: string | number; netTotal?: string | number; returns?: ReturnNoteRecord[] };
+export type SaleRecord = BillReturns & {
   /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
   status?: string;
   cancelledAt?: string | null;
@@ -180,7 +186,7 @@ export type SaleRecord = {
   paymentMethod: string;
   note?: string | null;
   customer: { id: string; name: string; phone?: string | null; address?: string | null };
-  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null; sellingPrice: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; unit?: string | null; sellingOptionId?: string | null; optionName?: string | null; unitsPerOption?: string | number; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; discountAmount?: string | number; hsnCode?: string | null; sellingPrice: string | number; returnedQuantity?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type CreateSaleInput = {
@@ -218,7 +224,7 @@ export type SupplierRecord = {
 
 export type FileAttachment = { name: string; mimeType: string; url?: string; thumbnailUrl?: string; base64?: string };
 
-export type PurchaseRecord = {
+export type PurchaseRecord = BillReturns & {
   /** COMPLETED, or CANCELLED with when and why; a cancelled bill keeps its number. */
   status?: string;
   cancelledAt?: string | null;
@@ -243,7 +249,7 @@ export type PurchaseRecord = {
   note?: string | null;
   total?: string | number;
   supplier: { id: string; name: string; phone?: string | null; address?: string | null };
-  items: Array<{ id: string; productId: string; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; purchasePrice?: string | number; product?: { name: string; sku: string; unit: string } }>;
+  items: Array<{ id: string; productId: string; quantity: string | number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number; purchasePrice?: string | number; returnedQuantity?: string | number; product?: { name: string; sku: string; unit: string } }>;
 };
 
 export type BusinessUserRecord = {
@@ -852,6 +858,25 @@ export async function cancelBill(session: AppSession, kind: 'sale' | 'purchase',
     record = await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify(input) }, session);
   } catch (error) {
     if (isServerUnreachable(error)) throw new Error('Cancelling a bill needs a connection. Try again when you are online.');
+    throw error;
+  }
+  if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
+  return record;
+}
+
+/**
+ * Records a return (credit note for a sale, debit note for a purchase): the
+ * server moves the stock and settles the value. It needs a connection; the
+ * device copy is refreshed afterwards. A retry with the same requestId is safe.
+ */
+export async function recordBillReturn(session: AppSession, kind: 'sale' | 'purchase', id: string, input: { requestId: string; items: { itemId: string; quantity: string }[]; reason?: string; refundMethod?: string }): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.return' : 'purchases.return');
+  if (id.startsWith('local_')) throw new Error('Wait for this bill to sync before returning items.');
+  let record: SaleRecord | PurchaseRecord;
+  try {
+    record = await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}/returns`, { method: 'POST', body: JSON.stringify(input) }, session);
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Returning items needs a connection. Try again when you are online.');
     throw error;
   }
   if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);

@@ -2,7 +2,7 @@ import { chargesGst } from '@invento/shared';
 
 import { formatDate, formatMoney } from './format';
 import { taxTotalRows, type SaleGstDetails } from './gst';
-import { paymentBalance } from './transaction-accounting';
+import { netAmount, paymentBalance } from './transaction-accounting';
 
 export type ReceiptTextSource = {
   kind: 'sale' | 'purchase';
@@ -15,6 +15,9 @@ export type ReceiptTextSource = {
   discountTotal?: string | number;
   taxTotal?: string | number;
   amountPaid?: string | number | null;
+  /** Value of goods returned on credit or debit notes, and the bill's amount after them. */
+  returnedTotal?: string | number;
+  netTotal?: string | number;
   status?: string;
   paymentMethod?: string;
   items: { name: string; quantity: number; label: string; price?: number; gstRate?: string | number; taxAmount?: string | number; lineTotal?: string | number }[];
@@ -39,6 +42,7 @@ export function receiptShareText(data: ReceiptTextSource, heading: { title: stri
     ...(Number(data.discountTotal ?? 0) > 0 ? [`Discount: −${money(Number(data.discountTotal))}`] : []),
     ...gstRows,
     `Total: ${data.total == null ? 'Restricted price' : money(Number(data.total))}`,
+    ...(data.total != null && Number(data.returnedTotal ?? 0) > 0 ? [`Returned: −${money(Number(data.returnedTotal))}`, `Net amount: ${money(netAmount(data) ?? 0)}`] : []),
     ...(balance == null ? [] : [`Paid: ${money(Number(data.amountPaid))}`, `Balance: ${money(balance)}`]),
     ...(data.paymentMethod ? [`Payment method: ${data.paymentMethod.replaceAll('_', ' ')}`] : []),
   ].join('\n');

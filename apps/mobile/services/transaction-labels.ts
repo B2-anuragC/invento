@@ -35,9 +35,9 @@ export function transactionReference(kind: Kind, record: Labelled): string {
   return record.documentNumber ? `Reference ${record.invoiceNumber}` : '';
 }
 
-/** Text a search box matches: names plus every number a user may type. */
-export function transactionSearchText(record: Labelled & { name?: string }): string {
-  return [record.name, record.documentNumber, record.invoiceNumber, record.id].filter(Boolean).join(' ').toLowerCase();
+/** Text a search box matches: names plus every number a user may type, including the bill's credit or debit notes. */
+export function transactionSearchText(record: Labelled & { name?: string; returns?: { documentNumber: string }[] }): string {
+  return [record.name, record.documentNumber, record.invoiceNumber, record.id, ...(record.returns ?? []).map((note) => note.documentNumber)].filter(Boolean).join(' ').toLowerCase();
 }
 
 export type ReceiptIdentity = { caption: string; value: string; note?: string };

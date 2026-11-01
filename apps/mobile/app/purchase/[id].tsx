@@ -1,5 +1,5 @@
 import { RecordPaymentModal } from '@/components/record-payment-modal';
-import { TransactionReceipt } from '@/components/transaction-receipt';
+import { TransactionReceipt, type PaymentTarget } from '@/components/transaction-receipt';
 import { savedLineKey } from '@/services/bill-lines';
 import { useCallback, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -19,7 +19,8 @@ export default function PurchaseDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [paymentOpen, setPaymentOpen] = useState(false);
+  // The receipt passes the bill as it now stands, after any return made on it.
+  const [paymentFor, setPaymentFor] = useState<PaymentTarget | null>(null);
   const [canRecordPayment, setCanRecordPayment] = useState(false);
 
   useFocusEffect(useCallback(() => {
@@ -50,7 +51,7 @@ export default function PurchaseDetailsScreen() {
   }, [id, retry]));
 
     if (!loading && !error && purchase) {
-    return <><TransactionReceipt data={{ syncState: purchase.syncState, syncError: purchase.syncError, attachment: purchase.attachment, status: purchase.status, cancelReason: purchase.cancelReason, cancelledAt: purchase.cancelledAt, id: purchase.id, kind: 'purchase', chargeGst: purchase.chargeGst, date: purchase.purchaseDate, invoice: purchase.invoiceNumber, documentNumber: purchase.documentNumber, contact: purchase.supplier.name, contactPhone: purchase.supplier.phone, contactAddress: purchase.supplier.address, total: purchase.total, subtotal: purchase.subtotal, taxTotal: purchase.taxTotal, amountPaid: purchase.amountPaid, dueDate: purchase.dueDate, payments: purchase.payments, note: purchase.note, items: purchase.items.map((item) => ({ id: item.id, lineKey: savedLineKey('purchase', item), name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: formatUnitLabel(item.product?.unit ?? 'PIECE'), unit: item.product?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice) })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/purchase/create')} onPayment={!purchase.syncState && canRecordPayment && purchase.total != null ? () => setPaymentOpen(true) : undefined} />{paymentOpen && purchase.total != null ? <RecordPaymentModal kind="purchase" id={purchase.id} total={purchase.total} amountPaid={purchase.amountPaid} billDate={purchase.purchaseDate} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); setRetry((value) => value + 1); }} /> : null}</>;
+    return <><TransactionReceipt data={{ syncState: purchase.syncState, syncError: purchase.syncError, attachment: purchase.attachment, status: purchase.status, cancelReason: purchase.cancelReason, cancelledAt: purchase.cancelledAt, id: purchase.id, kind: 'purchase', chargeGst: purchase.chargeGst, date: purchase.purchaseDate, invoice: purchase.invoiceNumber, documentNumber: purchase.documentNumber, contact: purchase.supplier.name, contactPhone: purchase.supplier.phone, contactAddress: purchase.supplier.address, total: purchase.total, subtotal: purchase.subtotal, taxTotal: purchase.taxTotal, amountPaid: purchase.amountPaid, dueDate: purchase.dueDate, payments: purchase.payments, note: purchase.note, returns: purchase.returns, returnedTotal: purchase.returnedTotal, netTotal: purchase.netTotal, items: purchase.items.map((item) => ({ id: item.id, lineKey: savedLineKey('purchase', item), name: item.product?.name ?? 'Product unavailable', sku: item.product?.sku, quantity: Number(item.quantity), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, label: formatUnitLabel(item.product?.unit ?? 'PIECE'), unit: item.product?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), returnedQuantity: item.returnedQuantity })) }} onBack={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/activity')} onNew={() => router.push('/purchase/create')} onPayment={!purchase.syncState && canRecordPayment && purchase.total != null ? setPaymentFor : undefined} />{paymentFor ? <RecordPaymentModal kind="purchase" id={purchase.id} total={paymentFor.total} amountPaid={paymentFor.amountPaid} billDate={purchase.purchaseDate} onClose={() => setPaymentFor(null)} onSaved={() => { setPaymentFor(null); setRetry((value) => value + 1); }} /> : null}</>;
   }
 
   return (
