@@ -37,7 +37,7 @@ describe('editing the items of a saved bill', () => {
     const form = { lines, chargeGst: true, discountMode: 'amount' as const, discountValue: '20' };
     expect(billEditPreview('sale', sale, form, products)).toMatchObject({ subtotal: 470, discount: 20, tax: 81, total: 531, totalText: '531.00', refund: '106.20', balanceDue: '0.00', error: '' });
     expect(billEditInput('sale', sale, form, products, extra)).toEqual({
-      requestId: 'req_edit_1', revision: 1, reason: 'Customer took one handle less', chargeGst: true, expectedTotal: '531.00', refundMethod: 'CASH', discountAmount: '20',
+      requestId: 'req_edit_1', revision: 1, reason: 'Customer took one handle less', chargeGst: true, expectedTotal: '531.00', expectedRefund: '106.20', refundMethod: 'CASH', discountAmount: '20',
       items: [{ productId: 'handle', unit: 'PIECE', quantity: '2', sellingPrice: '180.00' }, { productId: 'glass', unit: 'SQUARE_FOOT', quantity: '1', sellingPrice: '110.00' }],
     });
   });
@@ -45,7 +45,9 @@ describe('editing the items of a saved bill', () => {
   it('leaves the rest due when the total goes up, and sends no refund method', () => {
     const form = { ...editFormFromBill('sale', sale), lines: [{ productId: 'handle', unit: 'PIECE', quantity: '4', price: '180' }] };
     expect(billEditPreview('sale', sale, form, products)).toMatchObject({ totalText: '849.60', refund: '0.00', balanceDue: '212.40', error: '' });
+    // No refund method, but the refund shown (none) goes with it so a payment recorded meanwhile is refused.
     expect(billEditInput('sale', sale, form, products, extra)).not.toHaveProperty('refundMethod');
+    expect(billEditInput('sale', sale, form, products, extra)).toMatchObject({ expectedTotal: '849.60', expectedRefund: '0.00' });
     // A walk-in sale must stay paid in full.
     expect(billEditPreview('sale', { ...sale, isWalkIn: true }, form, products).error).toBe(WALK_IN_EDIT_MESSAGE);
     // GST off brings it to 720.00 and is a change on its own.
@@ -84,7 +86,7 @@ describe('editing the items of a saved bill', () => {
     expect(lines[1]).toEqual({ productId: 'handle', quantity: '1', price: '120' });
     // 800 + 120 = 920 + 165.60 GST; nothing was paid, so all of it is due.
     expect(billEditPreview('purchase', purchase, { ...form, lines }, products)).toMatchObject({ totalText: '1085.60', refund: '0.00', balanceDue: '1085.60', error: '' });
-    expect(billEditInput('purchase', purchase, { ...form, lines }, products, extra)).toEqual({ requestId: 'req_edit_1', revision: 3, reason: 'Customer took one handle less', chargeGst: true, expectedTotal: '1085.60', items: [{ productId: 'glass', quantity: '10', purchasePrice: '80.00' }, { productId: 'handle', quantity: '1', purchasePrice: '120.00' }] });
+    expect(billEditInput('purchase', purchase, { ...form, lines }, products, extra)).toEqual({ requestId: 'req_edit_1', revision: 3, reason: 'Customer took one handle less', chargeGst: true, expectedTotal: '1085.60', expectedRefund: '0.00', items: [{ productId: 'glass', quantity: '10', purchasePrice: '80.00' }, { productId: 'handle', quantity: '1', purchasePrice: '120.00' }] });
   });
 
   it('describes when and why a bill was edited', () => {

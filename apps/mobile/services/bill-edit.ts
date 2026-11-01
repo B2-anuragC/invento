@@ -115,13 +115,13 @@ export function billEditPreview(kind: EditKind, bill: EditableBill, form: EditFo
   return { ...totals, totalText, refund: settlement.refund, balanceDue: settlement.balanceDue, lineErrors, discountError: problem, error };
 }
 
-export type SaleEditInput = { requestId: string; revision?: number; reason: string; chargeGst: boolean; discountAmount?: string; discountPercent?: string; expectedTotal: string; refundMethod?: string; items: { productId: string; sellingOptionId?: string; unit?: string; quantity: string; sellingPrice: string }[] };
-export type PurchaseEditInput = { requestId: string; revision?: number; reason: string; chargeGst: boolean; expectedTotal: string; refundMethod?: string; items: { productId: string; quantity: string; purchasePrice: string }[] };
+export type SaleEditInput = { requestId: string; revision?: number; reason: string; chargeGst: boolean; discountAmount?: string; discountPercent?: string; expectedTotal: string; expectedRefund: string; refundMethod?: string; items: { productId: string; sellingOptionId?: string; unit?: string; quantity: string; sellingPrice: string }[] };
+export type PurchaseEditInput = { requestId: string; revision?: number; reason: string; chargeGst: boolean; expectedTotal: string; expectedRefund: string; refundMethod?: string; items: { productId: string; quantity: string; purchasePrice: string }[] };
 
-/** The request for PUT /sales/:id/items or /purchases/:id/items; the refund method only when money goes back. */
+/** The request for PUT /sales/:id/items or /purchases/:id/items: the refund shown (the API refuses the edit if a payment since changes it), and the refund method only when money goes back. */
 export function billEditInput(kind: EditKind, bill: EditableBill, form: EditForm, products: Record<string, EditProduct>, extra: { requestId: string; reason: string; refundMethod: string }): SaleEditInput | PurchaseEditInput {
   const preview = billEditPreview(kind, bill, form, products);
-  const common = { requestId: extra.requestId, ...(bill.revision ? { revision: bill.revision } : {}), reason: extra.reason.trim(), chargeGst: form.chargeGst, expectedTotal: preview.totalText, ...(Number(preview.refund) > 0 ? { refundMethod: extra.refundMethod } : {}) };
+  const common = { requestId: extra.requestId, ...(bill.revision ? { revision: bill.revision } : {}), reason: extra.reason.trim(), chargeGst: form.chargeGst, expectedTotal: preview.totalText, expectedRefund: preview.refund, ...(Number(preview.refund) > 0 ? { refundMethod: extra.refundMethod } : {}) };
   const price = (line: EditLine) => Number(linePrice(line, products[line.productId])).toFixed(2);
   if (kind === 'purchase') return { ...common, items: form.lines.map((line) => ({ productId: line.productId, quantity: quantityText(typed(line.quantity)), purchasePrice: price(line) })) };
   return {
