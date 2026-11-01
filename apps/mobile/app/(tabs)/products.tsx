@@ -6,7 +6,8 @@ import { StoredImage } from '@/components/stored-image';
 import { fileSource } from '@/services/file-storage';
 import { ListingLayout, type ListingView } from '@/components/listing-layout';
 import { ProductThumbnail } from '@/components/product-photo';
-import { useCallback, useMemo, useState } from 'react';
+import { productInitials, readCatalogView, saveCatalogView, stockBadge } from '@/services/catalog-view';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Keyboard, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -46,6 +47,16 @@ export default function ProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [salesError, setSalesError] = useState('');
+
+  useEffect(() => {
+    const session = appSession.current;
+    if (session) void readCatalogView(session).then(setListingView).catch(() => undefined);
+  }, []);
+  const changeView = (view: ListingView) => {
+    setListingView(view);
+    const session = appSession.current;
+    if (session) void saveCatalogView(session, view).catch(() => undefined);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -173,7 +184,7 @@ export default function ProductsScreen() {
         <View style={styles.resultsBar}>
           <Text style={styles.resultCount}>{loading ? 'Loading products…' : plural(filteredProducts.length, 'product')}{status === 'INACTIVE' ? ' · Inactive' : ''}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Change product grouping and sort" onPress={openFilters} style={styles.browseButton}><Text style={styles.linkText}>{sortByPrice ? 'Price ↑' : section === 'frequent' ? 'Frequent' : sectionLabels[section]}</Text><Ionicons name="chevron-down" size={14} color="#176B50" /></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={isGrid ? 'Show list view' : 'Show grid view'} onPress={() => setListingView(isGrid ? 'list' : 'grid')} style={styles.viewButton}><Ionicons name={isGrid ? 'list-outline' : 'grid-outline'} size={21} color="#176B50" /></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isGrid ? 'Show list view' : 'Show tile view'} onPress={() => changeView(isGrid ? 'list' : 'grid')} style={styles.viewButton}><Ionicons name={isGrid ? 'list-outline' : 'grid-outline'} size={21} color="#176B50" /></Pressable>
         </View>
 
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.stateMessage} /> : null}
@@ -189,42 +200,66 @@ export default function ProductsScreen() {
             {!search && !filterCount && section !== 'favorites' ? <ActionButton permission="products.create" title="Add product" onPress={() => router.push('/product/new')} /> : null}
           </View>
         ) : null}
-        {!loading && !error ? <ListingLayout view={listingView}>{filteredProducts.map((product) => {
+        {!loading && !error ? <ListingLayout view={listingView} maxColumns={2}>{filteredProducts.map((product) => {
           const quantity = Number(inventory[product.id]?.quantity ?? 0);
           const low = quantity < Number(product.minimumStock);
-          return (
-            <View key={product.id} style={[styles.productCard, isGrid && styles.gridCard]}>
-              <View style={[styles.cardTop, isGrid && styles.gridTop]}>
-                <Pressable style={[styles.productMain, isGrid && styles.gridMain]} onPress={() => router.push(`/product/${product.id}`)}>
-                  <View style={isGrid ? styles.gridIcon : styles.productIcon}>{product.imageThumbnail ? isGrid ? <StoredImage accessibilityLabel={product.name} source={fileSource(product.imageThumbnail)} style={styles.gridPhoto} resizeMode="cover" /> : <ProductThumbnail uri={product.imageThumbnail} size={44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
-                  <View style={[styles.productTitleWrap, isGrid && styles.gridTitle]}>
-                    <Text numberOfLines={1} style={[styles.productName, isGrid && styles.gridName]}>{product.name}</Text>
-                    {!isGrid ? <Text numberOfLines={1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text> : null}
+          const open = () => router.push(`/product/${product.id}`);
+          const favoriteButton = (
+            <Pressable
+              accessibilityLabel={favorites[product.id] ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
+              onPress={() => {
+                const session = appSession.current;
+                if (!session) return;
+                const next = { ...favorites, [product.id]: !favorites[product.id] };
+                setFavorites(next);
+                void saveProductFavorites(session, next).catch(() => setError('Could not save favorites. Please try again.'));
+              }}
+              style={[styles.favoriteButton, isGrid && styles.tileFavorite]}>
+              <Text style={[styles.favoriteText, favorites[product.id] && styles.favoriteSelected]}>{favorites[product.id] ? '♥' : '♡'}</Text>
+            </Pressable>
+          );
+          if (isGrid) {
+            const badge = stockBadge(quantity, Number(product.minimumStock));
+            return (
+              <View key={product.id} style={styles.tile}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`${product.name}, ${formatMoney(Number(product.sellingPrice))} per ${formatUnitLabel(product.unit)}, ${badge.label}`} onPress={open}>
+                  <View style={styles.tilePhoto}>
+                    {product.imageThumbnail ? <StoredImage accessibilityLabel={product.name} source={fileSource(product.imageThumbnail)} style={styles.tileImage} resizeMode="cover" /> : <Text style={styles.tileInitials}>{productInitials(product.name)}</Text>}
+                  </View>
+                  <View style={styles.tileBody}>
+                    <Text numberOfLines={2} style={styles.tileName}>{product.name}</Text>
+                    <Text numberOfLines={1} style={styles.tilePrice}>{formatMoney(Number(product.sellingPrice))}<Text style={styles.tileUnit}> / {formatUnitLabel(product.unit)}</Text></Text>
+                    <View style={styles.tileStock}>
+                      <Text numberOfLines={1} style={[styles.badge, styles[`badge_${badge.tone}`]]}>{badge.label}</Text>
+                      {quantity > 0 ? <Text numberOfLines={1} style={styles.tileQuantity}>{formatQuantity(quantity, product.unit)}</Text> : null}
+                    </View>
                   </View>
                 </Pressable>
-                <Pressable
-                  accessibilityLabel={favorites[product.id] ? `Remove ${product.name} from favorites` : `Add ${product.name} to favorites`}
-                  onPress={() => {
-                    const session = appSession.current;
-                    if (!session) return;
-                    const next = { ...favorites, [product.id]: !favorites[product.id] };
-                    setFavorites(next);
-                    void saveProductFavorites(session, next).catch(() => setError('Could not save favorites. Please try again.'));
-                  }}
-                  style={[styles.favoriteButton, isGrid && styles.gridFavorite]}>
-                  <Text style={[styles.favoriteText, favorites[product.id] && styles.favoriteSelected]}>{favorites[product.id] ? '♥' : '♡'}</Text>
-                </Pressable>
+                {favoriteButton}
               </View>
-              <Pressable onPress={() => router.push(`/product/${product.id}`)}>
-                <View style={[styles.productFacts, isGrid && styles.gridFacts]}>
-                  <View style={[styles.stockFact, isGrid && styles.gridFact]}>
-                    {isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
-                    <Text numberOfLines={isGrid ? 1 : undefined} style={[styles.stockValue, low && styles.stockLow]}>{formatQuantity(quantity, product.unit)}</Text>
-                    {!isGrid ? <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text> : null}
+            );
+          }
+          return (
+            <View key={product.id} style={styles.productCard}>
+              <View style={styles.cardTop}>
+                <Pressable style={styles.productMain} onPress={open}>
+                  <View style={styles.productIcon}>{product.imageThumbnail ? <ProductThumbnail uri={product.imageThumbnail} size={44} /> : <Text style={styles.productIconText}>◇</Text>}</View>
+                  <View style={styles.productTitleWrap}>
+                    <Text numberOfLines={1} style={styles.productName}>{product.name}</Text>
+                    <Text numberOfLines={1} style={styles.productMeta}>{product.category || 'Uncategorized'} · {product.sku}</Text>
                   </View>
-                  <View style={[styles.priceFact, isGrid && styles.gridFact]}>
+                </Pressable>
+                {favoriteButton}
+              </View>
+              <Pressable onPress={open}>
+                <View style={styles.productFacts}>
+                  <View style={styles.stockFact}>
+                    <Text style={[styles.stockValue, low && styles.stockLow]}>{formatQuantity(quantity, product.unit)}</Text>
+                    <Text style={styles.factLabel}>{quantity <= 0 ? 'Out of stock' : low ? 'Below minimum' : 'Available'}</Text>
+                  </View>
+                  <View style={styles.priceFact}>
                     <Text style={styles.factLabel}>SELL / {formatUnitLabel(product.unit)}</Text>
-                    <Text numberOfLines={isGrid ? 1 : undefined} style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
+                    <Text style={styles.sellValue}>{formatMoney(Number(product.sellingPrice))}</Text>
                   </View>
                 </View>
               </Pressable>
@@ -307,16 +342,21 @@ const styles = StyleSheet.create({
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderColor: '#E0E7E1' },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: '#24332A' },
   sheetFooter: { padding: 12, borderTopWidth: 1, borderColor: '#E0E7E1' },
-  gridCard: { flex: 0, width: '100%', aspectRatio: 1, padding: 0, borderRadius: 12, marginBottom: 8, overflow: 'hidden' },
-  gridTop: { flex: 1, minHeight: 0 },
-  gridMain: { flexDirection: 'column', alignItems: 'stretch', height: '100%' },
-  gridIcon: { width: '100%', height: '100%', backgroundColor: '#F1F4F1', alignItems: 'center', justifyContent: 'center' },
-  gridPhoto: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
-  gridTitle: { position: 'absolute', bottom: 0, left: 0, right: 0, marginLeft: 0, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: 'rgba(255,255,255,0.92)' },
-  gridName: { fontSize: 13, lineHeight: 17 },
-  gridFavorite: { position: 'absolute', top: 8, right: 8, borderRadius: 18, backgroundColor: '#FFFFFF' },
-  gridFacts: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 0, paddingHorizontal: 8, paddingVertical: 6 },
-  gridFact: { flex: 1, minWidth: 0 },
+  tile: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', borderRadius: 14, marginBottom: 12, overflow: 'hidden' },
+  tilePhoto: { width: '100%', aspectRatio: 1, backgroundColor: '#E8F2EC', alignItems: 'center', justifyContent: 'center' },
+  tileImage: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
+  tileInitials: { color: '#176B50', fontSize: 34, fontWeight: '800', letterSpacing: 1 },
+  tileBody: { paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10, gap: 4 },
+  tileName: { color: '#1E2D24', fontSize: 14, lineHeight: 18, fontWeight: '800', minHeight: 36 },
+  tilePrice: { color: '#176B50', fontSize: 15, fontWeight: '800' },
+  tileUnit: { color: '#737B77', fontSize: 11, fontWeight: '600' },
+  tileStock: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  tileQuantity: { flexShrink: 1, color: '#58665E', fontSize: 11, fontWeight: '600' },
+  tileFavorite: { position: 'absolute', top: 6, right: 6, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.92)' },
+  badge: { flexShrink: 0, overflow: 'hidden', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, fontSize: 10, fontWeight: '800' },
+  badge_available: { color: '#0F6B4C', backgroundColor: '#E2F3EA' },
+  badge_low: { color: '#96621B', backgroundColor: '#FBF0DC' },
+  badge_out: { color: '#A74737', backgroundColor: '#F6E9E6' },
 
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 64, marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 16, backgroundColor: '#FFFFFF' },
