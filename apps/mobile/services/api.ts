@@ -865,6 +865,22 @@ export async function cancelBill(session: AppSession, kind: 'sale' | 'purchase',
 }
 
 /**
+ * The server's copy of a bill, to start a return from: the device copy may be
+ * out of date (a return or payment recorded elsewhere since the last sync),
+ * and the return form must show what the server will settle. Needs a connection.
+ */
+export async function fetchBillForReturn(session: AppSession, kind: 'sale' | 'purchase', id: string): Promise<SaleRecord | PurchaseRecord> {
+  await assertClientPermission(session, kind === 'sale' ? 'sales.view' : 'purchases.view');
+  if (id.startsWith('local_')) throw new Error('Wait for this bill to sync before returning items.');
+  try {
+    return await request<SaleRecord | PurchaseRecord>(`/${kind === 'sale' ? 'sales' : 'purchases'}/${encodeURIComponent(id)}`, { method: 'GET' }, session);
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Returning items needs a connection. Try again when you are online.');
+    throw error;
+  }
+}
+
+/**
  * Records a return (credit note for a sale, debit note for a purchase): the
  * server moves the stock and settles the value. It needs a connection; the
  * device copy is refreshed afterwards. A retry with the same requestId is safe.

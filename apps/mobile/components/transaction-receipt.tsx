@@ -19,7 +19,7 @@ import { chargesGst } from '@invento/shared';
 import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'expo-router';
-import { appSession, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
+import { appSession, fetchBillForReturn, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -114,7 +114,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     setLoadingReturn(true);
     setError('');
     try {
-      const record = data.kind === 'sale' ? await fetchSale(session, data.id) : await fetchPurchase(session, data.id);
+      const record = await fetchBillForReturn(session, data.kind, data.id);
       const fresh = receiptFromRecord(data, record);
       setData(fresh);
       setReturning(returnBill(fresh));
