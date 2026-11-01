@@ -16,7 +16,8 @@ export function ListingViewToggle({ value, onChange }: { value: ListingView; onC
 export function ListingLayout({ view, children }: { view: ListingView; children: ReactNode }) {
   const [width, setWidth] = useState(0);
   const columns = view === 'list' || width < 300 ? 1 : width >= 580 ? 3 : 2;
-  const cardWidth = width ? (width - (columns - 1) * 12) / columns : undefined;
+  // Rounded down: fractional widths plus the gaps can exceed the row by a sub-pixel and wrap every card onto its own row.
+  const cardWidth = width ? Math.floor((width - (columns - 1) * 12) / columns) : undefined;
   return <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)} style={styles.items}>
     {Children.toArray(children).map((child, index) => <View key={typeof child === 'object' && 'key' in child ? child.key : index} style={{ width: cardWidth ?? '100%' }}>{child}</View>)}
   </View>;
