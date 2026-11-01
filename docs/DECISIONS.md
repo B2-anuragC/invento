@@ -122,6 +122,11 @@ in one transaction, preventing concurrent reuse and partial rotation.
 
 ## ADR-010 — Purchase Line Items Are Immutable After Creation
 
+**Superseded by ADR-015 (November 2026):** owners and admins can now edit the
+items of a completed purchase through `PUT /purchases/:id/items`, which moves
+stock and settles money in the same transaction. `PATCH` still changes only
+the metadata below.
+
 **Decision:** `PATCH /purchases/:id` may only update purchase metadata
 (invoice number, purchase date, note). Purchase items (product, quantity,
 price) cannot be edited once a purchase is created.
@@ -142,6 +147,11 @@ purchase's items.
 
 ## ADR-011 - Immutable Sale Items and Atomic Stock Validation
 
+**Superseded by ADR-015 (November 2026)** for items: owners and admins can
+edit the items, prices, discount and GST choice of a completed sale through
+`PUT /sales/:id/items`. `PATCH` still changes only the metadata below, and the
+atomic stock validation described here applies to edits as well.
+
 **Decision:** Sales are completed at creation. PATCH may update only
 invoiceNumber, saleDate and note. Items, customer, payment method, totals and
 status cannot be changed after creation. Corrections require an explicit audited
@@ -156,6 +166,37 @@ avoids opposite lock ordering between concurrent sales.
 
 Line totals are rounded half-up to two decimal places before summation so the
 stored sale total exactly matches the sum of stored monetary line totals.
+
+## ADR-015 — Editing the Items of a Completed Sale or Purchase
+
+**Decision:** Owners and admins (`sales.edit`, `purchases.edit`; purchases also
+need `pricing.view`) can change the items, quantities, prices, discount (sales)
+and GST choice of a completed sale or purchase with `PUT /sales/:id/items` or
+`PUT /purchases/:id/items`, giving a reason. The bill keeps its number, date,
+customer or supplier and payment method. Cancelled bills and bills with credit
+or debit notes cannot be edited.
+
+**How:** the new lines are priced by the same service method that prices a new
+bill (selling options, discount split, each line's GST and HSN code; a sale's
+GST details are copied again from the shop and customer). One transaction locks
+the bill row, checks it is still at the revision it was priced at (and at the
+`revision` the client sent, if any), then moves stock by the difference between
+what the bill holds now (the net of its own ledger rows and those of earlier
+edits) and what the new lines need: more stock goes out as SALE or in as
+PURCHASE with the bill's usual note, less comes back as RETURN_IN or goes out
+as RETURN_OUT noted `Edited sale <id>` / `Edited purchase <id>`. Moving only the
+difference means lowering a purchase whose stock was partly sold is refused
+only when that stock is really gone. The lines are replaced, the totals
+updated, money paid above the new total refunded (REFUND entry, method chosen
+or how it was paid), and the revision raised with `editedAt`,
+`editedByUserId`, `editReason` and `editRequestId`. A retry with the same
+`requestId` changes nothing. Cancelling reverses the net stock a bill holds, so
+an edited bill cancels exactly.
+
+**Reason:** shops correct wrong quantities and prices after a bill is saved;
+cancelling and re-billing would use a new number. The ledger stays append-only:
+an edit adds movements and never rewrites old ones, so stock history explains
+every change.
 
 ## ADR-014 — Business Catalog Categories and Purchase-Price Access
 

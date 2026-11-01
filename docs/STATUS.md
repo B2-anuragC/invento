@@ -199,8 +199,9 @@ must be active and belong to the selected business when creating a sale.
 Sales require `customerId`, `saleDate`, `paymentMethod` and positive item
 `quantity`/`sellingPrice` decimal strings. Supported payment methods are CASH,
 UPI, CARD, BANK_TRANSFER and OTHER. Totals are computed server-side from rounded
-line totals. Sale items, customer, payment method, total and status are immutable;
-PATCH accepts only invoiceNumber, saleDate and note (ADR-011).
+line totals. PATCH accepts only invoiceNumber, saleDate and note; customer and
+payment method never change. Owners and admins edit items, prices, discount and
+GST with `PUT /sales/:id/items` (ADR-015, superseding ADR-011 for items).
 
 A single transaction creates the sale and calls InventoryService.applyMovement
 with SALE and the outer transaction client before inserting each item. Stock

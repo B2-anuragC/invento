@@ -359,8 +359,9 @@ exclusively. Purchase totals are always computed server-side from
 `quantity × purchasePrice`; client-supplied totals are never trusted.
 
 `PATCH /purchases/:id` only updates purchase metadata (`invoiceNumber`,
-`purchaseDate`, `note`) — see ADR-010 in `DECISIONS.md` for why purchase
-items are immutable after creation.
+`purchaseDate`, `note`). Items are changed with `PUT /purchases/:id/items`,
+which moves stock by the difference and settles money in one transaction —
+see ADR-015 in `DECISIONS.md` (it supersedes ADR-010).
 
 ## Implemented: Customers & Sales (Phase 6)
 
@@ -388,5 +389,8 @@ or roll back together. SalesService does not directly read/write inventory table
 or duplicate inventory locking, stock arithmetic or direction classification.
 The ledger note includes the sale ID, following the purchase audit convention.
 
-See ADR-011 for immutable sale fields and STATUS.md for the resolved local
+Sale and purchase items can be edited by owners and admins (ADR-015, which
+supersedes ADR-011 for items): `revision`, `editedAt`, `editedByUserId`,
+`editReason` and `editRequestId` on `sales` and `purchases` record the last
+edit. See STATUS.md for the resolved local
 database reconciliation and isolated verification database.

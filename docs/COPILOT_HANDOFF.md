@@ -20,7 +20,8 @@ relevant docs before changing code. Existing implementation is authoritative.
 - Stock changes exclusively use InventoryService.applyMovement(input, tx).
   The inventory engine locks/checks stock before each item insert; all writes
   share the sale transaction. Insufficient stock rolls back everything.
-- Sale line items and financial fields are immutable; see ADR-011.
+- Sale and purchase items change only through `PUT /sales/:id/items` and
+  `PUT /purchases/:id/items` (owners and admins, with a reason); see ADR-015.
 
 ## Verification
 
