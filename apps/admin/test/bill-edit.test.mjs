@@ -50,7 +50,7 @@ test("previews the new total and the refund, and sends the edit as priced", () =
   const preview = billEditPreview("sale", sale, form, products);
   assert.deepEqual([preview.subtotal, preview.discount, preview.tax, preview.total, preview.refund, preview.balanceDue, preview.error], [470, 20, 81, 531, "106.20", "0.00", ""]);
   assert.deepEqual(billEditInput("sale", sale, form, products, extra), {
-    requestId: "web_edit_1", revision: 1, reason: "Customer took one handle less", chargeGst: true, expectedTotal: "531.00", refundMethod: "CASH", discountAmount: "20",
+    requestId: "web_edit_1", revision: 1, reason: "Customer took one handle less", chargeGst: true, expectedTotal: "531.00", expectedRefund: "106.20", refundMethod: "CASH", discountAmount: "20",
     items: [{ productId: "handle", unit: "PIECE", quantity: "2", sellingPrice: "180.00" }, { productId: "glass", unit: "SQUARE_FOOT", quantity: "1", sellingPrice: "110.00" }],
   });
 });
@@ -59,7 +59,9 @@ test("leaves the rest due when the total goes up, and keeps walk-in sales paid i
   const form = { ...editFormFromBill("sale", sale), lines: [{ productId: "handle", unit: "PIECE", quantity: "4", price: "180" }] };
   const preview = billEditPreview("sale", sale, form, products);
   assert.deepEqual([preview.totalText, preview.refund, preview.balanceDue, preview.error], ["849.60", "0.00", "212.40", ""]);
+  // No refund method, but the refund shown (none) goes with it so a payment recorded meanwhile is refused.
   assert.equal("refundMethod" in billEditInput("sale", sale, form, products, extra), false);
+  assert.equal(billEditInput("sale", sale, form, products, extra).expectedRefund, "0.00");
   assert.equal(billEditPreview("sale", { ...sale, customer: { isWalkIn: true } }, form, products).error, WALK_IN_EDIT_MESSAGE);
   // GST off is a change on its own: 540.00, 97.20 back.
   const off = billEditPreview("sale", sale, { ...editFormFromBill("sale", sale), chargeGst: false }, products);
@@ -106,7 +108,7 @@ test("edits a purchase: one line per product at the typed price, no discount", (
   const preview = billEditPreview("purchase", purchase, { ...form, lines }, products);
   assert.deepEqual([preview.totalText, preview.refund, preview.balanceDue, preview.error], ["1085.60", "0.00", "1085.60", ""]);
   assert.deepEqual(billEditInput("purchase", purchase, { ...form, lines }, products, extra), {
-    requestId: "web_edit_1", revision: 3, reason: "Customer took one handle less", chargeGst: true, expectedTotal: "1085.60",
+    requestId: "web_edit_1", revision: 3, reason: "Customer took one handle less", chargeGst: true, expectedTotal: "1085.60", expectedRefund: "0.00",
     items: [{ productId: "glass", quantity: "10", purchasePrice: "80.00" }, { productId: "handle", quantity: "1", purchasePrice: "120.00" }],
   });
 });
