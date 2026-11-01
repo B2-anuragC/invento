@@ -1,0 +1,72 @@
+# Render Blueprint: API (Docker + persistent upload disk) and the admin web app.
+# Secrets marked `sync: false` are entered in the Render dashboard on first deploy.
+services:
+  - type: web
+    name: invento-api
+    runtime: docker
+    region: singapore
+    plan: starter # Persistent disks need a paid instance.
+    branch: master
+    autoDeploy: true
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/shared/**
+        - package-lock.json
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: APP_API_PREFIX
+        value: api
+      - key: UPLOAD_STORAGE_PATH
+        value: /app/uploads
+      # Supabase session pooler (port 5432); see docs/DEPLOYMENT.md.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # Supabase Storage through its S3-compatible endpoint (off-server copy of uploads).
+      - key: S3_BUCKET
+        value: invento-files
+      - key: S3_PREFIX
+        value: invento
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+  - type: web
+    name: invento-admin
+    runtime: static
+    branch: master
+    autoDeploy: true
+    buildCommand: npm ci --workspace @invento/admin --workspace @invento/shared --include=dev && npm run build:shared && npm --workspace @invento/admin run build
+    staticPublishPath: ./apps/admin/dist
+    buildFilter:
+      paths:
+        - apps/admin/**
+        - packages/shared/**
+        - package-lock.json
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # e.g. https://invento-api.onrender.com/api
+      - key: VITE_API_URL
+        sync: false
