@@ -1,10 +1,11 @@
 // Invoice numbering under CGST Rule 46(b): a consecutive serial number of at most
 // 16 characters (letters, digits, "-" and "/"), unique for a financial year.
 
-export const DOCUMENT_SERIES = ['SALE', 'PURCHASE'] as const;
+// Credit notes (sales returns) and debit notes (purchase returns) have their own series.
+export const DOCUMENT_SERIES = ['SALE', 'PURCHASE', 'CREDIT_NOTE', 'DEBIT_NOTE'] as const;
 export type DocumentSeries = (typeof DOCUMENT_SERIES)[number];
 
-export const DEFAULT_DOCUMENT_PREFIX: Record<DocumentSeries, string> = { SALE: 'INV', PURCHASE: 'PUR' };
+export const DEFAULT_DOCUMENT_PREFIX: Record<DocumentSeries, string> = { SALE: 'INV', PURCHASE: 'PUR', CREDIT_NOTE: 'CN', DEBIT_NOTE: 'DN' };
 export const MAX_DOCUMENT_NUMBER_LENGTH = 16;
 export const DOCUMENT_PREFIX_RULE_MESSAGE = 'Use 1 to 3 letters or digits for the invoice prefix.';
 
