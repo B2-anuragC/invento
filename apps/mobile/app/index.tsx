@@ -104,7 +104,7 @@ Your day, simplified.</Text>
         <View style={styles.card}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Text style={styles.label}>Email address</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Email address"
             value={email}
             onChangeText={setEmail}
             style={styles.input}
@@ -115,7 +115,7 @@ Your day, simplified.</Text>
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Password"
             value={password}
             onChangeText={setPassword}
             style={styles.input}

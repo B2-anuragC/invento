@@ -113,7 +113,7 @@ export default function ProfileScreen() {
           {editing ? (
             <View style={styles.editFields}>
               <Text style={styles.fieldLabel}>Name</Text>
-              <TextInput
+              <TextInput accessibilityLabel="Name"
                 value={name}
                 onChangeText={(value) => {
                   setName(value);
@@ -128,7 +128,7 @@ export default function ProfileScreen() {
               />
               {nameError ? <Text style={styles.error}>{nameError}</Text> : null}
               <Text style={styles.fieldLabel}>Phone</Text>
-              <TextInput
+              <TextInput accessibilityLabel="Phone"
                 value={phone}
                 onChangeText={(value) => {
                   setPhone(value);
@@ -173,7 +173,7 @@ export default function ProfileScreen() {
             ].filter(item => { const required = clientRoutePermissions(item.route); return !required.length || required.some(can); }).map((item) => (
               <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(item.route as Parameters<typeof router.push>[0])} style={styles.row}>
                 <View style={{ flex: 1 }}><Text style={styles.value}>{item.title}</Text><Text style={styles.role}>{item.detail}</Text></View>
-                <Text style={{ color: '#737B77', fontSize: 24 }}>›</Text>
+                <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#737B77', fontSize: 24 }}>›</Text>
               </Pressable>
             ))}
           </ListCard>

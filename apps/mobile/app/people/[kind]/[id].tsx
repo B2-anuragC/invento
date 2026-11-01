@@ -7,7 +7,7 @@ import { useCallback, useState } from 'react';
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 
 
 import { ActionButton, AppScreen, appColors } from '@/components/invento-ui';
@@ -316,7 +316,7 @@ export default function ContactDetailsScreen() {
                   ] as const).map(([key, label]) => (
                     <View key={key}>
                       <Text style={styles.label}>{label}</Text>
-                      <TextInput
+                      <TextInput accessibilityLabel={label}
                         value={form[key]}
                         onChangeText={(value) => setForm((current) => ({ ...current, [key]: value }))}
                         style={styles.input}

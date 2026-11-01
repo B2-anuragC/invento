@@ -6,7 +6,7 @@ import {
   clearDraft,
   type TransactionDraft,
 } from "@/services/transaction-drafts";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from '@/components/ui/icon';
 import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { productForCode } from "@/services/camera-access";

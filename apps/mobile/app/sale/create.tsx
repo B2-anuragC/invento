@@ -423,7 +423,7 @@ export default function CreateSaleScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Pressable onPress={goBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.backButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{step === 3 ? 'Review sale' : repeatSaleId ? 'Repeat sale' : 'New sale'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · SELL PRICES'}</Text>
@@ -453,7 +453,7 @@ export default function CreateSaleScreen() {
           <TransactionSaveNotice kind="sale" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(1)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedCustomer && !showCustomerPicker ? (
             <View style={styles.selectedCustomer}>
-              <Text style={styles.customerGlyph}>♙</Text>
+              <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.customerGlyph}>♙</Text>
               <Text numberOfLines={1} style={styles.selectedCustomerName}>Customer · {selectedCustomer.name}</Text>
               <Pressable onPress={() => { setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); }}><Text style={styles.changeText}>Change</Text></Pressable>
             </View>
@@ -469,12 +469,12 @@ export default function CreateSaleScreen() {
                       const selected = customer.id === customerId;
                       return (
                         <Pressable accessibilityRole="button" key={customer.id} onPress={() => { setCustomerId(customer.id); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(false); }} style={[styles.customerOption, selected && styles.customerOptionSelected]}>
-                          <View style={styles.personGlyph}>{customer.imageThumbnail ? <ProductThumbnail uri={customer.imageThumbnail} /> : <Text style={styles.personGlyphText}>♙</Text>}</View>
+                          <View style={styles.personGlyph}>{customer.imageThumbnail ? <ProductThumbnail uri={customer.imageThumbnail} /> : <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.personGlyphText}>♙</Text>}</View>
                           <View style={styles.customerOptionCopy}>
                             <Text style={styles.customerOptionName}>{customer.name}</Text>
                             <Text style={styles.customerOptionMeta}>{customer.phone || customer.contactName || 'Customer'}</Text>
                           </View>
-                          {selected ? <Text style={styles.selectedMark}>✓</Text> : null}
+                          {selected ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.selectedMark}>✓</Text> : null}
                         </Pressable>
                       );
                     })}
@@ -482,7 +482,7 @@ export default function CreateSaleScreen() {
                       <>
                         <Text style={styles.customerEmpty}>{customerSearch.trim() ? 'No customer found.' : 'No customers yet. Search a name to add a customer.'}</Text>
                         {customerSearch.trim() ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: addingCustomer }} disabled={addingCustomer} onPress={() => void addCustomer()} style={[styles.customerOption, addingCustomer && styles.disabled]}>
-                          <View style={styles.personGlyph}><Text style={styles.personGlyphText}>+</Text></View>
+                          <View style={styles.personGlyph}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.personGlyphText}>+</Text></View>
                           <Text style={styles.customerOptionName}>{addingCustomer ? 'Adding…' : `Add customer “${customerSearch.trim()}”`}</Text>
                         </Pressable> : null}
                       </>
@@ -496,8 +496,8 @@ export default function CreateSaleScreen() {
           {step === 1 ? (
             <>
               <View style={styles.searchWrap}>
-                <Text style={styles.searchIcon}>⌕</Text>
-                <TextInput value={productSearch} onChangeText={(value) => { setProductSearch(value); setShowAllProducts(false); clearErrorOnEdit(); }} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
+                <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.searchIcon}>⌕</Text>
+                <TextInput accessibilityLabel="Search products" value={productSearch} onChangeText={(value) => { setProductSearch(value); setShowAllProducts(false); clearErrorOnEdit(); }} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
                 {categories.map((value) => (
@@ -575,9 +575,9 @@ export default function CreateSaleScreen() {
                       <View style={styles.quantityField}>
                         <Text style={styles.fieldLabel}>{option ? `Number of ${option.name}` : `Quantity · ${formatUnitLabel(unit)}`}</Text>
                         <View style={styles.quantityControl}>
-                          <Pressable accessibilityLabel={`Decrease ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(Math.max(0, quantity - (option || unit === 'PIECE' ? 1 : 0.5))))} style={styles.stepButton}><Text style={styles.stepText}>−</Text></Pressable>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(Math.max(0, quantity - (option || unit === 'PIECE' ? 1 : 0.5))))} style={styles.stepButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.stepText}>−</Text></Pressable>
                           <TextInput accessibilityLabel={`${product.name} quantity`} placeholder="0" value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.quantityInput} />
-                          <Pressable accessibilityLabel={`Increase ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(quantity + (option || unit === 'PIECE' ? 1 : 0.5)))} style={styles.stepButton}><Text style={styles.stepText}>+</Text></Pressable>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Increase ${product.name} quantity`} onPress={() => changeQuantity(product.id, String(quantity + (option || unit === 'PIECE' ? 1 : 0.5)))} style={styles.stepButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.stepText}>+</Text></Pressable>
                         </View>
                       </View>
                       <View style={styles.priceField}>
@@ -605,13 +605,13 @@ export default function CreateSaleScreen() {
           {step === 3 ? (
             <>
               <Pressable onPress={() => { setStep(1); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); }} style={styles.reviewCustomer}>
-                <View style={styles.personGlyph}>{selectedCustomer?.imageThumbnail ? <ProductThumbnail uri={selectedCustomer?.imageThumbnail} /> : <Text style={styles.personGlyphText}>♙</Text>}</View>
+                <View style={styles.personGlyph}>{selectedCustomer?.imageThumbnail ? <ProductThumbnail uri={selectedCustomer?.imageThumbnail} /> : <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.personGlyphText}>♙</Text>}</View>
                 <View style={styles.customerOptionCopy}>
                   <Text style={styles.customerOptionMeta}>Customer</Text>
                   <Text style={styles.customerOptionName}>{selectedCustomer?.name ?? 'Select customer'}</Text>
                   <Text style={styles.customerOptionMeta}>{selectedCustomer?.phone ?? selectedCustomer?.contactName ?? ''}</Text>
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text>
               </Pressable>
               <View style={styles.reviewHeading}><Text style={styles.sectionTitle}>Items · {saleItems.length}</Text><Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>+ Add item</Text></Pressable></View>
               {saleItems.map(({ product, quantity, price, unit, option }) => (

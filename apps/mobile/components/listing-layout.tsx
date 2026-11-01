@@ -1,5 +1,5 @@
 import { Children, useState, type ReactNode } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export type ListingView = 'list' | 'grid';

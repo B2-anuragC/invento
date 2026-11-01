@@ -124,13 +124,13 @@ export default function PeopleDirectoryScreen() {
             <Text style={styles.title}>People</Text>
             <Text style={styles.subtitle}>CUSTOMERS & SUPPLIERS</Text>
           </View>
-          <Pressable accessibilityLabel="Add person" onPress={() => openCreate()} style={[styles.addButton, !can('customers.create') && !can('suppliers.create') && { display: 'none' }]}>
-            <Text style={styles.addButtonText}>＋</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Add person" onPress={() => openCreate()} style={[styles.addButton, !can('customers.create') && !can('suppliers.create') && { display: 'none' }]}>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.addButtonText}>＋</Text>
           </Pressable>
         </View>
         <View style={styles.searchWrap}>
-          <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search by name or phone" placeholderTextColor="#7A817E" style={styles.search} />
+          <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.searchIcon}>⌕</Text>
+          <TextInput accessibilityLabel="Search by name or phone" value={search} onChangeText={setSearch} placeholder="Search by name or phone" placeholderTextColor="#7A817E" style={styles.search} />
         </View>
         <View style={styles.filters}>
           {(['All', 'Customers', 'Suppliers'] as PersonFilter[]).map((value) => (
@@ -152,12 +152,12 @@ export default function PeopleDirectoryScreen() {
             ) : null}
             <ListingLayout view={listingView}>{people.filter((item) => item.kind === 'customer').map((item) => (
               <Pressable key={`customer-${item.id}`} onPress={() => router.push(`/people/customers/${item.id}`)} style={[styles.personCard, isGrid && styles.gridCard]}>
-                <View style={[styles.avatar, isGrid && styles.gridAvatar]}>{item.imageThumbnail ? <ProductThumbnail uri={item.imageThumbnail} size={44} /> : <Text style={styles.avatarText}>♙</Text>}</View>
+                <View style={[styles.avatar, isGrid && styles.gridAvatar]}>{item.imageThumbnail ? <ProductThumbnail uri={item.imageThumbnail} size={44} /> : <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.avatarText}>♙</Text>}</View>
                 <View style={[styles.personCopy, isGrid && styles.gridCopy]}>
                   <Text numberOfLines={isGrid ? 2 : 1} style={[styles.personName, isGrid && styles.gridName]}>{item.name}</Text>
                   <Text numberOfLines={1} style={styles.personMeta}>{item.phone || item.contactName || 'Customer contact'}</Text>
                 </View>
-                {!isGrid ? <Text style={styles.chevron}>›</Text> : null}
+                {!isGrid ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text> : null}
               </Pressable>
             ))}</ListingLayout>
           </View>
@@ -173,12 +173,12 @@ export default function PeopleDirectoryScreen() {
             ) : null}
             <ListingLayout view={listingView}>{people.filter((item) => item.kind === 'supplier').map((item) => (
               <Pressable key={`supplier-${item.id}`} onPress={() => router.push(`/people/suppliers/${item.id}`)} style={[styles.personCard, isGrid && styles.gridCard]}>
-                <View style={[styles.avatar, styles.supplierAvatar, isGrid && styles.gridAvatar]}><Text style={[styles.avatarText, styles.supplierAvatarText]}>▰</Text></View>
+                <View style={[styles.avatar, styles.supplierAvatar, isGrid && styles.gridAvatar]}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={[styles.avatarText, styles.supplierAvatarText]}>▰</Text></View>
                 <View style={[styles.personCopy, isGrid && styles.gridCopy]}>
                   <Text numberOfLines={isGrid ? 2 : 1} style={[styles.personName, isGrid && styles.gridName]}>{item.name}</Text>
                   <Text numberOfLines={1} style={styles.personMeta}>{item.phone || item.contactName || 'Supplier contact'}</Text>
                 </View>
-                {!isGrid ? <Text style={styles.chevron}>›</Text> : null}
+                {!isGrid ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text> : null}
               </Pressable>
             ))}</ListingLayout>
           </View>
@@ -194,7 +194,7 @@ export default function PeopleDirectoryScreen() {
           <ScrollView style={styles.modalScroll} contentContainerStyle={[styles.modalCard, { paddingBottom: 20 + insets.bottom }]} keyboardShouldPersistTaps="handled">
             <View style={styles.modalHeading}>
               <Text style={styles.modalTitle}>Add {contactKind}</Text>
-              <Pressable accessibilityLabel="Close" onPress={() => setModalVisible(false)}><Text style={styles.close}>×</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setModalVisible(false)}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.close}>×</Text></Pressable>
             </View>
             <View style={styles.kindChoices}>
               {(['customer', 'supplier'] as ContactKind[]).map((value) => (

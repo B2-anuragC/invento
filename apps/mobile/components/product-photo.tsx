@@ -1,5 +1,5 @@
 import { ProductPhotoViewer } from '@/components/product-photo-viewer';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { CameraPhoto } from '@/components/camera-photo';
 import { StoredImage as Image } from '@/components/stored-image';
 import { useState } from 'react';

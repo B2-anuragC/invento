@@ -43,7 +43,7 @@ export default function GlassCalculatorScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.back}><Text style={styles.backText}>‹</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
           <View>
             <Text style={styles.title}>Glass calculator</Text>
             <Text style={styles.headerSubtitle}>QUICK MEASURE</Text>
@@ -64,12 +64,12 @@ export default function GlassCalculatorScreen() {
           <View style={styles.dimensions}>
             <View style={styles.dimensionField}>
               <Text style={styles.label}>Width</Text>
-              <TextInput value={width} onChangeText={setWidth} style={styles.input} placeholder="0" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
+              <TextInput accessibilityLabel="Width" value={width} onChangeText={setWidth} style={styles.input} placeholder="0" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
             </View>
-            <Text style={styles.multiply}>×</Text>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.multiply}>×</Text>
             <View style={styles.dimensionField}>
               <Text style={styles.label}>Height</Text>
-              <TextInput value={height} onChangeText={setHeight} style={styles.input} placeholder="0" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
+              <TextInput accessibilityLabel="Height" value={height} onChangeText={setHeight} style={styles.input} placeholder="0" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
             </View>
           </View>
 
@@ -80,7 +80,7 @@ export default function GlassCalculatorScreen() {
           </View>
 
           <Text style={styles.label}>{target === 'purchase' ? 'Buying' : 'Selling'} price per sq ft · optional</Text>
-          <TextInput value={pricePerSquareFoot} onChangeText={setPricePerSquareFoot} style={styles.input} placeholder="₹ 0.00" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
+          <TextInput accessibilityLabel={`${target === 'purchase' ? 'Buying' : 'Selling'} price per square foot`} value={pricePerSquareFoot} onChangeText={setPricePerSquareFoot} style={styles.input} placeholder="₹ 0.00" placeholderTextColor="#89918C" keyboardType="decimal-pad" />
           <View style={styles.estimate}>
             <Text style={styles.estimateLabel}>Estimated line total</Text>
             <Text style={styles.estimateValue}>{formatMoney(total)}</Text>

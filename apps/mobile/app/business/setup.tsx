@@ -129,7 +129,7 @@ export default function BusinessSetupScreen() {
               <Text style={styles.businessName}>{membership.business.name}</Text>
               <Text style={styles.businessMeta}>{membership.role.toLowerCase()} · {membership.business.slug}</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text>
           </Pressable>
         ))}
         {!loading && !businessesLoadFailed && businesses.length === 0 ? <Text style={styles.empty}>No business is linked to this account yet.</Text> : null}
@@ -138,7 +138,7 @@ export default function BusinessSetupScreen() {
           <Text style={styles.sectionTitle}>Create a business</Text>
           <Text style={styles.formHint}>Use your shop name. You can update the details later.</Text>
           <Text style={styles.label}>Business name</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Business name"
             value={name}
             onChangeText={(value) => {
               setName(value);
@@ -151,7 +151,7 @@ export default function BusinessSetupScreen() {
             maxLength={120}
           />
           <Text style={styles.label}>Unique shop ID</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Unique shop ID"
             value={slug}
             onChangeText={(value) => {
               setSlugEdited(true);

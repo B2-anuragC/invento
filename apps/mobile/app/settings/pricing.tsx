@@ -114,7 +114,7 @@ export default function PricingAccessScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.back}><Text style={styles.backText}>‹</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
           <View>
             <Text style={styles.title}>Pricing & access</Text>
             <Text style={styles.headerSubtitle}>Invento · {(access?.role ?? 'BUSINESS').toUpperCase()} SETTINGS</Text>
@@ -132,7 +132,7 @@ export default function PricingAccessScreen() {
         {access ? (
           <>
             <View style={styles.settingCard}>
-              <View style={styles.settingIcon}><Text style={styles.iconText}>₹</Text></View>
+              <View style={styles.settingIcon}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.iconText}>₹</Text></View>
               <View style={styles.settingCopy}>
                 <Text style={styles.settingTitle}>Show purchase prices to members</Text>
                 <Text style={styles.settingDescription}>
@@ -143,6 +143,7 @@ export default function PricingAccessScreen() {
               </View>
               <Pressable
                 accessibilityRole="switch"
+                accessibilityLabel="Show purchase prices to members"
                 accessibilityState={{ checked: access.membersCanViewPurchasePrice, disabled: !isManager || saving }}
                 disabled={!isManager || saving}
                 onPress={() => void updateVisibility(!access.membersCanViewPurchasePrice)}
@@ -180,8 +181,8 @@ export default function PricingAccessScreen() {
                         <Text style={[styles.roleText, member.role === value && styles.roleTextSelected]}>{value === 'MEMBER' ? 'Staff' : 'Admin'}</Text>
                       </Pressable>
                     ))}
-                    <Pressable onPress={() => setRemoveTarget(member)} accessibilityLabel={`Remove ${member.user.name}`} style={styles.removeButton}>
-                      <Text style={styles.removeText}>×</Text>
+                    <Pressable accessibilityRole="button" onPress={() => setRemoveTarget(member)} accessibilityLabel={`Remove ${member.user.name}`} style={styles.removeButton}>
+                      <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.removeText}>×</Text>
                     </Pressable>
                   </View>
                 ) : <Text style={styles.ownerBadge}>{member.role}</Text>}
@@ -192,7 +193,7 @@ export default function PricingAccessScreen() {
               <View style={styles.inviteCard}>
                 <Text style={styles.inviteTitle}>Add team member</Text>
                 <Text style={styles.inviteDescription}>They need an existing Invento account to join.</Text>
-                <TextInput
+                <TextInput accessibilityLabel="Team member account email"
                   value={email}
                   onChangeText={setEmail}
                   placeholder="Account email"

@@ -343,7 +343,7 @@ export default function CreatePurchaseScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Pressable onPress={goBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.backButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{step === 3 ? 'Review purchase' : 'New purchase'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · BUY PRICES'}</Text>
@@ -372,28 +372,28 @@ export default function CreatePurchaseScreen() {
           <TransactionSaveNotice kind="purchase" saving={saving} outcome={saveOutcome} error={error} onEdit={() => setStep(2)} onActivity={() => router.push('/(tabs)/activity')} />
           {selectedSupplier && !showSupplierPicker ? (
             <View style={styles.selectedSupplier}>
-              <Text style={styles.supplierGlyph}>▰</Text>
+              <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.supplierGlyph}>▰</Text>
               <Text numberOfLines={1} style={styles.selectedSupplierName}>Supplier · {selectedSupplier.name}</Text>
               <Pressable onPress={() => setShowSupplierPicker(true)}><Text style={styles.changeText}>Change</Text></Pressable>
             </View>
           ) : (
             <View style={styles.supplierSection}>
               <Text style={styles.sectionTitle}>Choose supplier</Text>
-              <TextInput value={supplierSearch} onChangeText={setSupplierSearch} placeholder="Search supplier or recent names" placeholderTextColor="#7A817E" style={styles.input} />
+              <TextInput accessibilityLabel="Search suppliers" value={supplierSearch} onChangeText={setSupplierSearch} placeholder="Search supplier or recent names" placeholderTextColor="#7A817E" style={styles.input} />
               {filteredSuppliers.map((supplier) => (
-                <Pressable key={supplier.id} onPress={() => selectSupplier(supplier)} style={[styles.supplierOption, supplier.id === supplierId && styles.supplierOptionSelected]}>
-                  <View style={styles.personGlyph}><Text style={styles.personGlyphText}>▰</Text></View>
+                <Pressable key={supplier.id} accessibilityRole="button" accessibilityState={{ selected: supplier.id === supplierId }} onPress={() => selectSupplier(supplier)} style={[styles.supplierOption, supplier.id === supplierId && styles.supplierOptionSelected]}>
+                  <View style={styles.personGlyph}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.personGlyphText}>▰</Text></View>
                   <View style={styles.supplierOptionCopy}>
                     <Text style={styles.supplierOptionName}>{supplier.name}</Text>
                     <Text style={styles.supplierOptionMeta}>{supplier.phone || supplier.contactName || 'Supplier'}</Text>
                   </View>
-                  {supplier.id === supplierId ? <Text style={styles.selectedMark}>✓</Text> : null}
+                  {supplier.id === supplierId ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.selectedMark}>✓</Text> : null}
                 </Pressable>
               ))}
               {supplierName.trim() ? <SupplierCatalogFields products={products} categories={supplierCategories} productIds={supplierProductIds} onChange={(categories, productIds) => { setSupplierCategories(categories); setSupplierProductIds(productIds); }} /> : null}
               <View style={styles.addSupplierRow}>
-                <TextInput value={supplierName} onChangeText={setSupplierName} placeholder="New supplier name" placeholderTextColor="#7A817E" style={[styles.input, styles.newSupplierInput]} returnKeyType="done" />
-                <Pressable disabled={!supplierName.trim() || addingSupplier} onPress={() => void addSupplier()} style={[styles.smallButton, (!supplierName.trim() || addingSupplier) && styles.disabled]}>
+                <TextInput accessibilityLabel="New supplier name" value={supplierName} onChangeText={setSupplierName} placeholder="New supplier name" placeholderTextColor="#7A817E" style={[styles.input, styles.newSupplierInput]} returnKeyType="done" />
+                <Pressable accessibilityRole="button" accessibilityLabel="Add supplier" accessibilityState={{ disabled: !supplierName.trim() || addingSupplier }} disabled={!supplierName.trim() || addingSupplier} onPress={() => void addSupplier()} style={[styles.smallButton, (!supplierName.trim() || addingSupplier) && styles.disabled]}>
                   <Text style={styles.smallButtonText}>{addingSupplier ? 'Adding…' : 'Add'}</Text>
                 </Pressable>
               </View>
@@ -403,8 +403,8 @@ export default function CreatePurchaseScreen() {
           {step === 1 ? (
             <>
               <View style={styles.searchWrap}>
-                <Text style={styles.searchIcon}>⌕</Text>
-                <TextInput value={productSearch} onChangeText={setProductSearch} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
+                <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.searchIcon}>⌕</Text>
+                <TextInput accessibilityLabel="Search products" value={productSearch} onChangeText={setProductSearch} placeholder="Name, SKU, barcode or material" placeholderTextColor="#7A817E" style={styles.search} autoCapitalize="none" />
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
                 {categories.map((value) => (
@@ -421,15 +421,15 @@ export default function CreatePurchaseScreen() {
                 const quantity = quantities[product.id];
                 const selected = Object.prototype.hasOwnProperty.call(quantities, product.id);
                 return (
-                  <Pressable key={product.id} onPress={() => toggleProduct(product)} style={[styles.productCard, selected && styles.productCardSelected]}>
+                  <Pressable key={product.id} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => toggleProduct(product)} style={[styles.productCard, selected && styles.productCardSelected]}>
                     <View style={styles.productTop}>
-                      <View style={styles.productGlyph}><Text style={styles.productGlyphText}>⌁</Text></View>
+                      <View style={styles.productGlyph}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.productGlyphText}>⌁</Text></View>
                       <View style={styles.productCopy}>
                         <Text style={styles.productName}>{product.name}</Text>
                         <Text style={styles.productMeta}>{product.category ? `${product.category} · ` : ''}{product.sku}</Text>
                       </View>
                       <View style={[styles.addProductButton, selected && styles.addProductSelected]}>
-                        <Text style={[styles.addProductText, selected && styles.addProductTextSelected]}>{selected ? '✓' : '+'}</Text>
+                        <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={[styles.addProductText, selected && styles.addProductTextSelected]}>{selected ? '✓' : '+'}</Text>
                       </View>
                     </View>
                     <View style={styles.productFacts}>
@@ -466,7 +466,7 @@ export default function CreatePurchaseScreen() {
                         <Text style={styles.productName}>{product.name}</Text>
                         <Text style={styles.productMeta}>{product.sku} · Stock {formatQuantity(stock[product.id] ?? 0, product.unit)}</Text>
                       </View>
-                      <Pressable onPress={() => toggleProduct(product)}><Text style={styles.removeText}>×</Text></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${product.name}`} hitSlop={12} onPress={() => toggleProduct(product)}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.removeText}>×</Text></Pressable>
                     </View>
                     <View style={styles.inputRow}>
                       <View style={styles.field}>
@@ -498,13 +498,13 @@ export default function CreatePurchaseScreen() {
           {step === 3 ? (
             <>
               <Pressable onPress={() => setShowSupplierPicker(true)} style={styles.reviewSupplier}>
-                <View style={styles.personGlyph}><Text style={styles.personGlyphText}>▰</Text></View>
+                <View style={styles.personGlyph}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.personGlyphText}>▰</Text></View>
                 <View style={styles.supplierOptionCopy}>
                   <Text style={styles.supplierOptionMeta}>Supplier</Text>
                   <Text style={styles.supplierOptionName}>{selectedSupplier?.name ?? 'Select supplier'}</Text>
                   <Text style={styles.supplierOptionMeta}>{selectedSupplier?.phone ?? ''}</Text>
                 </View>
-                <Text style={styles.chevron}>›</Text>
+                <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text>
               </Pressable>
               <View style={styles.reviewHeading}><Text style={styles.sectionTitle}>Items · {purchaseItems.length}</Text><Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>+ Add item</Text></Pressable></View>
               {purchaseItems.map(({ product, quantity, price }) => (
@@ -521,7 +521,7 @@ export default function CreatePurchaseScreen() {
               <View style={styles.invoiceCard}>
                 <Text style={styles.sectionTitle}>Invoice details</Text>
                 <Text style={styles.fieldLabel}>Invoice number · optional</Text>
-                <TextInput value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
+                <TextInput accessibilityLabel="Supplier invoice number" value={invoiceNumber} onChangeText={setInvoiceNumber} placeholder="Enter supplier invoice number" placeholderTextColor="#7A817E" style={styles.input} maxLength={80} />
               </View>
               <PurchaseAttachment value={attachment} onChange={(value) => { setAttachment(value); setError(''); }} onBusy={setAttachmentBusy} disabled={saving} />
               <Text style={{ color: '#43554B', fontSize: 13, fontWeight: '700', marginTop: 12 }}>Purchase date · supplier&apos;s bill date</Text>

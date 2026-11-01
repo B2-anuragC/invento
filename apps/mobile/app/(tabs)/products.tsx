@@ -1,6 +1,6 @@
 import { usePermissions } from '@/services/permissions';
 import { readProductFavorites, saveProductFavorites } from '@/services/product-favorites';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StoredImage } from '@/components/stored-image';
 import { fileSource } from '@/services/file-storage';
@@ -175,8 +175,8 @@ export default function ProductsScreen() {
             <Text style={styles.title}>Catalog</Text>
             <Text style={styles.subtitle}>{plural(products.length, 'product').toUpperCase()} · {plural(Math.max(0, categories.length - 1), 'category', 'categories').toUpperCase()}</Text>
           </View>
-          <Pressable disabled={!can('products.create')} style={[styles.addIcon, !can('products.create') && { display: 'none' }]} onPress={() => router.push('/product/new')} accessibilityLabel="Add product">
-            <Text style={styles.addIconText}>+</Text>
+          <Pressable disabled={!can('products.create')} style={[styles.addIcon, !can('products.create') && { display: 'none' }]} onPress={() => router.push('/product/new')} accessibilityRole="button" accessibilityLabel="Add product">
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.addIconText}>+</Text>
           </Pressable>
         </View>
 

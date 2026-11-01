@@ -112,7 +112,7 @@ export default function DashboardScreen() {
 
         <Pressable accessibilityRole="button" accessibilityLabel="View all activity, sales, purchases and drafts" onPress={() => router.push('/(tabs)/activity')} style={[styles.activityShortcut, !can('sales.view') && !can('purchases.view') && { display: 'none' }]}>
           <Text style={styles.activityLink}>All activity · sales, purchases & drafts</Text>
-          <Text style={styles.activityLink}>›</Text>
+          <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.activityLink}>›</Text>
         </Pressable>
 
         <View style={styles.salesCard}>
@@ -137,12 +137,12 @@ export default function DashboardScreen() {
             <Text adjustsFontSizeToFit numberOfLines={1} style={styles.purchasesValue}>{loading || !purchases ? '—' : purchases.value}</Text>
           </View>
           <Text style={styles.purchasesDetail}>{loading || !purchases ? '' : purchases.detail}</Text>
-          {can('purchases.view') ? <Text style={styles.alertArrow}>›</Text> : null}
+          {can('purchases.view') ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.alertArrow}>›</Text> : null}
         </Pressable>
 
         <View style={styles.actionRow}>
           <Pressable onPress={() => router.push('/sale/quick')} style={[styles.primaryAction, !can('sales.create') && { display: 'none' }]}>
-            <Text style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
           </Pressable>
           {lowStockCount > 0 && can('inventory.view') ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`${lowStockCount} ${lowStockCount === 1 ? 'product needs' : 'products need'} attention. Review low stock.`} onPress={() => router.push('/(tabs)/inventory')} style={styles.stockAlert}>
@@ -151,7 +151,7 @@ export default function DashboardScreen() {
               <Text style={styles.alertTitle}>{lowStockCount} low stock</Text>
               <Text style={styles.alertSub}>Review stock</Text>
             </View>
-            <Text style={styles.alertArrow}>›</Text>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.alertArrow}>›</Text>
           </Pressable>
           ) : null}
         </View>
@@ -195,7 +195,7 @@ export default function DashboardScreen() {
 
         <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={[styles.pendingShortcut, !can('sales.view') && { display: 'none' }]}>
           <Text style={styles.activityLink}>Pending customer payments</Text>
-          <Text style={styles.activityLink}>›</Text>
+          <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.activityLink}>›</Text>
         </Pressable>
         <View style={styles.activityHeading}>
           <Text style={styles.activityTitle}>Recent sales</Text>

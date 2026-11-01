@@ -44,5 +44,6 @@ export function IconSymbol({
   style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
-  return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
+  // Decorative: the tab or button label names it (see ./icon.tsx).
+  return <MaterialIcons aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" color={color} size={size} name={MAPPING[name]} style={style} />;
 }

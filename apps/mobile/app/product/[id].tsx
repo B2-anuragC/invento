@@ -25,7 +25,7 @@ import {
 import { AppScreen, ConfirmationDialog, formatUnitLabel } from '@/components/invento-ui';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { barcodeOwner, createBarcodeCheck } from '@/services/camera-access';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formSnapshot, hasUnsavedChanges } from '@/services/unsaved-changes';
 import {
@@ -386,8 +386,8 @@ export default function ProductDetailsScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backText}>‹</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.backButton}>
+            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text>
           </Pressable>
           <View style={styles.headerText}>
             <Text style={styles.title}>{isNew ? 'Add product' : product?.name}</Text>
@@ -416,7 +416,7 @@ export default function ProductDetailsScreen() {
             <View style={styles.form}>
             <Text style={styles.sectionTitle}>Item identity</Text>
             <Text style={styles.label}>Product name</Text>
-            <TextInput
+            <TextInput accessibilityLabel="Product name"
               value={name}
               onChangeText={(value) => {
                 setName(value);
@@ -429,11 +429,11 @@ export default function ProductDetailsScreen() {
             />
             <Text style={styles.label}>Category (optional)</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Choose product category" accessibilityState={{ expanded: categoryOpen }} onPress={() => setCategoryOpen((current) => !current)} style={[styles.input, styles.categoryTrigger]}>
-              <Text style={{ color: category ? '#24332A' : '#9CA3AF', flex: 1 }}>{category || 'Choose a category'}</Text><Text style={{ color: '#737B77' }}>{categoryOpen ? '▴' : '▾'}</Text>
+              <Text style={{ color: category ? '#24332A' : '#9CA3AF', flex: 1 }}>{category || 'Choose a category'}</Text><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#737B77' }}>{categoryOpen ? '▴' : '▾'}</Text>
             </Pressable>
             {categoryOpen ? <View style={styles.categoryDropdown}>
               <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                {[...new Set([...(category && !newCategory ? [category] : []), ...categories])].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: category === value }} onPress={() => { setCategory(value); setNewCategory(false); setCategoryOpen(false); clearErrorOnEdit(); }} style={[styles.categoryRow, category === value && { backgroundColor: '#EDF6F0' }]}><Text style={{ color: '#24332A', flex: 1 }}>{value}</Text>{category === value ? <Text style={{ color: '#176B50' }}>✓</Text> : null}</Pressable>)}
+                {[...new Set([...(category && !newCategory ? [category] : []), ...categories])].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: category === value }} onPress={() => { setCategory(value); setNewCategory(false); setCategoryOpen(false); clearErrorOnEdit(); }} style={[styles.categoryRow, category === value && { backgroundColor: '#EDF6F0' }]}><Text style={{ color: '#24332A', flex: 1 }}>{value}</Text>{category === value ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#176B50' }}>✓</Text> : null}</Pressable>)}
                 {categoryLoading ? <Text style={styles.categoryNotice}>Loading categories…</Text> : categoryLoadError ? <Text style={styles.categoryNotice}>Could not load categories. You can still enter a new one.</Text> : !categories.length ? <Text style={styles.categoryNotice}>No saved categories yet.</Text> : null}
               </ScrollView>
               <Pressable accessibilityRole="button" onPress={() => { setNewCategory(true); setCategory(''); setCategoryOpen(false); clearErrorOnEdit(); }} style={styles.categoryRow}><Text style={{ color: '#176B50', fontWeight: '600' }}>＋ Add new category</Text></Pressable>
@@ -441,7 +441,7 @@ export default function ProductDetailsScreen() {
             </View> : null}
             {newCategory ? <TextInput accessibilityLabel="New category name" autoFocus value={category} onChangeText={(value) => { setCategory(value); clearErrorOnEdit(); }} style={[styles.input, { marginTop: 8 }]} placeholder="New category name" placeholderTextColor="#9CA3AF" maxLength={100} /> : null}
             <Text style={styles.label}>SKU</Text>
-            <TextInput
+            <TextInput accessibilityLabel="SKU"
               value={sku}
               onChangeText={(value) => {
                 setSku(value);
@@ -531,7 +531,7 @@ export default function ProductDetailsScreen() {
                 {sellingUnitConversion(unit, groupSize || null, option.unit, option.piecesPerUnit)?.perOption ? <Text style={styles.optionHint}>Custom unit: each option sold deducts one stock unit. No dimension calculation.</Text> : null}
                 <View style={[styles.fieldsRow, { marginTop: 12 }]}>
                   <View style={styles.field}><Text style={styles.label}>Amount in one option ({formatUnitLabel(option.unit)})</Text><TextInput accessibilityLabel={`Selling option ${index + 1} quantity`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) change('quantity', value); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput]} /></View>
-                  <View style={styles.field}><Text style={styles.label}>Price for this quantity</Text><View style={styles.optionPriceField}><Text style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Selling option ${index + 1} price`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) change('sellingPrice', value); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View></View>
+                  <View style={styles.field}><Text style={styles.label}>Price for this quantity</Text><View style={styles.optionPriceField}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Selling option ${index + 1} price`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) change('sellingPrice', value); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View></View>
                 </View>
                 {Number(option.quantity) > 0 && Number(option.sellingPrice) > 0 ? <View style={styles.optionPreview}><Text style={styles.optionPreviewText}>{option.quantity} {formatUnitLabel(option.unit)} for {formatMoney(Number(option.sellingPrice))}</Text><Text style={styles.optionHint}>{formatMoney(Number(option.sellingPrice) / Number(option.quantity))} / {formatUnitLabel(option.unit)}</Text></View> : null}
               </View>;
@@ -548,7 +548,7 @@ export default function ProductDetailsScreen() {
             <View style={styles.fieldsRow}>
               <View style={styles.field}>
                 <Text style={styles.label}>Purchase price</Text>
-                <TextInput
+                <TextInput accessibilityLabel="Purchase price"
                   value={purchasePrice}
                   onChangeText={(value) => {
                     if (moneyPattern.test(value)) {
@@ -564,7 +564,7 @@ export default function ProductDetailsScreen() {
               </View>
               <View style={styles.field}>
                 <Text style={styles.label}>Default price / {formatUnitLabel(unit)}</Text>
-                <TextInput
+                <TextInput accessibilityLabel={`Default price per ${formatUnitLabel(unit)}`}
                   value={sellingPrice}
                   onChangeText={(value) => {
                     if (moneyPattern.test(value)) {
@@ -580,7 +580,7 @@ export default function ProductDetailsScreen() {
               </View>
             </View>
             <Text style={styles.label}>Low-stock alert level</Text>
-            <TextInput
+            <TextInput accessibilityLabel="Low-stock alert level"
               value={minimumStock}
               onChangeText={(value) => {
                 if (quantityPattern.test(value)) {
@@ -673,7 +673,7 @@ export default function ProductDetailsScreen() {
                 <Text style={styles.sectionTitle}>Record opening stock</Text>
                 <Text style={styles.helperText}>This creates the initial inventory ledger entry. It can only be recorded once.</Text>
                 <View style={styles.openingRow}>
-                  <TextInput
+                  <TextInput accessibilityLabel={`Opening stock in ${formatUnitLabel(product?.unit ?? 'PIECE')}`}
                     value={openingStock}
                     onChangeText={(value) => {
                       if (quantityPattern.test(value)) {

@@ -53,7 +53,7 @@ export default function RegisterScreen() {
         <View style={styles.form}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Text style={styles.label}>Your name</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Your name"
             value={name}
             onChangeText={(value) => {
               setName(value);
@@ -68,7 +68,7 @@ export default function RegisterScreen() {
             maxLength={100}
           />
           <Text style={styles.label}>Email address</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Email address"
             value={email}
             onChangeText={(value) => {
               setEmail(value);
@@ -83,7 +83,7 @@ export default function RegisterScreen() {
             style={styles.input}
           />
           <Text style={styles.label}>Password</Text>
-          <TextInput
+          <TextInput accessibilityLabel="Password"
             value={password}
             onChangeText={(value) => {
               setPassword(value);

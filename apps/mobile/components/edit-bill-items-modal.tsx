@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChargeGstSwitch } from './charge-gst-switch';
 import { TransactionFinanceFields } from './transaction-finance-fields';

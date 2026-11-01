@@ -6,7 +6,7 @@ export function ScreenHeading({ title, subtitle, onBack }: { title: string; subt
   return (
     <View style={styles.heading}>
       <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack ?? (() => router.canGoBack() ? router.back() : router.replace('/(tabs)'))} style={styles.back}>
-        <Text style={styles.arrow}>‹</Text>
+        <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.arrow}>‹</Text>
       </Pressable>
       <View style={styles.copy}><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></View>
     </View>

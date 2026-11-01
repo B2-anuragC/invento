@@ -121,7 +121,7 @@ export default function ShopDetailsScreen() {
                   style={[styles.input, styles.select, errors.stateCode && styles.inputError, registeredState && styles.locked]}
                 >
                   <Text style={{ color: stateCode ? '#24332A' : '#9CA3AF', flex: 1 }}>{stateCode ? `${GST_STATES[stateCode]} (${stateCode})` : 'Choose the state'}</Text>
-                  {!registeredState ? <Text style={styles.hint}>{stateOpen ? '▴' : '▾'}</Text> : null}
+                  {!registeredState ? <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.hint}>{stateOpen ? '▴' : '▾'}</Text> : null}
                 </Pressable>
                 {errors.stateCode ? <Text style={styles.fieldError}>{errors.stateCode}</Text> : <Text style={styles.hint}>{registeredState ? 'Set from the GSTIN.' : 'Used as the place of supply for counter sales.'}</Text>}
                 {stateOpen && !registeredState ? (

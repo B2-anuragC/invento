@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 
 import { canShowPreviousMonth, dateKey, isSelectableDay } from '@/services/date-limits';
 import { formatDate } from '@/services/format';

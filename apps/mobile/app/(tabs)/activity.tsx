@@ -9,7 +9,7 @@ import { returnSummary } from '@/services/bill-returns';
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { ActionButton, AppScreen } from '@/components/invento-ui';
 import { screenStyles } from '@/components/screen-heading';
 import { appSession, fetchSales, fetchPurchases, type SaleRecord, type PurchaseRecord } from '@/services/api';

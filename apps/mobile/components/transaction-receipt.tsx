@@ -25,7 +25,7 @@ import { useRouter } from 'expo-router';
 import { appSession, fetchBillForEdit, fetchBillForReturn, fetchSale, fetchPurchase, fetchReceiptShop } from '@/services/api';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { Pressable, ScrollView, Share, Linking, Platform, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type ReceiptData = {

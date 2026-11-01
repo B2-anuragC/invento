@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/components/ui/icon';
 export function TransactionSaveNotice({ kind, saving, outcome, error, onEdit, onActivity }: { kind: 'sale' | 'purchase'; saving: boolean; outcome: 'rejected' | 'unknown' | null; error: string; onEdit: () => void; onActivity: () => void }) {
   if (!saving && !outcome) return null;
   const unknown = outcome === 'unknown';
