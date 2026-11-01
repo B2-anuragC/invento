@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { utcDateTime } from "./format";
 
 export type Row = Record<string, unknown>;
 export type Page = {
@@ -15,11 +16,8 @@ export type Column = {
 };
 export const label = (key: string) =>
   key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
-export const date = (value: unknown) =>
-  value
-    ? new Date(String(value)).toLocaleString(undefined, { timeZone: "UTC" }) +
-      " UTC"
-    : "Not recorded";
+/** Platform timestamps, in UTC like the platform's date ranges. */
+export const date = (value: unknown) => utcDateTime(value);
 export const status = (active: unknown) => (
   <span className={`badge ${active ? "active" : "inactive"}`}>
     {active ? "Active" : "Restricted"}

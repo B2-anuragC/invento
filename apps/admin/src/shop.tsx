@@ -8,12 +8,14 @@ import { SaleCreator } from "./sale-creator";
 import { billGstLabel, chargeGstSwitch, saleTotals, type SaleProduct } from "./sale-model";
 import { GST_STATES, inventoryMovementLabel, inventoryMovementNote, type EffectiveAccess, type Permission } from "@invento/shared";
 import { firstFieldError } from "./form-validation";
+import { codeName, formatCell, quantity, unitName } from "./format";
+import { billRow, partyBalances, partyBalanceText, type DetailBill } from "./bill-details";
+import { BillView, PartyView } from "./record-details";
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
 import { api, type PanelAccess } from "./api";
 import { changedFields, istDateInput } from "./transaction-edit";
 import {
-  display,
   label,
   Notice,
   useLoad,
@@ -82,9 +84,18 @@ const sections = [
   "purchases",
   "inventory",
   "team",
-  "roles",
   "settings",
 ];
+// One tab for members and roles; the old "roles" link opens it.
+const sectionTitles: Record<string, string> = { team: "Team and roles" };
+const overviewTitles: Record<string, string> = {
+  todaySales: "Sales today",
+  todayPurchases: "Purchases today",
+  saleCount: "Sales bills today",
+  purchaseCount: "Purchase bills today",
+  productCount: "Active products",
+  lowStockCount: "Products low on stock",
+};
 
 async function shopApi<T>(id: string, path: string, init: RequestInit = {}) {
   return api<T>(path, {
@@ -204,12 +215,15 @@ function Records({
   keys,
   titles,
   edit,
+  view,
 }: {
   rows: Row[];
   keys: string[];
   titles?: Record<string, string>;
   edit?: (row: Row) => void;
+  view?: (row: Row) => void;
 }) {
+  const actions = !!(edit || view);
   return (
     <section className="panel">
       <div className="table-scroll">
@@ -219,7 +233,7 @@ function Records({
               {keys.map((k) => (
                 <th key={k}>{titles?.[k] ?? (k === "sku" ? "SKU" : label(k))}</th>
               ))}
-              {edit && <th>Actions</th>}
+              {actions && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -231,27 +245,26 @@ function Records({
                       <span
                         className={`badge ${row[k] === "ACTIVE" || row[k] === "COMPLETED" ? "active" : row[k] === "INACTIVE" || row[k] === "CANCELLED" ? "inactive" : ""}`}
                       >
-                        {String(row[k] ?? "—")
-                          .replaceAll("_", " ")
-                          .toLowerCase()
-                          .replace(/^./, (c) => c.toUpperCase())}
+                        {codeName(row[k])}
                       </span>
-                    ) : k === "unit" ? (
-                      String(row[k] ?? "—")
-                        .replaceAll("_", " ")
-                        .toLowerCase()
                     ) : (
-                      display(row[k])
+                      formatCell(k, row[k])
                     )}
                   </td>
                 ))}
-                {edit && (
-                  <td>
-                    {row.isWalkIn || row.status === "CANCELLED" ? (
-                      <span className="muted">{row.isWalkIn ? "Built in" : "—"}</span>
-                    ) : (
-                      <button onClick={() => edit(row)}>Edit</button>
+                {actions && (
+                  <td className="row-actions">
+                    {view && (
+                      <button onClick={() => view(row)} aria-label={`View ${String(row.documentNumber ?? row.name ?? "details")}`}>
+                        View
+                      </button>
                     )}
+                    {edit &&
+                      (row.isWalkIn || row.status === "CANCELLED" ? (
+                        <span className="muted">{row.isWalkIn ? "Built in" : view ? "" : "—"}</span>
+                      ) : (
+                        <button onClick={() => edit(row)}>Edit</button>
+                      ))}
                   </td>
                 )}
               </tr>
@@ -390,16 +403,13 @@ function Shop({
     purchases: "purchases.view",
     inventory: "inventory.view",
     team: "members.view",
-    roles: "roles.view",
     settings: "business.update",
   };
   const can = (p: Permission) => !!access.data?.permissions.includes(p);
-  const visible = sections.filter((s) => can(sectionPermission[s]));
-  const active = visible.includes(section)
-    ? section
-    : section === "roles"
-      ? undefined
-      : visible[0];
+  // Members or roles alone are enough for the Team and roles tab.
+  const visible = sections.filter((s) => can(sectionPermission[s]) || (s === "team" && can("roles.view")));
+  const requested = section === "roles" ? "team" : section;
+  const active = visible.includes(requested) ? requested : visible[0];
   return (
     <>
       <a className="back" href={platform ? "#/businesses" : "#/shops"}>
@@ -457,11 +467,11 @@ function Shop({
                 aria-selected={active === s}
                 onClick={() => setSection(s)}
               >
-                {label(s)}
+                {sectionTitles[s] ?? label(s)}
               </button>
             ))}
           </div>
-          {active === "team" || active === "roles" ? (
+          {active === "team" ? (
             <AccessManagement
               id={id}
               access={access.data}
@@ -475,11 +485,7 @@ function Shop({
               permissions={access.data.permissions}
             />
           ) : (
-            <p>
-              {section === "roles"
-                ? "Your role does not include roles.view for this shop. Ask the shop owner to assign the required permissions."
-                : "No shop features are assigned. Contact your business owner."}
-            </p>
+            <p>No shop features are assigned. Contact your business owner.</p>
           )}
         </>
       )}
@@ -498,7 +504,17 @@ function ShopSection({
 }) {
   const can = (p: string) => permissions.includes(p as Permission);
   const [revision, setRevision] = useState(0);
-  const [editing, setEditing] = useState<Row | null>(null);
+  const [editing, setEditingRow] = useState<Row | null>(null);
+  // The record opened with "View"; viewing and editing replace each other.
+  const [viewing, setViewingRow] = useState<Row | null>(null);
+  const setEditing = (row: Row | null) => {
+    setViewingRow(null);
+    setEditingRow(row);
+  };
+  const setViewing = (row: Row | null) => {
+    setEditingRow(null);
+    setViewingRow(row);
+  };
   const [message, setMessage] = useState("");
   const refresh = (message = "Saved successfully.") => {
     setRevision((v) => v + 1);
@@ -530,6 +546,16 @@ function ShopSection({
         )
       : personFields;
   const catalog = ["products", "customers", "suppliers"].includes(section);
+  // A customer's or supplier's balance comes from their bills.
+  const billKind = section === "customers" ? "sale" : "purchase";
+  const people = section === "customers" || section === "suppliers";
+  const bills = useShopLoad<Row[]>(
+    id,
+    people && can(section === "customers" ? "sales.view" : "purchases.view") ? (section === "customers" ? "/sales" : "/purchases") : "",
+    revision,
+  );
+  const balances = partyBalances(billKind, (bills.data ?? []) as unknown as DetailBill[]);
+  const billKindOfSection = section === "sales" ? "sale" : "purchase";
   // Owners and admins change a saved bill's items; a purchase's also need cost prices.
   const mayEditItems = can(`${section}.edit`) && (section === "sales" || can("pricing.view"));
   return (
@@ -553,8 +579,8 @@ function ShopSection({
               "lowStockCount",
             ].map((k) => (
               <article className="metric" key={k}>
-                <p>{label(k)}</p>
-                <strong>{display((result.data as Row)[k])}</strong>
+                <p>{overviewTitles[k]}</p>
+                <strong>{formatCell(k, (result.data as Row)[k])}</strong>
               </article>
             ))}
           </div>
@@ -618,8 +644,18 @@ function ShopSection({
               }}
             />
           )}
+          {viewing && people && (
+            <PartyView
+              key={String(viewing.id)}
+              kind={billKind}
+              party={viewing}
+              bills={bills.data ? ((bills.data as unknown as DetailBill[]).filter((bill) => (billKind === "sale" ? bill.customerId : bill.supplierId) === viewing.id)) : undefined}
+              balance={balances.get(String(viewing.id))}
+              close={() => setViewing(null)}
+            />
+          )}
           <Records
-            rows={rows}
+            rows={people ? rows.map((r) => ({ ...r, balance: partyBalanceCell(balances, r, !!bills.data) })) : rows}
             keys={
               section === "products"
                 ? [
@@ -633,10 +669,11 @@ function ShopSection({
                     "minimumStock",
                     "status",
                   ]
-                : ["name", "contactName", "phone", "email", "gstin", "status"]
+                : ["name", "contactName", "phone", "gstin", ...(bills.data ? ["balance"] : []), "status"]
             }
-            titles={{ gstin: "GSTIN", gstRate: "GST %", hsnCode: "HSN" }}
+            titles={{ gstin: "GSTIN", gstRate: "GST %", hsnCode: "HSN", balance: "Balance" }}
             edit={can(`${section}.update`) ? setEditing : undefined}
+            view={people ? setViewing : undefined}
           />
           <details className="panel">
             <summary>Inactive records</summary>
@@ -644,6 +681,7 @@ function ShopSection({
               id={id}
               section={section}
               edit={can(`${section}.update`) ? setEditing : undefined}
+              view={people ? setViewing : undefined}
               revision={revision}
             />
           </details>
@@ -654,9 +692,18 @@ function ShopSection({
           {can(`${section}.create`) && (
             <TransactionForm id={id} section={section} saved={refresh} />
           )}
+          {viewing && (
+            <BillView
+              key={String(viewing.id)}
+              shopId={id}
+              kind={billKindOfSection}
+              id={String(viewing.id)}
+              close={() => setViewing(null)}
+            />
+          )}
           <Records
             rows={rows.map((r) => ({
-              ...r,
+              ...billRow(billKindOfSection, r as unknown as DetailBill),
               gstState: billGstLabel(section === "sales" ? "sale" : "purchase", r),
               returnSummary: returnSummary(r as unknown as Bill) || null,
               edited: editedSummary(r)?.title.replace(/^Edited · /, "") ?? null,
@@ -665,19 +712,21 @@ function ShopSection({
               "documentNumber",
               "invoiceNumber",
               section === "sales" ? "saleDate" : "purchaseDate",
+              "party",
               "total",
+              "balance",
               "returnSummary",
               "gstState",
               "status",
               "edited",
-              "note",
             ]}
             titles={
               section === "sales"
-                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", gstState: "Bill type", returnSummary: "Returns" }
-                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", gstState: "GST", returnSummary: "Returns" }
+                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", saleDate: "Date", party: "Customer", gstState: "Bill type", returnSummary: "Returns" }
+                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", purchaseDate: "Date", party: "Supplier", gstState: "GST", returnSummary: "Returns" }
             }
             edit={can(`${section}.update`) || mayEditItems ? setEditing : undefined}
+            view={setViewing}
           />
           {editing && can(`${section}.update`) && (
             <Editor
@@ -777,8 +826,9 @@ function ShopSection({
         <>
           {can("inventory.adjust") && <StockForm key={revision} id={id} stock={rows} saved={refresh} />}
           <Records
-            rows={rows.map((r) => ({ ...r, name: (r.product as Row)?.name }))}
+            rows={rows.map((r) => ({ ...r, name: (r.product as Row)?.name, quantity: withUnit(r.quantity, r.product) }))}
             keys={["name", "quantity", "updatedAt"]}
+            titles={{ name: "Product", quantity: "In stock", updatedAt: "Last changed" }}
           />
           <Activity id={id} revision={revision} />
         </>
@@ -815,6 +865,14 @@ function ShopSection({
   );
 }
 
+/** "12.5 square foot": a stock quantity with its product's unit. */
+const withUnit = (value: unknown, product: unknown) =>
+  value == null ? null : `${quantity(value)} ${unitName((product as Row | undefined)?.unit ?? "PIECE")}`;
+/** The people table's Balance cell; blank while the bills are still loading. */
+function partyBalanceCell(balances: ReturnType<typeof partyBalances>, row: Row, loaded: boolean) {
+  return loaded ? partyBalanceText(balances.get(String(row.id))) : null;
+}
+
 function useShopLoad<T>(id: string, path: string, revision = 0) {
   const [state, setState] = useState<{
     data?: T;
@@ -824,6 +882,11 @@ function useShopLoad<T>(id: string, path: string, revision = 0) {
   const [retry, setRetry] = useState(0);
   React.useEffect(() => {
     let current = true;
+    // No path: nothing to load (the caller may not see this list).
+    if (!path) {
+      setState({ loading: false });
+      return;
+    }
     setState({ loading: true });
     shopApi<T>(id, path)
       .then((data) => {
@@ -842,11 +905,13 @@ function Inactive({
   id,
   section,
   edit,
+  view,
   revision,
 }: {
   id: string;
   section: string;
   edit?: (r: Row) => void;
+  view?: (r: Row) => void;
   revision: number;
 }) {
   const result = useShopLoad<Row[]>(
@@ -857,7 +922,7 @@ function Inactive({
   return (
     <>
       <Notice {...result} />
-      <Records rows={result.data || []} keys={["name", "status"]} edit={edit} />
+      <Records rows={result.data || []} keys={["name", "status"]} edit={edit} view={view} />
     </>
   );
 }
@@ -872,9 +937,12 @@ function Activity({ id, revision }: { id: string; revision: number }) {
           ...r,
           name: (r.product as Row)?.name,
           type: inventoryMovementLabel(String(r.type)),
-          note: inventoryMovementNote(r.note as string | null),
+          quantity: withUnit(r.quantity, r.product),
+          balanceAfter: withUnit(r.balanceAfter, r.product),
+          note: inventoryMovementNote(r.note as string | null) || null,
         }))}
-        keys={["name", "type", "quantity", "balanceAfter", "note"]}
+        keys={["createdAt", "name", "type", "quantity", "balanceAfter", "note"]}
+        titles={{ createdAt: "When", name: "Product", type: "Movement", balanceAfter: "Stock after" }}
       />
     </>
   );

@@ -11,6 +11,8 @@ import {
   Table,
   Manage,
 } from "./components";
+import { inventoryMovementLabel } from "@invento/shared";
+import { codeName, indiaDate, money, quantity, unitName } from "./format";
 
 export function Overview() {
   const [from, setFrom] = useState(
@@ -133,44 +135,44 @@ const resources: Record<string, Column[]> = {
         </a>
       ),
     },
-    { key: "role", label: "Role" },
+    { key: "role", label: "Role", render: (r) => codeName(r.role) },
     commonStatus,
     created,
   ],
   products: [
     { key: "name", label: "Product" },
     { key: "sku", label: "SKU" },
-    { key: "unit", label: "Unit" },
+    { key: "unit", label: "Unit", render: (r) => unitName(r.unit) },
     {
       key: "inventory",
       label: "Current stock",
-      render: (r) => display((r.inventory as Row | null)?.quantity ?? "0"),
+      render: (r) => quantity((r.inventory as Row | null)?.quantity ?? "0"),
     },
-    { key: "purchasePrice", label: "Purchase price" },
-    { key: "sellingPrice", label: "Selling price" },
-    { key: "status", label: "Status" },
+    { key: "purchasePrice", label: "Purchase price", render: (r) => money(r.purchasePrice) },
+    { key: "sellingPrice", label: "Selling price", render: (r) => money(r.sellingPrice) },
+    { key: "status", label: "Status", render: (r) => codeName(r.status) },
   ],
   sales: [
     { key: "id", label: "Sale" },
     { key: "documentNumber", label: "Invoice no." },
     { key: "invoiceNumber", label: "Reference" },
-    { key: "saleDate", label: "Date", render: (r) => date(r.saleDate) },
-    { key: "total", label: "Total" },
-    { key: "status", label: "Status" },
+    { key: "saleDate", label: "Date", render: (r) => indiaDate(r.saleDate) },
+    { key: "total", label: "Total", render: (r) => money(r.total) },
+    { key: "status", label: "Status", render: (r) => codeName(r.status) },
   ],
   purchases: [
     { key: "id", label: "Purchase" },
     { key: "documentNumber", label: "Purchase no." },
     { key: "invoiceNumber", label: "Supplier invoice" },
-    { key: "purchaseDate", label: "Date", render: (r) => date(r.purchaseDate) },
-    { key: "total", label: "Total" },
-    { key: "status", label: "Status" },
+    { key: "purchaseDate", label: "Date", render: (r) => indiaDate(r.purchaseDate) },
+    { key: "total", label: "Total", render: (r) => money(r.total) },
+    { key: "status", label: "Status", render: (r) => codeName(r.status) },
   ],
   "inventory-movements": [
     { key: "productId", label: "Product ID" },
-    { key: "type", label: "Movement" },
-    { key: "quantity", label: "Quantity" },
-    { key: "balanceAfter", label: "Balance after" },
+    { key: "type", label: "Movement", render: (r) => inventoryMovementLabel(String(r.type)) },
+    { key: "quantity", label: "Quantity", render: (r) => quantity(r.quantity) },
+    { key: "balanceAfter", label: "Stock after", render: (r) => quantity(r.balanceAfter) },
     created,
   ],
   memberships: [
@@ -183,7 +185,7 @@ const resources: Record<string, Column[]> = {
         </a>
       ),
     },
-    { key: "role", label: "Role" },
+    { key: "role", label: "Role", render: (r) => codeName(r.role) },
     commonStatus,
   ],
   sessions: [

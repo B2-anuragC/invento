@@ -452,7 +452,8 @@ td {
   padding: 15px 20px;
   border-bottom: 1px solid #edf1eb;
   max-width: 340px;
-  overflow-wrap: anywhere;
+  /* Long words still wrap, but a name or invoice number does not split mid-word: the table scrolls instead. */
+  overflow-wrap: break-word;
   min-width: 105px;
 }
 td {
@@ -1281,4 +1282,50 @@ details.panel > .panel {
   display: grid;
   grid-template-columns: minmax(0, 10rem) minmax(0, 1fr);
   gap: 0.4rem;
+}
+/* "View" panels for bills, customers and suppliers. */
+.row-actions {
+  white-space: nowrap;
+}
+.row-actions button + button,
+.row-actions button + span {
+  margin-left: 6px;
+}
+.record-details {
+  padding: 0 0 16px;
+}
+.record-details:focus {
+  outline: 2px solid var(--line);
+}
+.record-details-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px 0;
+}
+.record-details-heading h2 {
+  margin: 0;
+}
+.record-details h3 {
+  margin: 20px 24px 8px;
+  font-size: 14px;
+}
+.record-details > p.muted {
+  margin: 0 24px 8px;
+}
+.detail-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 24px;
+  margin: 16px 24px 0;
+}
+.detail-list dt {
+  font-size: 11px;
+  color: var(--muted, #667085);
+}
+.detail-list dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }

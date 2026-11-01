@@ -114,10 +114,13 @@ Decisions agreed on 31 October 2026:
 
 | # | Change | Status |
 |---|---|---|
-| 25 | Formatted money, dates and movement types; readable validation messages; Team and Roles merged | |
-| 26 | Customer/supplier and balance columns; view details | |
+| 25 | Formatted money, dates and movement types; readable validation messages; Team and Roles merged | Done |
+| 26 | Customer/supplier and balance columns; view details | Done |
 | 27 | Record payments | |
 | 28 | Table search and pagination | |
+
+- **Formatting, messages and Team and roles (25)**: admin tables show amounts in rupees with Indian grouping (₹12,34,567.50), bill, return and due dates as the India calendar day ("1 Nov 2026"), change times in India time ("1 Nov 2026, 3:05 pm"), quantities without trailing zeros and with the product's unit, GST as "18%", and codes as words (units, statuses, payment methods, roles), from `src/format.ts`. Inventory shows "In stock" and "Last changed"; recent stock movements add a "When" column and read "Sale", "Returned to stock" and so on, with the stock after the movement. The Overview cards are named in plain words ("Sales today", "Active products"). Platform pages use the same money, India bill dates and movement names; their other timestamps stay in UTC like their date ranges, written "1 Nov 2026, 09:35 UTC". Validation failures name the field in plain words ("Selling price must be a number.", "Item 2: Quantity must be a number."), one reason per field, from `src/errors.ts`; the API now reports failures inside bill lines with their path (`items.1.quantity`) instead of only "Request validation failed.". Team and Roles are one "Team and roles" tab, shown with either `members.view` or `roles.view`; the old roles link opens it.
+- **Party, balance and details (26)**: the sales and purchases tables add the customer or supplier and a Balance column: "Paid", "₹500.00 due", "₹500.00 overdue" after the due date (India day), or "—" for a cancelled bill, hidden prices or an older bill saved before payments were recorded; the free-text note moves into the details. The customers and suppliers tables add a Balance column worked out from the bills the member can see ("₹1,080.00 due (₹1,000.00 overdue)", "Nothing due"; cancelled bills are left out). Every row gets "View", which opens a read-only panel above the table (opening it closes an open edit form, and the reverse): a bill shows its number, date, party with phone and GSTIN, reference, payment method, status, items (quantity with unit or selling option, price, GST rate and amount, line amount, returned quantity), amounts (subtotal, discount, GST, total, returns, net, paid, balance, due date) and payments (paid earlier, payments and refunds); a customer or supplier shows contact details, a summary ("14 sales · ₹3,452.34 billed · ₹56.20 due") and their bills with each balance. The logic is in `src/bill-details.ts`; no new endpoint is needed (`GET /sales/:id`, `GET /purchases/:id` and the existing lists).
 
 ## Phase 6 — Safety, accessibility and consistency
 
