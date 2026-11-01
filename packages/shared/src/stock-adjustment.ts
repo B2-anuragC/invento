@@ -30,10 +30,12 @@ export type StockAdjustmentType = "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "DAMAGE" 
 export type StockAdjustmentRequest = {
   productId: string;
   type: StockAdjustmentType;
-  /** Unsigned amount in the product's stock unit. */
+  /** Unsigned amount in the product's stock unit, or in pieces when `unit` is "PIECE". */
   quantity: string;
+  /** Set for a product kept in groups of pieces: the amounts are whole pieces, so a leftover single piece is exact. */
+  unit?: "PIECE";
   note?: string;
-  /** For a count: the stock the difference was worked out from. The server refuses the change if stock moved since. */
+  /** For a count: the stock the difference was worked out from (in pieces when `unit` is "PIECE"). The server refuses the change if stock moved since. */
   expectedQuantity?: string;
 };
 
@@ -44,9 +46,10 @@ export type StockAdjustmentInput = {
   quantity: string;
   reason: StockAdjustmentReason;
   note?: string;
-  /** Current stock in the product's stock unit. */
+  /** Current stock in the product's stock unit, as the server shows it (a grouped product can show 23 pieces as 1.91666… dozen). */
   currentStock: string | number;
   unit: string;
+  /** Pieces in one stock unit; the server then keeps the stock in pieces. */
   piecesPerUnit?: number | null;
 };
 
@@ -88,10 +91,19 @@ export function planStockAdjustment(input: StockAdjustmentInput): StockAdjustmen
   if (input.reason === "OTHER" && !note) return { ok: false, error: "Add a note saying why the stock changed." };
   if (note.length > STOCK_ADJUSTMENT_NOTE_MAX) return { ok: false, error: `Keep the note under ${STOCK_ADJUSTMENT_NOTE_MAX} characters.` };
 
-  const before = thousandths(input.currentStock);
-  const change = counting ? amount - before : input.mode === "add" ? amount : -amount;
+  // A grouped product's stock is kept in pieces, and after a single piece is sold
+  // it is no longer a whole thousandth of the unit (23 pieces = 1.91666… dozen).
+  // Work such products out in whole pieces so the server can check them exactly.
+  const perUnit = input.piecesPerUnit && input.piecesPerUnit > 0 ? input.piecesPerUnit : 0;
+  const scale = perUnit || 1000;
+  const toSteps = (thousandthsValue: number) => (perUnit ? (thousandthsValue * perUnit) / 1000 : thousandthsValue);
+  const format = (steps: number) => (perUnit ? String(steps) : fromThousandths(steps));
+  const describe = (steps: number) => (perUnit ? `${steps} ${steps === 1 ? "piece" : "pieces"}` : fromThousandths(steps));
+  const before = perUnit ? Math.round(Number(input.currentStock) * perUnit) : thousandths(input.currentStock);
+  const counted = toSteps(amount);
+  const change = counting ? counted - before : input.mode === "add" ? counted : -counted;
   if (change === 0) return { ok: false, error: "The count matches the current stock, so there is nothing to change." };
-  if (before + change < 0) return { ok: false, error: `Only ${fromThousandths(before)} in stock, so you cannot remove ${fromThousandths(-change)}.` };
+  if (before + change < 0) return { ok: false, error: `Only ${describe(before)} in stock, so you cannot remove ${describe(-change)}.` };
   if (change > 0 && (input.reason === "DAMAGE" || input.reason === "EXPIRED")) {
     return { ok: false, error: "The count is higher than the stock. Damage and expiry can only remove stock; choose Count correction or Other." };
   }
@@ -102,15 +114,16 @@ export function planStockAdjustment(input: StockAdjustmentInput): StockAdjustmen
   const fullNote = [prefix, note].filter(Boolean).join(" · ");
   return {
     ok: true,
-    before: before / 1000,
-    after: (before + change) / 1000,
-    change: change / 1000,
+    before: before / scale,
+    after: (before + change) / scale,
+    change: change / scale,
     request: {
       productId: input.productId,
       type,
-      quantity: fromThousandths(Math.abs(change)),
+      quantity: format(Math.abs(change)),
+      ...(perUnit ? { unit: "PIECE" as const } : {}),
       ...(fullNote ? { note: fullNote } : {}),
-      ...(counting ? { expectedQuantity: fromThousandths(before) } : {}),
+      ...(counting ? { expectedQuantity: format(before) } : {}),
     },
   };
 }

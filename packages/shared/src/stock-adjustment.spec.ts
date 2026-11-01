@@ -46,7 +46,20 @@ describe('planStockAdjustment', () => {
     expect(plan({ unit: 'DOZEN', quantity: '0.1' })).toEqual({ ok: false, error: 'The quantity must be a whole number of pieces.' });
     expect(plan({ unit: 'DOZEN', quantity: '9.25' })).toMatchObject({ ok: true, request: { type: 'ADJUSTMENT_OUT', quantity: '0.75' } });
     expect(plan({ unit: 'BOX', piecesPerUnit: 4, quantity: '9.3' })).toMatchObject({ ok: false });
-    expect(plan({ unit: 'BOX', piecesPerUnit: 4, quantity: '9.75' })).toMatchObject({ ok: true });
+    expect(plan({ unit: 'BOX', piecesPerUnit: 4, quantity: '9.75' })).toMatchObject({ ok: true, request: { quantity: '1', unit: 'PIECE', expectedQuantity: '40' } });
+  });
+
+  it('works a grouped product out in whole pieces, even after a single piece was sold', () => {
+    // 23 pieces of a dozen, as the server shows them.
+    const dozen = { unit: 'DOZEN', piecesPerUnit: 12, currentStock: '1.9166666666666666667' };
+    expect(plan({ ...dozen, quantity: '2' })).toEqual({ ok: true, before: 23 / 12, after: 2, change: 1 / 12, request: { productId: 'p1', type: 'ADJUSTMENT_IN', quantity: '1', unit: 'PIECE', note: 'Counted 2', expectedQuantity: '23' } });
+    expect(plan({ ...dozen, quantity: '0' })).toMatchObject({ ok: true, after: 0, request: { type: 'ADJUSTMENT_OUT', quantity: '23', unit: 'PIECE', expectedQuantity: '23' } });
+    expect(plan({ ...dozen, quantity: '1.5', reason: 'DAMAGE' })).toMatchObject({ ok: true, request: { type: 'DAMAGE', quantity: '5', unit: 'PIECE', expectedQuantity: '23' } });
+    expect(plan({ ...dozen, mode: 'remove', quantity: '1.75' })).toEqual({ ok: true, before: 23 / 12, after: 2 / 12, change: -21 / 12, request: { productId: 'p1', type: 'ADJUSTMENT_OUT', quantity: '21', unit: 'PIECE', note: 'Count correction' } });
+    expect(plan({ ...dozen, mode: 'remove', quantity: '2' })).toEqual({ ok: false, error: 'Only 23 pieces in stock, so you cannot remove 24 pieces.' });
+    expect(plan({ ...dozen, mode: 'add', quantity: '0.25' })).toMatchObject({ ok: true, request: { quantity: '3', unit: 'PIECE' } });
+    // A box of 7 with 10 pieces left.
+    expect(plan({ unit: 'BOX', piecesPerUnit: 7, currentStock: String(10 / 7), quantity: '1' })).toMatchObject({ ok: true, after: 1, request: { type: 'ADJUSTMENT_OUT', quantity: '3', unit: 'PIECE', expectedQuantity: '10' } });
   });
 
   it('keeps large quantities exact', () => {

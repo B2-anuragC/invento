@@ -13,6 +13,7 @@ import { globalValidationPipe } from '../src/common/pipes/validation.pipe.js';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from '../src/common/interceptors/response.interceptor.js';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { planStockAdjustment } from '@invento/shared';
 
 function testPdf() {
   const objects = [
@@ -505,6 +506,34 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
       ['ADJUSTMENT_OUT', '-3.5', '96.5', 'Counted 96.5'],
       ['OPENING_STOCK', '100', '100', null],
     ]);
+  });
+
+  it('counts a dozen product in whole pieces after a single piece was sold', async () => {
+    const product = (await api('post', '/products').send({ name: 'Glass knobs', sku: 'KNOB-DOZEN', unit: 'DOZEN', purchasePrice: '100', sellingPrice: '150', minimumStock: '0' }).expect(201)).body.data;
+    await api('post', '/inventory/opening-stock').send({ productId: product.id, quantity: '2' }).expect(201);
+    await api('post', '/sales').send({ ...input(), items: [{ productId: product.id, quantity: '1', sellingPrice: '15', unit: 'PIECE' }] }).expect(201);
+    const count = async (quantity: string, reason: 'COUNT_CORRECTION' | 'DAMAGE' = 'COUNT_CORRECTION') => {
+      const shown = (await api('get', `/inventory/${product.id}`).expect(200)).body.data.quantity;
+      const plan = planStockAdjustment({ productId: product.id, mode: 'count', quantity, reason, currentStock: shown, unit: 'DOZEN', piecesPerUnit: product.piecesPerUnit });
+      if (!plan.ok) throw new Error(plan.error);
+      return { shown, plan, response: await api('post', '/inventory/adjustments').send(plan.request) };
+    };
+
+    // 23 pieces: the count is checked and saved in pieces.
+    const first = await count('2');
+    expect(first.shown).toBe('1.9166666666666666667');
+    expect(first.plan.request).toMatchObject({ quantity: '1', unit: 'PIECE', expectedQuantity: '23' });
+    expect(first.response.status).toBe(201);
+    expect(first.response.body.data.balanceAfter).toBe('2');
+    // A stale count of 23 pieces is still refused, and says so in pieces.
+    const stale = await api('post', '/inventory/adjustments').send(first.plan.request).expect(409);
+    expect(stale.body.error.message).toMatch(/it is now 24 pieces/);
+
+    await api('post', '/sales').send({ ...input(), items: [{ productId: product.id, quantity: '1', sellingPrice: '15', unit: 'PIECE' }] }).expect(201);
+    expect((await count('0', 'DAMAGE')).response.status).toBe(201);
+    expect((await prisma.inventory.findUniqueOrThrow({ where: { productId: product.id } })).quantity.toString()).toBe('0');
+    const ledger = await api('get', `/inventory/${product.id}/history`).expect(200);
+    expect(ledger.body.data.slice(0, 1).map((entry: { type: string; quantity: string; note: string }) => [entry.type, entry.quantity, entry.note])).toEqual([['DAMAGE', '-1.9166666666666666667', 'Counted 0']]);
   });
 
   it('rolls back the sale, first item and ledger when item two of three oversells', async () => {
