@@ -279,6 +279,18 @@ describe("Durable offline transactions", () => {
     expect((await api.offlineCommands(session))[0].state).toBe("conflict");
     expect(sent).toHaveLength(0);
   });
+  it("saves a bill without GST offline and syncs it with the same total, even if a GST rate changes", async () => {
+    // 2 x 10.00 with GST off: no tax on the line, total 20.00.
+    const saved = await api.saveOfflineTransaction(session, "sale", { ...sale("request_no_gst"), amountPaid: "20.00", chargeGst: false });
+    expect(saved).toMatchObject({ syncState: "pending", subtotal: "20.00", taxTotal: "0.00", total: "20.00", chargeGst: false });
+    expect(saved.items[0]).toMatchObject({ gstRate: "0", taxAmount: "0.00" });
+    snapshot.products[0] = { ...snapshot.products[0], gstRate: "12" } as LocalRecord;
+    online = true;
+    await api.syncOffline(session, true);
+    expect(await api.offlineCommands(session)).toHaveLength(0);
+    expect(sent[0].input).toMatchObject({ requestId: "request_no_gst", chargeGst: false, expectedTotal: "20.00" });
+    expect((await api.offlineView(session)).sales[0]).toMatchObject({ id: "server_request_no_gst", total: "20.00", chargeGst: false });
+  });
   it("previews changed tax and only retries the explicitly approved updated bill", async () => {
     await api.saveOfflineTransaction(session, "sale", sale());
     await api.syncOffline(session);
@@ -456,6 +468,23 @@ describe("Durable offline transactions", () => {
     expect(await api.offlineCommands(session)).toHaveLength(0);
     expect(snapshot.sales).toHaveLength(1); expect(snapshot.inventory[0].quantity).toBe(8);
   });
+  it("follows the bill's GST choice exactly as the server does", () => {
+    const registered = { ...snapshot, business: { ...snapshot.business, gstin: "27AAPFU0939F1ZV", stateCode: "27" } } as OfflineSnapshot;
+    // Off: no GST on any line, also after a discount; the sale keeps its tax type.
+    const off = buildOfflineTransaction(registered, "sale", { ...sale("request_gst_off"), amountPaid: "0", discountAmount: "5", chargeGst: false }).record as SaleRecord;
+    expect(off).toMatchObject({ subtotal: "20.00", discountTotal: "5.00", taxTotal: "0.00", total: "15.00", chargeGst: false, taxType: "INTRA_STATE" });
+    expect(off.items[0]).toMatchObject({ gstRate: "0", taxAmount: "0.00", discountAmount: "5.00" });
+    // On, or missing (older queued bills): GST at the product's rate.
+    expect(buildOfflineTransaction(registered, "sale", { ...sale("request_gst_on"), chargeGst: true }).record).toMatchObject({ taxTotal: "3.60", total: "23.60", chargeGst: true });
+    expect(buildOfflineTransaction(snapshot, "sale", sale("request_gst_missing")).record).toMatchObject({ taxTotal: "3.60", chargeGst: true });
+    // Only a shop with a GSTIN may charge GST on a sale; purchases follow the supplier's bill.
+    expect(() => buildOfflineTransaction(snapshot, "sale", { ...sale("request_gst_unregistered"), chargeGst: true })).toThrow("Add the shop GSTIN");
+    expect(buildOfflineTransaction(snapshot, "sale", { ...sale("request_gst_unregistered_off"), amountPaid: "20.00", chargeGst: false }).record).toMatchObject({ total: "20.00" });
+    expect(buildOfflineTransaction(snapshot, "purchase", { ...purchase(), chargeGst: false }).record).toMatchObject({ subtotal: "20.00", taxTotal: "0.00", total: "20.00", chargeGst: false });
+    expect(buildOfflineTransaction(snapshot, "purchase", { ...purchase(), chargeGst: true }).record).toMatchObject({ taxTotal: "3.60", total: "23.60" });
+    expect(() => buildOfflineTransaction(snapshot, "sale", { ...sale("request_gst_text"), chargeGst: "false" as unknown as boolean })).toThrow("charges GST");
+  });
+
   it("keeps walk-in sales paid in full, as the server requires", () => {
     snapshot.customers.push({ id: "walkin_shop", name: "Walk-in customer", isWalkIn: true, status: "ACTIVE", revision: 1 } as LocalRecord);
     const walkIn = { ...sale("request_walk_in"), customerId: "walkin_shop" };

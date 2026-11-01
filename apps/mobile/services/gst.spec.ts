@@ -1,7 +1,7 @@
-import { HSN_RULE_MESSAGE } from '@invento/shared';
+import { CHARGE_GST_NEEDS_GSTIN_MESSAGE, HSN_RULE_MESSAGE } from '@invento/shared';
 import { describe, expect, it } from 'vitest';
 
-import { hsnCodeError, lineTaxText, provisionalSaleGst, receiptTitle, saleGstDetails, stateLabel, taxTotalRows } from './gst';
+import { chargeGstSwitch, hsnCodeError, lineTaxText, provisionalSaleGst, receiptTitle, saleGstDetails, stateLabel, taxTotalRows } from './gst';
 
 const SHOP_MH = '27AAPFU0939F1ZV';
 const BUYER_KA = '29AAPFU0939F1ZR';
@@ -37,6 +37,13 @@ describe('receiptTitle', () => {
     expect(receiptTitle('sale', { ...intraState, taxType: 'UNREGISTERED', sellerGstin: null }, 'INV/2026-27/0001')).toBe('Bill of supply');
   });
 
+  it('titles a numbered sale without GST a Bill of supply, with the same number', () => {
+    expect(receiptTitle('sale', intraState, 'INV/2026-27/0001', false)).toBe('Bill of supply');
+    expect(receiptTitle('sale', intraState, 'INV/2026-27/0001', true)).toBe('Tax invoice');
+    expect(receiptTitle('sale', intraState, null, false)).toBe('Sale receipt');
+    expect(receiptTitle('purchase', null, 'PUR/2026-27/0001', false)).toBe('Purchase receipt');
+  });
+
   it('keeps unnumbered, older sales and purchases as receipts', () => {
     expect(receiptTitle('sale', intraState, null)).toBe('Sale receipt');
     expect(receiptTitle('sale', null, 'INV/2026-27/0001')).toBe('Sale receipt');
@@ -63,6 +70,27 @@ describe('tax text', () => {
     expect(taxTotalRows(lines, 'INTRA_STATE', '37.46')).toEqual([{ key: 'cgst', label: 'CGST', amount: 18.74 }, { key: 'sgst', label: 'SGST', amount: 18.72 }]);
     expect(taxTotalRows(lines, 'INTER_STATE', '37.46')).toEqual([{ key: 'igst', label: 'IGST', amount: 37.46 }]);
     expect(taxTotalRows(lines, undefined, '37.46')).toEqual([{ key: 'gst', label: 'GST', amount: 37.46 }]);
+    expect(taxTotalRows(lines, 'INTRA_STATE', '37.46', true)).toHaveLength(2);
+  });
+
+  it('has no tax rows for a bill without GST', () => {
+    expect(taxTotalRows([{ gstRate: '0', lineTotal: '100', taxAmount: '0' }], 'INTRA_STATE', '0', false)).toEqual([]);
+    expect(taxTotalRows([], undefined, '0', false)).toEqual([]);
+  });
+});
+
+describe('chargeGstSwitch', () => {
+  it('needs the shop GSTIN to charge GST on a sale and explains why', () => {
+    expect(chargeGstSwitch('sale', false, { gstin: null })).toEqual({ disabled: true, note: CHARGE_GST_NEEDS_GSTIN_MESSAGE });
+    expect(chargeGstSwitch('sale', true, { gstin: '' }).disabled).toBe(true);
+    expect(chargeGstSwitch('sale', false, { gstin: SHOP_MH })).toEqual({ disabled: false, note: 'Bill of supply · no GST on any item.' });
+    expect(chargeGstSwitch('sale', true, { gstin: SHOP_MH })).toEqual({ disabled: false, note: 'Tax invoice · GST at each item’s rate.' });
+  });
+
+  it('stays usable while shop details are unknown, and for purchases', () => {
+    expect(chargeGstSwitch('sale', true, null).disabled).toBe(false);
+    expect(chargeGstSwitch('purchase', true, { gstin: null })).toEqual({ disabled: false, note: 'GST at each item’s rate, as on the supplier’s bill.' });
+    expect(chargeGstSwitch('purchase', false, null).note).toBe('No GST on this purchase.');
   });
 });
 

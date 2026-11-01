@@ -4,6 +4,7 @@ import { supplierOffersProduct } from '@/services/supplier-catalog';
 import { PurchaseAttachment } from '@/components/purchase-attachment';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
+import { ChargeGstSwitch } from '@/components/charge-gst-switch';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
 import { discardBillDialog } from '@/services/unsaved-changes';
@@ -62,6 +63,7 @@ export default function CreatePurchaseScreen() {
   const [paymentMode, setPaymentMode] = useState<'full' | 'partial' | 'credit'>('credit');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [paidInput, setPaidInput] = useState('');
+  const [chargeGst, setChargeGst] = useState(false);
   const [dueDate, setDueDate] = useState('');
   // The supplier's bill date; it also sets the purchase number's financial year.
   const [purchaseDay, setPurchaseDay] = useState(() => dateKey(new Date()));
@@ -152,7 +154,7 @@ export default function CreatePurchaseScreen() {
     }),
     [products, quantities, prices],
   );
-  const { subtotal, tax: taxTotal, total } = transactionTotals(purchaseItems);
+  const { subtotal, tax: taxTotal, total } = transactionTotals(purchaseItems, {}, chargeGst);
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
   const paymentValid = (paymentMode !== 'partial' || (paidInput !== '' && Number(paidInput) > 0 && Number(paidInput) < total)) && validDueDate(paymentMode === 'full' ? '' : dueDate);
   const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId);
@@ -183,7 +185,7 @@ export default function CreatePurchaseScreen() {
     const available = new Set(products.map((product) => product.id));
     setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
     setAttachment(draft.attachment); setPrices(draft.prices); setSupplierId(draft.contactId); setShowSupplierPicker(!draft.contactId); setStep(draft.step);
-    setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as string); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
+    setPaymentMode(draft.paymentMode); setChargeGst(draft.chargeGst === true); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as string); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
     setInvoiceNumber(draft.invoiceNumber ?? '');
     setDraftCandidate(null);
     if (Object.keys(draft.quantities).some((id) => !available.has(id))) setError('Some products are no longer active and were removed from this draft.');
@@ -196,11 +198,11 @@ export default function CreatePurchaseScreen() {
   useEffect(() => {
     const session = appSession.current;
     if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || supplierId || attachment)) return;
-    const draft: TransactionDraft = { version: 1, kind: 'purchase', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: supplierId, contactName: selectedSupplier?.name ?? '', quantities, prices, attachment, invoiceNumber, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
+    const draft: TransactionDraft = { version: 1, kind: 'purchase', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: supplierId, contactName: selectedSupplier?.name ?? '', quantities, prices, attachment, invoiceNumber, chargeGst, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
     const persist = () => { if (discardDraftWrites.current) return; void saveDraft(session, draft).catch(() => setDraftStorageError('Could not save this draft on your device. Keep this screen open.')); };
     const timer = setTimeout(persist, 350);
     return () => { clearTimeout(timer); persist(); };
-  }, [attachment, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
+  }, [attachment, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, invoiceNumber, supplierId, selectedSupplier?.name, chargeGst, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
 
   // Applies a glass-calculator result when returning from the calculator.
   useFocusEffect(useCallback(() => {
@@ -294,6 +296,7 @@ export default function CreatePurchaseScreen() {
         requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
         supplierId,
         attachment,
+        chargeGst,
         paymentMethod: paymentMethod as 'CASH' | 'UPI' | 'CARD' | 'BANK_TRANSFER' | 'OTHER',
         purchaseDate: dayToTimestamp(purchaseDay || dateKey(new Date())),
         ...(invoiceNumber.trim() ? { invoiceNumber: invoiceNumber.trim() } : {}),
@@ -308,7 +311,7 @@ export default function CreatePurchaseScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ syncState: savedPurchase.syncState, syncError: savedPurchase.syncError, attachment: savedPurchase.attachment, id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, documentNumber: savedPurchase.documentNumber, contact: savedPurchase.supplier.name, contactPhone: savedPurchase.supplier.phone, contactAddress: savedPurchase.supplier.address, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, lineKey: savedLineKey('purchase', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ syncState: savedPurchase.syncState, syncError: savedPurchase.syncError, attachment: savedPurchase.attachment, id: savedPurchase.id, kind: 'purchase', date: savedPurchase.purchaseDate, invoice: savedPurchase.invoiceNumber, chargeGst: savedPurchase.chargeGst, documentNumber: savedPurchase.documentNumber, contact: savedPurchase.supplier.name, contactPhone: savedPurchase.supplier.phone, contactAddress: savedPurchase.supplier.address, total: savedPurchase.total, subtotal: savedPurchase.subtotal, taxTotal: savedPurchase.taxTotal, amountPaid: savedPurchase.amountPaid, dueDate: savedPurchase.dueDate, payments: savedPurchase.payments,  items: savedPurchase.items.map((item) => ({ id: item.id, lineKey: savedLineKey('purchase', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: formatUnitLabel(products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.purchasePrice == null ? undefined : Number(item.purchasePrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -523,7 +526,7 @@ export default function CreatePurchaseScreen() {
               <PurchaseAttachment value={attachment} onChange={(value) => { setAttachment(value); setError(''); }} onBusy={setAttachmentBusy} disabled={saving} />
               <Text style={{ color: '#43554B', fontSize: 13, fontWeight: '700', marginTop: 12 }}>Purchase date · supplier&apos;s bill date</Text>
               <DatePicker value={purchaseDay} onChange={setPurchaseDay} maximumDate={dateKey(new Date())} title="Select purchase date" clearLabel="Use today" />
-              <TransactionFinanceFields kind="purchase" subtotal={subtotal} tax={taxTotal} total={total} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as string)} />
+              <TransactionFinanceFields kind="purchase" subtotal={subtotal} tax={taxTotal} total={total} chargeGst={chargeGst} gstSwitch={<ChargeGstSwitch kind="purchase" value={chargeGst} onChange={setChargeGst} shop={null} disabled={saving} />} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as string)} />
             </>
           ) : null}
         </ScrollView>
@@ -540,7 +543,7 @@ export default function CreatePurchaseScreen() {
           )}
         </View>
         <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setPaidInput(''); setDueDate(''); setPurchaseDay(dateKey(new Date())); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/purchase/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/purchase/create`); setQuantities({}); setAttachment(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('credit'); setChargeGst(false); setPaidInput(''); setDueDate(''); setPurchaseDay(dateKey(new Date())); setSupplierId(''); setSupplierCategories([]); setSupplierProductIds([]); setInvoiceNumber(''); setShowSupplierPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}

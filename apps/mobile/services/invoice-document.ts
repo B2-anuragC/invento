@@ -1,4 +1,4 @@
-import { gstRateSummary, halfRate, splitLineTax } from '@invento/shared';
+import { chargesGst, gstRateSummary, halfRate, splitLineTax } from '@invento/shared';
 
 import { formatDate, formatMoney, formatQuantity } from './format';
 import { receiptTitle, stateLabel, taxTotalRows, type SaleGstDetails } from './gst';
@@ -25,6 +25,8 @@ export type InvoiceSource = {
   contactPhone?: string | null;
   contactAddress?: string | null;
   gst?: SaleGstDetails | null;
+  /** False when the bill charged no GST: no GST columns or rows. Missing on older bills, which did. */
+  chargeGst?: boolean | null;
   total?: string | number | null;
   subtotal?: string | number;
   discountTotal?: string | number;
@@ -55,12 +57,14 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
   const sale = source.kind === 'sale';
   const gst = sale ? source.gst ?? null : null;
   const taxType = gst?.taxType;
-  const title = receiptTitle(source.kind, gst, source.documentNumber);
+  const title = receiptTitle(source.kind, gst, source.documentNumber, source.chargeGst);
+  const taxed = chargesGst(source.chargeGst);
   const identity = receiptIdentity(source.kind, { id: source.id, documentNumber: source.documentNumber, invoiceNumber: source.invoice, syncState: source.syncState });
   const taxInvoice = title === 'Tax invoice';
   // A role that cannot see purchase prices gets quantities only.
   const restricted = source.total == null || source.items.some((item) => item.price == null);
-  const heads = taxType === 'INTRA_STATE' ? ['CGST', 'SGST'] : [taxType === 'INTER_STATE' ? 'IGST' : 'GST'];
+  // A bill without GST has no tax columns, and its taxable value is simply the amount.
+  const heads = !taxed ? [] : taxType === 'INTRA_STATE' ? ['CGST', 'SGST'] : [taxType === 'INTER_STATE' ? 'IGST' : 'GST'];
   const discounted = Number(source.discountTotal ?? 0) > 0;
   // Purchases and products without a code have no HSN to show.
   const showHsn = source.items.some((item) => item.hsnCode);
@@ -73,14 +77,14 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
       const taxable = Number(item.lineTotal ?? ((item.quantity * (item.price ?? 0)).toFixed(2))) - share;
       const rate = Number(item.gstRate ?? 0);
       const split = splitLineTax(item.taxAmount ?? 0, 'INTRA_STATE');
-      const taxCells = taxType === 'INTRA_STATE'
+      const taxCells = !taxed ? [] : taxType === 'INTRA_STATE'
         ? [`${money(split.cgst)}<span class="rate">${halfRate(rate)}%</span>`, `${money(split.sgst)}<span class="rate">${halfRate(rate)}%</span>`]
         : [`${money(item.taxAmount)}<span class="rate">${rate}%</span>`];
-      cells.push(`<td class="num">${money(item.price)}</td>`, ...(discounted ? [`<td class="num">${money(share)}</td>`] : []), `<td class="num">${money(taxable)}</td>`, ...taxCells.map((cell) => `<td class="num">${cell}</td>`), `<td class="num">${money(taxable + Number(item.taxAmount ?? 0))}</td>`);
+      cells.push(`<td class="num">${money(item.price)}</td>`, ...(discounted ? [`<td class="num">${money(share)}</td>`] : []), ...(taxed ? [`<td class="num">${money(taxable)}</td>`] : []), ...taxCells.map((cell) => `<td class="num">${cell}</td>`), `<td class="num">${money(taxable + Number(item.taxAmount ?? 0))}</td>`);
     }
     return `<tr>${cells.join('')}</tr>`;
   });
-  const itemHead = ['<th class="num">#</th>', '<th>Item</th>', ...(showHsn ? ['<th>HSN</th>'] : []), '<th class="num">Qty</th>', ...(restricted ? [] : ['<th class="num">Rate</th>', ...(discounted ? ['<th class="num">Discount</th>'] : []), '<th class="num">Taxable value</th>', ...heads.map((head) => `<th class="num">${head}</th>`), '<th class="num">Amount</th>'])];
+  const itemHead = ['<th class="num">#</th>', '<th>Item</th>', ...(showHsn ? ['<th>HSN</th>'] : []), '<th class="num">Qty</th>', ...(restricted ? [] : ['<th class="num">Rate</th>', ...(discounted ? ['<th class="num">Discount</th>'] : []), ...(taxed ? ['<th class="num">Taxable value</th>'] : []), ...heads.map((head) => `<th class="num">${head}</th>`), '<th class="num">Amount</th>'])];
 
   const rates = taxInvoice && !restricted ? gstRateSummary(source.items.map((item) => ({ gstRate: item.gstRate ?? 0, lineTotal: item.lineTotal ?? 0, discountAmount: item.discountAmount ?? 0, taxAmount: item.taxAmount ?? 0 })), taxType === 'INTER_STATE' ? 'INTER_STATE' : 'INTRA_STATE') : [];
   const rateSummary = rates.length > 1
@@ -91,7 +95,7 @@ export function invoiceHtml(source: InvoiceSource, shop: InvoiceShop): string {
   const methods = paymentMethodsSummary(source.payments, source.paymentMethod);
   const totals = restricted
     ? '<p class="muted">Prices are hidden for your role.</p>'
-    : `<table class="totals"><tbody>${discounted ? `<tr><td>Subtotal</td><td class="num">${money(source.subtotal)}</td></tr><tr><td>Discount${Number(source.discountPercent ?? 0) > 0 ? ` (${Number(source.discountPercent)}%)` : ''}</td><td class="num">−${money(source.discountTotal)}</td></tr>` : ''}<tr><td>Taxable value</td><td class="num">${money(Number(source.subtotal ?? 0) - Number(source.discountTotal ?? 0))}</td></tr>${taxTotalRows(source.items, taxType, source.taxTotal ?? 0).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr></tbody></table>`;
+    : `<table class="totals"><tbody>${discounted ? `<tr><td>Subtotal</td><td class="num">${money(source.subtotal)}</td></tr><tr><td>Discount${Number(source.discountPercent ?? 0) > 0 ? ` (${Number(source.discountPercent)}%)` : ''}</td><td class="num">−${money(source.discountTotal)}</td></tr>` : ''}${taxed ? `<tr><td>Taxable value</td><td class="num">${money(Number(source.subtotal ?? 0) - Number(source.discountTotal ?? 0))}</td></tr>` : ''}${taxTotalRows(source.items, taxType, source.taxTotal ?? 0, source.chargeGst).map((row) => `<tr><td>${row.label}</td><td class="num">${money(row.amount)}</td></tr>`).join('')}<tr class="grand"><td>Total</td><td class="num">${money(source.total ?? 0)}</td></tr></tbody></table>`;
 
   return `<!DOCTYPE html>
 <html lang="en">

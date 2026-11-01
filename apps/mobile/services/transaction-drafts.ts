@@ -5,6 +5,8 @@ export type TransactionDraft = {
   source?: 'quick';
   referenceImage?: string;
   attachment?: FileAttachment;
+  /** The bill's GST switch; drafts saved before it had none and start with GST off. */
+  chargeGst?: boolean;
   version: 1; kind: 'sale' | 'purchase'; requestId: string; updatedAt: string; contactId: string; contactName: string; quantities: Record<string, string>; prices: Record<string, string>; sellingUnits?: Record<string, string>; selectedOptions?: Record<string, string>; invoiceNumber?: string; paymentMode: 'full' | 'partial' | 'credit'; paidInput: string; dueDate: string; paymentMethod: string; step: 1 | 2 | 3; outcome: 'rejected' | 'unknown' | null;
 };
 const key = (session: AppSession, kind: TransactionDraft['kind'], slot = 'standard') => `invento.draft.v1.${session.user.id}.${session.businessId}.${kind}${slot === 'standard' ? '' : `.${slot}`}`;
@@ -29,6 +31,7 @@ export async function readDraft(session: AppSession, kind: TransactionDraft['kin
     if (value.version !== 1 || value.kind !== kind || typeof value.requestId !== 'string' || !stringRecord(value.quantities) || !stringRecord(value.prices) || ![1, 2, 3].includes(value.step)) return null;
     if (!['full', 'partial', 'credit'].includes(value.paymentMode) || !['updatedAt', 'contactId', 'contactName', 'paidInput', 'dueDate', 'paymentMethod'].every((field) => typeof value[field] === 'string')) return null;
     if (![null, 'rejected', 'unknown'].includes(value.outcome) || (value.sellingUnits !== undefined && !stringRecord(value.sellingUnits)) || (value.selectedOptions !== undefined && !stringRecord(value.selectedOptions))) return null;
+    if (value.chargeGst !== undefined && typeof value.chargeGst !== 'boolean') return null;
     if (value.referenceImage !== undefined && (typeof value.referenceImage !== 'string' || value.referenceImage.length > 2800000 || !(/^(?:data:image\/jpeg;base64,|\/files\/[a-f0-9]{64}\/original$|file:\/\/)/.test(value.referenceImage)))) return null;
     if (value.attachment !== undefined && (value.attachment === null || typeof value.attachment !== 'object' || !['name', 'mimeType'].every((field) => typeof value.attachment[field] === 'string') || (typeof value.attachment.url !== 'string' && typeof value.attachment.base64 !== 'string') || (value.attachment.base64?.length ?? 0) > 13981016)) return null;
     if (raw.includes('base64')) { const migrated = await localizeLegacyUploads(value, session) as TransactionDraft; await saveDraft(session, migrated, slot); return migrated; }

@@ -20,6 +20,13 @@ describe('Transaction accounting preview', () => {
     expect(transactionTotals([{ quantity: 3, price: 33.33, product: { gstRate: '12.5' } }])).toEqual({ subtotal: 99.99, discount: 0, tax: 12.5, total: 112.49 });
   });
 
+  it('charges no GST on any line when the bill turns GST off, and GST when the choice is missing', () => {
+    const items = [{ quantity: 1, price: 1000, product: { gstRate: '18' } }, { quantity: 1, price: 200, product: { gstRate: '5' } }];
+    expect(transactionTotals(items, { discountPercent: '10' }, false)).toEqual({ subtotal: 1200, discount: 120, tax: 0, total: 1080 });
+    expect(transactionTotals(items, {}, true)).toEqual({ subtotal: 1200, discount: 0, tax: 190, total: 1390 });
+    expect(transactionTotals(items, {}, undefined)).toEqual(transactionTotals(items, {}, true));
+  });
+
   it('turns the typed discount into what the API takes', () => {
     expect(saleDiscountInput('amount', '')).toEqual({});
     expect(saleDiscountInput('amount', '120.')).toEqual({ discountAmount: '120' });

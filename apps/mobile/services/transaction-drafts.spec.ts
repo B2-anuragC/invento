@@ -27,6 +27,12 @@ describe('Persistent transaction drafts', () => {
     await Promise.all([writing, clearing]);
     expect(await readDraft(session, 'sale')).toBeNull();
   });
+  it('keeps the GST switch and refuses a draft whose GST choice is not true or false', async () => {
+    await saveDraft(session, { ...draft, chargeGst: true });
+    expect((await readDraft(session, 'sale'))?.chargeGst).toBe(true);
+    for (const key of storage.keys()) storage.set(key, JSON.stringify({ ...draft, chargeGst: 'yes' }));
+    expect(await readDraft(session, 'sale')).toBeNull();
+  });
   it('ignores malformed stored JSON', async () => {
     await saveDraft(session, draft);
     for (const key of storage.keys()) storage.set(key, '{bad json');

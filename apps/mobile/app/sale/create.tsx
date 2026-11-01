@@ -2,6 +2,7 @@ import { ProductThumbnail } from '@/components/product-photo';
 import { SaleReferencePhoto } from '@/components/sale-reference-photo';
 import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { TransactionFinanceFields, type DiscountMode } from '@/components/transaction-finance-fields';
+import { ChargeGstSwitch } from '@/components/charge-gst-switch';
 import { saleDiscountInput, transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
 import { discardBillDialog } from '@/services/unsaved-changes';
@@ -14,7 +15,7 @@ import { FormError } from '@/components/form-error';
 import { transactionSaveLabel } from '@/services/save-label';
 import { receiveMeasurement } from '@/services/measurement-handoff';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
-import { saleGstDetails } from '@/services/gst';
+import { chargeGstSwitch, saleGstDetails } from '@/services/gst';
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -38,7 +39,9 @@ import {
   fetchCustomers,
   fetchInventory,
   fetchProducts,
+  fetchReceiptShop,
   fetchSale,
+  type BusinessDetails,
   type CustomerRecord,
   type InventoryRecord,
   type ProductRecord,
@@ -76,6 +79,8 @@ export default function CreateSaleScreen() {
   const [paymentMode, setPaymentMode] = useState<'full' | 'partial' | 'credit'>('full');
   const [discountMode, setDiscountMode] = useState<DiscountMode>('amount');
   const [discountValue, setDiscountValue] = useState('');
+  const [chargeGstOn, setChargeGstOn] = useState(false);
+  const [shop, setShop] = useState<BusinessDetails | null>(null);
   const [paidInput, setPaidInput] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saveRequestId, setSaveRequestId] = useState(requestKey);
@@ -111,12 +116,15 @@ export default function CreateSaleScreen() {
         return;
       }
       try {
-        const [productData, inventoryData, customerData] = await Promise.all([
+        const [productData, inventoryData, customerData, shopData] = await Promise.all([
           fetchProducts(session),
           fetchInventory(session),
           fetchCustomers(session),
+          // Only decides whether GST can be charged; the server checks it again.
+          fetchReceiptShop(session).catch(() => null),
         ]);
         if (!active) return;
+        setShop(shopData);
         setProducts(productData);
         setCustomers(customerData);
         if (initialCustomerId && customerData.some((customer) => customer.id === initialCustomerId)) {
@@ -138,6 +146,8 @@ export default function CreateSaleScreen() {
           setCustomerId(previous.customer.id);
           setShowCustomerPicker(false);
           setPaymentMethod(previous.paymentMethod as PaymentMethod);
+          // A repeated sale keeps the earlier bill's GST choice.
+          setChargeGstOn(previous.chargeGst !== false);
           const activeProductIds = new Set(productData.map((product) => product.id));
           const unavailable = previous.items.filter((item) => !activeProductIds.has(item.productId));
           const missingOption = previous.items.some((item) => item.sellingOptionId && !productData.find((entry) => entry.id === item.productId)?.sellingOptions?.some((entry) => entry.id === item.sellingOptionId));
@@ -204,7 +214,9 @@ export default function CreateSaleScreen() {
     [prices, products, quantities, sellingUnits, selectedOptions],
   );
   const discountInput = saleDiscountInput(discountMode, discountValue);
-  const { subtotal, discount: discountTotal, tax: taxTotal, total } = transactionTotals(saleItems, discountInput);
+  // A shop without a GSTIN cannot charge GST, whatever the switch was left at.
+  const chargeGst = chargeGstOn && !chargeGstSwitch('sale', chargeGstOn, shop).disabled;
+  const { subtotal, discount: discountTotal, tax: taxTotal, total } = transactionTotals(saleItems, discountInput, chargeGst);
   const discountProblem = discountError(subtotal.toFixed(2), discountInput);
   const paymentAmount = paymentMode === 'full' ? total.toFixed(2) : paymentMode === 'credit' ? '0.00' : paidInput;
   // Credit needs a named customer to collect from.
@@ -256,7 +268,7 @@ export default function CreateSaleScreen() {
     setQuantities(Object.fromEntries(Object.entries(draft.quantities).filter(([id]) => available.has(id))));
     setReferenceImage(draft.referenceImage); setPrices(draft.prices); setCustomerId(draft.contactId); setShowCustomerPicker(!draft.contactId); setStep(draft.step === 3 ? 3 : 1);
     setPaymentMode(draft.paymentMode); setPaidInput(draft.paidInput); setDueDate(draft.dueDate); setPaymentMethod(draft.paymentMethod as PaymentMethod); setSaveRequestId(draft.requestId); setSaveOutcome(draft.outcome);
-    setSellingUnits(draft.sellingUnits ?? {}); setSelectedOptions(draft.selectedOptions ?? {});
+    setSellingUnits(draft.sellingUnits ?? {}); setSelectedOptions(draft.selectedOptions ?? {}); setChargeGstOn(draft.chargeGst === true);
     setDraftCandidate(null);
     if (Object.keys(draft.quantities).some((id) => !available.has(id))) setError('Some products are no longer active and were removed from this draft.');
   };
@@ -268,11 +280,11 @@ export default function CreateSaleScreen() {
   useEffect(() => {
     const session = appSession.current;
     if (!session || !draftReady || draftCandidate || loading || saving || receiptVisible || !(Object.keys(quantities).length || customerId || referenceImage)) return;
-    const draft: TransactionDraft = { version: 1, kind: 'sale', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: customerId, contactName: selectedCustomer?.name ?? '', quantities, prices, sellingUnits, selectedOptions, referenceImage, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
+    const draft: TransactionDraft = { version: 1, kind: 'sale', requestId: saveRequestId, updatedAt: new Date().toISOString(), contactId: customerId, contactName: selectedCustomer?.name ?? '', quantities, prices, sellingUnits, selectedOptions, referenceImage, chargeGst: chargeGstOn, paymentMode, paidInput, dueDate, paymentMethod, step, outcome: saveOutcome };
     const persist = () => { if (discardDraftWrites.current) return; void saveDraft(session, draft).catch(() => setDraftStorageError('Could not save this draft on your device. Keep this screen open.')); };
     const timer = setTimeout(persist, 350);
     return () => { clearTimeout(timer); persist(); };
-  }, [referenceImage, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, sellingUnits, selectedOptions, customerId, selectedCustomer?.name, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
+  }, [referenceImage, draftReady, draftCandidate, loading, saving, receiptVisible, quantities, prices, sellingUnits, selectedOptions, customerId, selectedCustomer?.name, chargeGstOn, paymentMode, paidInput, dueDate, paymentMethod, step, saveRequestId, saveOutcome]);
 
   // Applies a glass-calculator result when returning from the calculator.
   useFocusEffect(useCallback(() => {
@@ -323,6 +335,7 @@ export default function CreateSaleScreen() {
       const savedSale = await createSale(session, {
         requestId: saveRequestId, amountPaid: paymentAmount, ...(paymentMode !== 'full' && dueDate ? { dueDate } : {}),
         ...discountInput,
+        chargeGst,
         customerId,
         referenceImage,
         paymentMethod,
@@ -340,7 +353,7 @@ export default function CreateSaleScreen() {
       const refreshedInventory = await fetchInventory(session, true).catch(() => null);
       if (refreshedInventory) savedBalancesForNext.current = Object.fromEntries(refreshedInventory.map((item) => [item.productId, Number(item.quantity)]));
       const savedBalances = refreshedInventory ? new Map(refreshedInventory.map((item) => [item.productId, Number(item.quantity)])) : null;
-      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, gst: saleGstDetails(savedSale), id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, documentNumber: savedSale.documentNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, contactAddress: savedSale.customer.address ?? selectedCustomer?.address, total: savedSale.total, subtotal: savedSale.subtotal, discountTotal: savedSale.discountTotal, discountPercent: savedSale.discountPercent, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: item.discountAmount, hsnCode: item.hsnCode, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
+      setReceiptData({ syncState: savedSale.syncState, syncError: savedSale.syncError, referenceImage: savedSale.referenceImage, gst: saleGstDetails(savedSale), chargeGst: savedSale.chargeGst, id: savedSale.id, kind: 'sale', date: savedSale.saleDate, invoice: savedSale.invoiceNumber, documentNumber: savedSale.documentNumber, contact: savedSale.customer.name, contactPhone: savedSale.customer.phone ?? selectedCustomer?.phone, contactAddress: savedSale.customer.address ?? selectedCustomer?.address, total: savedSale.total, subtotal: savedSale.subtotal, discountTotal: savedSale.discountTotal, discountPercent: savedSale.discountPercent, taxTotal: savedSale.taxTotal, amountPaid: savedSale.amountPaid, dueDate: savedSale.dueDate, payments: savedSale.payments, paymentMethod: savedSale.paymentMethod, items: savedSale.items.map((item) => ({ id: item.id, lineKey: savedLineKey('sale', item), name: products.find((product) => product.id === item.productId)?.name ?? 'Product', sku: products.find((product) => product.id === item.productId)?.sku, quantity: Number(item.quantity), label: item.optionName ?? formatUnitLabel(item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE'), unit: item.optionName ? undefined : item.unit ?? products.find((product) => product.id === item.productId)?.unit ?? 'PIECE', price: item.sellingPrice == null ? undefined : Number(item.sellingPrice), gstRate: item.gstRate, taxAmount: item.taxAmount, lineTotal: item.lineTotal, discountAmount: item.discountAmount, hsnCode: item.hsnCode, stockUnit: products.find((product) => product.id === item.productId)?.unit, stockAfter: savedBalances?.get(item.productId) })) });
       setReceiptVisible(true);
     } catch (saveError: unknown) {
       setSaveOutcome(saveError instanceof ApiError && saveError.status >= 400 && saveError.status < 500 && saveError.status !== 408 ? 'rejected' : 'unknown');
@@ -616,7 +629,7 @@ export default function CreateSaleScreen() {
                 </View>
               ))}
               <SaleReferencePhoto value={referenceImage} onBusy={setPhotoBusy} onChange={(value) => { setReferenceImage(value); clearErrorOnEdit(); }} disabled={saving} />
-               <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} discount={{ mode: discountMode, value: discountValue, amount: discountTotal, error: discountProblem, onMode: (value) => { setDiscountMode(value); setDiscountValue(''); }, onValue: setDiscountValue }} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
+               <TransactionFinanceFields kind="sale" subtotal={subtotal} tax={taxTotal} total={total} chargeGst={chargeGst} gstSwitch={<ChargeGstSwitch kind="sale" value={chargeGst} onChange={setChargeGstOn} shop={shop} disabled={saving} />} discount={{ mode: discountMode, value: discountValue, amount: discountTotal, error: discountProblem, onMode: (value) => { setDiscountMode(value); setDiscountValue(''); }, onValue: setDiscountValue }} mode={paymentMode} onMode={setPaymentMode} paid={paidInput} onPaid={setPaidInput} dueDate={dueDate} onDueDate={setDueDate} method={paymentMethod} onMethod={(value) => setPaymentMethod(value as PaymentMethod)} />
               {walkInCredit ? <FormError message={WALK_IN_PAYMENT_MESSAGE} /> : null}
             </>
           ) : null}
@@ -636,7 +649,7 @@ export default function CreateSaleScreen() {
         </View>
 
         <Modal statusBarTranslucent visible={receiptVisible} animationType="slide" onRequestClose={() => { setReceiptVisible(false); router.back(); }}>
-          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setDiscountMode('amount'); setDiscountValue(''); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setShowAllProducts(false); setProductSearch(''); setCustomerId(''); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
+          {receiptData ? <TransactionReceipt inModal data={receiptData} onBack={() => { setReceiptVisible(false); router.back(); }} onView={() => { setReceiptVisible(false); router.replace(`/sale/${receiptData.id}`); }} onNew={() => { discardDraftWrites.current = false; setReceiptVisible(false); router.replace(`/sale/create`); setQuantities({}); setReferenceImage(undefined); setStep(1); setReceiptData(null); setSaveOutcome(null); setSaveRequestId(requestKey()); setPaymentMode('full'); setPaidInput(''); setDueDate(''); setDiscountMode('amount'); setDiscountValue(''); setChargeGstOn(false); setSelectedOptions({}); setSellingUnits({}); setUnitPrices({}); setPrices(Object.fromEntries(products.map((product) => [product.id, String(product.sellingPrice)]))); setPaymentMethod('CASH'); setShowAllProducts(false); setProductSearch(''); setCustomerId(''); setCustomerSearch(''); setShowAllCustomers(false); setShowCustomerPicker(true); if (savedBalancesForNext.current) setStock(savedBalancesForNext.current); }} /> : null}
         </Modal>
         <ConfirmationDialog
           visible={leaveConfirm}

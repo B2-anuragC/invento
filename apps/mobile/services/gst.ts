@@ -1,4 +1,4 @@
-import { GST_STATES, gstRateSummary, halfRate, HSN_RULE_MESSAGE, invoiceTaxContext, isValidHsnCode, normalizeHsnCode, splitLineTax, type GstTaxType } from '@invento/shared';
+import { CHARGE_GST_NEEDS_GSTIN_MESSAGE, chargesGst, GST_STATES, gstRateSummary, halfRate, HSN_RULE_MESSAGE, invoiceTaxContext, isValidHsnCode, normalizeHsnCode, saleDocumentTitle, splitLineTax, type GstTaxType } from '@invento/shared';
 
 import { formatMoney } from './format';
 
@@ -20,11 +20,27 @@ export function provisionalSaleGst(shop: { gstin?: string | null; stateCode?: st
   return { sellerGstin, buyerGstin, ...invoiceTaxContext({ sellerGstin, sellerStateCode: shop?.stateCode, buyerGstin }) };
 }
 
-/** A tax invoice needs its number, so a bill waiting to sync stays a receipt. */
-export function receiptTitle(kind: 'sale' | 'purchase', gst: SaleGstDetails | null | undefined, documentNumber: string | null | undefined): string {
+/**
+ * A tax invoice needs its number, so a bill waiting to sync stays a receipt. A
+ * numbered sale without GST, or from a shop without a GSTIN, is a Bill of supply.
+ */
+export function receiptTitle(kind: 'sale' | 'purchase', gst: SaleGstDetails | null | undefined, documentNumber: string | null | undefined, chargeGst?: boolean | null): string {
   if (kind === 'purchase') return 'Purchase receipt';
   if (!gst || !documentNumber) return 'Sale receipt';
-  return gst.taxType === 'UNREGISTERED' ? 'Bill of supply' : 'Tax invoice';
+  return saleDocumentTitle({ chargeGst, taxType: gst.taxType }) ?? 'Sale receipt';
+}
+
+export type ChargeGstSwitch = { disabled: boolean; note: string };
+
+/**
+ * The "Charge GST" switch on a new bill (off by default). Sales need the shop
+ * GSTIN; until the shop details load the switch stays usable and the server
+ * checks it. Purchases follow whatever the supplier's bill shows.
+ */
+export function chargeGstSwitch(kind: 'sale' | 'purchase', on: boolean, shop: { gstin?: string | null } | null | undefined): ChargeGstSwitch {
+  if (kind === 'purchase') return { disabled: false, note: on ? 'GST at each item’s rate, as on the supplier’s bill.' : 'No GST on this purchase.' };
+  if (shop && !shop.gstin) return { disabled: true, note: CHARGE_GST_NEEDS_GSTIN_MESSAGE };
+  return { disabled: false, note: on ? 'Tax invoice · GST at each item’s rate.' : 'Bill of supply · no GST on any item.' };
 }
 
 export function stateLabel(code: string | null | undefined): string {
@@ -44,8 +60,9 @@ export function lineTaxText(line: TaxedLine, taxType: GstTaxType | undefined): s
 
 export type TaxRow = { key: 'cgst' | 'sgst' | 'igst' | 'gst'; label: string; amount: number };
 
-/** Tax rows for the bill totals. They always add up to the stored tax total. */
-export function taxTotalRows(lines: TaxedLine[], taxType: GstTaxType | undefined, taxTotal: string | number): TaxRow[] {
+/** Tax rows for the bill totals. They always add up to the stored tax total; a bill without GST has none. */
+export function taxTotalRows(lines: TaxedLine[], taxType: GstTaxType | undefined, taxTotal: string | number, chargeGst?: boolean | null): TaxRow[] {
+  if (!chargesGst(chargeGst)) return [];
   if (taxType !== 'INTRA_STATE' && taxType !== 'INTER_STATE') return [{ key: 'gst', label: 'GST', amount: Number(taxTotal) }];
   const summary = gstRateSummary(lines.map((line) => ({ gstRate: line.gstRate ?? 0, lineTotal: line.lineTotal ?? 0, taxAmount: line.taxAmount ?? 0 })), taxType);
   const sum = (key: 'cgst' | 'sgst' | 'igst') => summary.reduce((total, row) => total + Math.round(row[key] * 100), 0) / 100;

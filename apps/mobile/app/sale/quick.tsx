@@ -42,7 +42,8 @@ import {
   savedLineKey,
 } from "@/services/bill-lines";
 import { formatMoney as money, formatQuantity } from '@/services/format';
-import { saleGstDetails } from '@/services/gst';
+import { chargeGstSwitch, saleGstDetails } from '@/services/gst';
+import { ChargeGstSwitch } from '@/components/charge-gst-switch';
 import {
   TransactionReceipt,
   type ReceiptData,
@@ -55,7 +56,9 @@ import {
   fetchCustomers,
   fetchInventory,
   fetchProducts,
+  fetchReceiptShop,
   fetchSales,
+  type BusinessDetails,
   type CreateSaleInput,
   type CustomerRecord,
   type ProductRecord,
@@ -109,6 +112,8 @@ export default function QuickBillScreen() {
   const [mode, setMode] = useState<"full" | "partial" | "credit">("full");
   const [discountMode, setDiscountMode] = useState<DiscountMode>("amount");
   const [discountValue, setDiscountValue] = useState("");
+  const [chargeGstOn, setChargeGstOn] = useState(false);
+  const [shop, setShop] = useState<BusinessDetails | null>(null);
   const [paid, setPaid] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [method, setMethod] =
@@ -145,9 +150,12 @@ export default function QuickBillScreen() {
       readDraft(session, "sale", "quick"),
       fetchSales(session),
       readProductFavorites(session).catch(() => ({})),
+      // Only decides whether GST can be charged; the server checks it again.
+      fetchReceiptShop(session).catch(() => null),
     ])
-      .then(async ([p, c, i, draft, sales, savedFavorites]) => {
+      .then(async ([p, c, i, draft, sales, savedFavorites, shopData]) => {
         if (!active) return;
+        setShop(shopData);
         setFavorites(savedFavorites);
         setRecentIds([...new Set([...sales].sort((a, b) => b.saleDate.localeCompare(a.saleDate)).flatMap((sale) => sale.items.map((item) => item.productId)))]);
         if (draft && !draftReady && !savedOnDevice.current) {
@@ -163,6 +171,7 @@ export default function QuickBillScreen() {
                 : "",
             );
             setMode(draft.paymentMode);
+            setChargeGstOn(draft.chargeGst === true);
             setPaid(draft.paidInput);
             setDueDate(draft.dueDate);
             setMethod(draft.paymentMethod as CreateSaleInput["paymentMethod"]);
@@ -222,7 +231,9 @@ export default function QuickBillScreen() {
     ];
   });
   const discountInput = saleDiscountInput(discountMode, discountValue);
-  const totals = transactionTotals(items, discountInput);
+  // A shop without a GSTIN cannot charge GST, whatever the switch was left at.
+  const chargeGst = chargeGstOn && !chargeGstSwitch("sale", chargeGstOn, shop).disabled;
+  const totals = transactionTotals(items, discountInput, chargeGst);
   const discountProblem = discountError(totals.subtotal.toFixed(2), discountInput);
   // With no customer chosen, the bill goes to the shop's walk-in customer.
   const walkIn = customers.find((c) => c.isWalkIn && c.status === "ACTIVE");
@@ -319,6 +330,7 @@ export default function QuickBillScreen() {
       contactId: customerId,
       contactName: customer?.name ?? "",
       ...encodeDraftLines(lines),
+      chargeGst: chargeGstOn,
       paymentMode: mode,
       paidInput: paid,
       dueDate,
@@ -336,6 +348,7 @@ export default function QuickBillScreen() {
     lines,
     customerId,
     customer?.name,
+    chargeGstOn,
     mode,
     paid,
     dueDate,
@@ -420,6 +433,7 @@ export default function QuickBillScreen() {
             : paid,
       ...(mode !== "full" && dueDate ? { dueDate } : {}),
       ...discountInput,
+      chargeGst,
       saleDate: new Date().toISOString(),
       items: items.map((item) => ({
         productId: item.productId,
@@ -442,6 +456,7 @@ export default function QuickBillScreen() {
         id: saved.id,
         kind: "sale",
         gst: saleGstDetails(saved),
+        chargeGst: saved.chargeGst,
         date: saved.saleDate,
         invoice: saved.invoiceNumber, documentNumber: saved.documentNumber,
         contact: saved.customer.name,
@@ -534,6 +549,7 @@ export default function QuickBillScreen() {
           setMethod("CASH");
           setDiscountMode("amount");
           setDiscountValue("");
+          setChargeGstOn(false);
           requestId.current = requestKey();
           setRetry((n) => n + 1);
         }}
@@ -849,6 +865,7 @@ export default function QuickBillScreen() {
             onActivity={() => router.push("/(tabs)/sales")}
           />
           {reviewing ? <View style={styles.summary}>
+            <ChargeGstSwitch kind="sale" value={chargeGst} onChange={setChargeGstOn} shop={shop} disabled={locked} />
             <View style={styles.row}>
               <Text style={styles.bold}>Total amount</Text>
               <Text style={styles.amount}>{money(totals.total)}</Text>
@@ -868,20 +885,22 @@ export default function QuickBillScreen() {
             {showBreakdown ? (
               <View style={styles.breakdown}>
                 <View style={styles.row}>
-                  <Text style={styles.meta}>Subtotal (before GST)</Text>
+                  <Text style={styles.meta}>{chargeGst ? "Subtotal (before GST)" : "Subtotal"}</Text>
                   <Text style={styles.body}>{money(totals.subtotal)}</Text>
                 </View>
                 {totals.discount > 0 ? (
                   <View style={styles.row}>
-                    <Text style={styles.meta}>Discount (before GST)</Text>
+                    <Text style={styles.meta}>{chargeGst ? "Discount (before GST)" : "Discount"}</Text>
                     <Text style={styles.body}>−{money(totals.discount)}</Text>
                   </View>
                 ) : null}
-                <View style={styles.row}>
-                  <Text style={styles.meta}>GST</Text>
-                  <Text style={styles.body}>{money(totals.tax)}</Text>
-                </View>
-                <Text style={styles.meta}>Total includes GST at each product’s rate.</Text>
+                {chargeGst ? (
+                  <View style={styles.row}>
+                    <Text style={styles.meta}>GST</Text>
+                    <Text style={styles.body}>{money(totals.tax)}</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.meta}>{chargeGst ? "Total includes GST at each product’s rate." : "No GST is charged on this bill."}</Text>
               </View>
             ) : null}
           </View> : null}
@@ -1039,6 +1058,7 @@ export default function QuickBillScreen() {
                       total={totals.total}
                       subtotal={totals.subtotal}
                       tax={totals.tax}
+                      chargeGst={chargeGst}
                       discount={{
                         mode: discountMode,
                         value: discountValue,

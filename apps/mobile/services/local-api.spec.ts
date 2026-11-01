@@ -161,3 +161,13 @@ it("refuses unsupported server features instead of making a network request", as
     fetchSpy.mockRestore();
   }
 });
+it("applies the bill's GST choice to device bills, with the server's rule for shops without a GSTIN", async () => {
+  await setup();
+  const bill = (requestId: string, extra: Record<string, unknown>) => send<any>("/sales", { requestId, customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "2", sellingPrice: "10.00" }], ...extra });
+  expect(await bill("local_no_gst_sale", { chargeGst: false, expectedTotal: "20.00" })).toMatchObject({ documentNumber: "INV/2026-27/0001", chargeGst: false, taxTotal: "0.00", total: "20.00" });
+  await expect(bill("local_gst_sale", { chargeGst: true })).rejects.toThrow("Add the shop GSTIN");
+  await api.localRequest(`/businesses/${session.businessId}`, { method: "PATCH", body: JSON.stringify({ gstin: "27AAPFU0939F1ZV" }) }, session);
+  expect(await bill("local_gst_sale", { chargeGst: true })).toMatchObject({ documentNumber: "INV/2026-27/0002", chargeGst: true, taxTotal: "3.60", total: "23.60" });
+  const purchase = await send<any>("/purchases", { requestId: "local_no_gst_purchase", supplierId: "supplier", purchaseDate: "2026-10-16T10:00:00Z", amountPaid: "0", chargeGst: false, items: [{ productId: "product", quantity: "4", purchasePrice: "5.00" }] });
+  expect(purchase).toMatchObject({ chargeGst: false, taxTotal: "0.00", total: "20.00" });
+});

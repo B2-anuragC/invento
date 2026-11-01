@@ -137,7 +137,7 @@ export async function syncOffline(session: AppSession, force = false): Promise<v
               const items = command.entity === 'sale' ? (input as CreateSaleInput).items : [];
               const item = items[index]?.productId === expected.productId ? items[index] : items.find((entry) => entry.productId === expected.productId);
               const optionId = item?.sellingOptionId;
-              if (!product || productSignature(product, optionId) !== expected.signature) throw Object.assign(new Error('An item’s tax, unit or selling option changed. Review the pending bill before retrying.'), { status: 409 });
+              if (!product || productSignature(product, optionId, input.chargeGst) !== expected.signature) throw Object.assign(new Error('An item’s tax, unit or selling option changed. Review the pending bill before retrying.'), { status: 409 });
             }
             await transport<TransactionRecord>(command.entity === 'sale' ? '/sales' : '/purchases', { method: 'POST', body: JSON.stringify(input) }, session);
             // Refresh stock and replace the provisional record atomically with queue acknowledgement.

@@ -1,4 +1,4 @@
-import { discountAmountFor, discountError, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
+import { chargeGstError, chargesGst, discountAmountFor, discountError, lineGstRate, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from "@invento/shared";
 import type {
   CreateSaleInput,
   CreatePurchaseInput,
@@ -26,13 +26,17 @@ const decimal = (cents: bigint) =>
   `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 const rounded = (value: bigint, denominator: bigint) =>
   (value + denominator / 2n) / denominator;
-export function productSignature(product: ProductRecord, optionId?: string) {
+/**
+ * What a pending bill relied on for a product. A bill without GST does not
+ * depend on the product's GST rate, so changing it does not hold the bill back.
+ */
+export function productSignature(product: ProductRecord, optionId?: string, chargeGst?: boolean) {
   const option = product.sellingOptions?.find((entry) => entry.id === optionId);
   return JSON.stringify([
     product.status,
     product.unit,
     product.piecesPerUnit ?? null,
-    Number(product.gstRate ?? 0),
+    Number(lineGstRate(product.gstRate, chargeGst)),
     ...(optionId
       ? [
           optionId,
@@ -76,6 +80,15 @@ export function buildOfflineTransaction(
   if (!["CASH", "UPI", "CARD", "BANK_TRANSFER", "OTHER"].includes(method))
     throw new Error("Select a valid payment method.");
   if (!input.items.length) throw new Error("Add at least one item.");
+  // The same GST choice the server applies: only an explicit false turns it
+  // off, and only a shop with a GSTIN may charge GST on a sale.
+  if (input.chargeGst !== undefined && typeof input.chargeGst !== "boolean")
+    throw new Error("Choose whether this bill charges GST.");
+  const gstChoiceError = sale
+    ? chargeGstError({ chargeGst: input.chargeGst, sellerGstin: view.business?.gstin })
+    : "";
+  if (gstChoiceError) throw new Error(gstChoiceError);
+  const chargeGst = chargesGst(input.chargeGst);
   // Sales may list a product on separate lines sold differently (a pack and
   // loose pieces), matching the API; purchases keep one line per product.
   const seen = new Set<string>();
@@ -203,9 +216,9 @@ export function buildOfflineTransaction(
     });
     expectations.push({
       productId: product.id,
-      signature: productSignature(product, saleLine?.sellingOptionId),
+      signature: productSignature(product, saleLine?.sellingOptionId, input.chargeGst),
     });
-    const rate = String(product.gstRate ?? "0");
+    const rate = lineGstRate(product.gstRate, chargeGst);
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(rate) || Number(rate) > 100)
       throw new Error("Invalid product GST rate.");
     const lineTotal = rounded(
@@ -262,6 +275,7 @@ export function buildOfflineTransaction(
     syncState: "pending" as const,
     subtotal: decimal(subtotal),
     taxTotal: decimal(taxTotal),
+    chargeGst,
     total: decimal(total),
     amountPaid: input.amountPaid ?? null,
     dueDate: input.dueDate ?? null,

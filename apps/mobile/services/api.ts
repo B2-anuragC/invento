@@ -173,6 +173,8 @@ export type SaleRecord = {
   sellerStateCode?: string | null;
   buyerGstin?: string | null;
   placeOfSupply?: string | null;
+  /** Whether the sale charged GST; missing on records from before the choice (they did). */
+  chargeGst?: boolean;
   saleDate: string;
   total: string | number;
   paymentMethod: string;
@@ -186,6 +188,8 @@ export type CreateSaleInput = {
   /** One of these, or neither: rupees up to the subtotal, or a percentage. */
   discountAmount?: string;
   discountPercent?: string;
+  /** False: no GST on any line (a Bill of supply). Missing: GST is charged, as for older apps. */
+  chargeGst?: boolean;
   referenceImage?: string;
   amountPaid?: string;
   dueDate?: string;
@@ -224,6 +228,8 @@ export type PurchaseRecord = {
   attachment?: FileAttachment | null;
   subtotal?: string | number;
   taxTotal?: string | number;
+  /** Whether the supplier charged GST; missing on records from before the choice (they did). */
+  chargeGst?: boolean;
   amountPaid?: string | number | null;
   dueDate?: string | null;
   requestId?: string | null;
@@ -267,6 +273,8 @@ export type InventoryActivityRecord = InventoryTransactionRecord & {
 export type CreatePurchaseInput = {
   expectedTotal?: string;
   attachment?: FileAttachment;
+  /** False when the supplier charged no GST. Missing: GST is charged, as for older apps. */
+  chargeGst?: boolean;
   amountPaid?: string;
   dueDate?: string;
   requestId?: string;

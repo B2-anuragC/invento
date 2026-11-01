@@ -1,4 +1,4 @@
-import { discountAmountFor, discountError, splitDiscount, type DiscountInput } from '@invento/shared';
+import { discountAmountFor, discountError, lineGstRate, splitDiscount, type DiscountInput } from '@invento/shared';
 
 export const moneyValue = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -10,13 +10,15 @@ const decimal = (paise: bigint) => `${paise / 100n}.${String(paise % 100n).padSt
  * Bill preview computed exactly as the API does: each line rounded half-up to
  * the paisa, a sale's discount split across the lines before GST, and GST
  * rounded per line on what is left. A discount that cannot apply counts as none.
+ * A bill that does not charge GST has no tax on any line; a missing choice
+ * charges GST, as the API does.
  */
-export function transactionTotals(items: { quantity: number; price: number; product: { gstRate?: string | number } }[], discount: DiscountInput = {}) {
+export function transactionTotals(items: { quantity: number; price: number; product: { gstRate?: string | number } }[], discount: DiscountInput = {}, chargeGst?: boolean) {
   const lines = items.map((item) => (scaled(item.quantity, 3) * scaled(item.price, 2) + 500n) / 1000n);
   const subtotal = lines.reduce((sum, line) => sum + line, 0n);
   const amount = discountError(decimal(subtotal), discount) ? '0.00' : discountAmountFor(decimal(subtotal), discount);
   const shares = splitDiscount(lines.map(decimal), amount).map((share) => scaled(Number(share), 2));
-  const tax = lines.reduce((sum, line, index) => sum + ((line - shares[index]) * scaled(Number(items[index].product.gstRate ?? 0), 2) + 5000n) / 10000n, 0n);
+  const tax = lines.reduce((sum, line, index) => sum + ((line - shares[index]) * scaled(Number(lineGstRate(items[index].product.gstRate, chargeGst)), 2) + 5000n) / 10000n, 0n);
   const discountTotal = scaled(Number(amount), 2);
   return { subtotal: Number(decimal(subtotal)), discount: Number(decimal(discountTotal)), tax: Number(decimal(tax)), total: Number(decimal(subtotal - discountTotal + tax)) };
 }

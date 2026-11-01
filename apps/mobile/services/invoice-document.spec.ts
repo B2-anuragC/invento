@@ -50,6 +50,33 @@ describe('invoiceHtml', () => {
     expect(older).not.toContain('CGST');
   });
 
+  it('prints a sale without GST as a Bill of supply with no GST columns or rows', () => {
+    const noGst = { ...intraState, chargeGst: false, items: [{ ...glass, gstRate: '0', taxAmount: '0.00' }], taxTotal: '0.00', total: '180.00' };
+    const html = invoiceHtml(noGst, shop);
+    const body = text(html);
+    expect(body).toContain('Bill of supply');
+    expect(body).toContain('Invoice number: INV/2026-27/0005');
+    expect(body).toContain('# Item HSN Qty Rate Amount');
+    expect(body).toContain('Clear Float Glass 5mm 700529 2 sq ft ₹90.00 ₹180.00');
+    expect(body).toContain('Total ₹180.00');
+    expect(body).toContain('Computer-generated bill of supply');
+    expect(body).not.toMatch(/CGST|SGST|IGST|Taxable value|GST rate|Place of supply|reverse charge/);
+    // The shop and the buyer keep their GSTINs.
+    expect(body).toContain('GSTIN 27AAPFU0939F1ZV');
+    // With a discount the amount column is net of it.
+    const discounted = text(invoiceHtml({ ...noGst, subtotal: '180', discountTotal: '30', items: [{ ...noGst.items[0], discountAmount: '30' }], total: '150.00' }, shop));
+    expect(discounted).toContain('# Item HSN Qty Rate Discount Amount');
+    expect(discounted).toContain('₹90.00 ₹30.00 ₹150.00');
+    expect(discounted).toContain('Subtotal ₹180.00 Discount −₹30.00 Total ₹150.00');
+  });
+
+  it('prints a purchase without GST with no GST column', () => {
+    const body = text(invoiceHtml({ ...intraState, kind: 'purchase', gst: null, chargeGst: false, documentNumber: 'PUR/2026-27/0002', items: [{ ...glass, hsnCode: null, gstRate: '0', taxAmount: '0.00' }], taxTotal: '0.00', total: '180.00' }, shop));
+    expect(body).toContain('Purchase receipt');
+    expect(body).toContain('# Item Qty Rate Amount');
+    expect(body).not.toMatch(/GST|Taxable value/);
+  });
+
   it('escapes everything people type', () => {
     const html = invoiceHtml({ ...intraState, contact: '<script>alert(1)</script>', note: '"quoted" & <b>bold</b>', items: [{ ...glass, name: '<img src=x onerror=alert(1)>' }] }, { ...shop, name: 'A&B <Glass>' });
     expect(html).not.toMatch(/<script>|<img|<b>/);
