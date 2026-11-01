@@ -1,7 +1,8 @@
 import { CancelBill } from "./cancel-bill";
+import { StockAdjustment } from "./stock-adjustment";
 import { SaleCreator } from "./sale-creator";
 import { type SaleProduct } from "./sale-model";
-import { GST_STATES, type EffectiveAccess, type Permission } from "@invento/shared";
+import { GST_STATES, inventoryMovementLabel, inventoryMovementNote, type EffectiveAccess, type Permission } from "@invento/shared";
 import { firstFieldError } from "./form-validation";
 import { AccessManagement } from "./access-management";
 import React, { useState } from "react";
@@ -715,7 +716,7 @@ function ShopSection({
       )}
       {section === "inventory" && (
         <>
-          {can("inventory.adjust") && <StockForm id={id} saved={refresh} />}
+          {can("inventory.adjust") && <StockForm key={revision} id={id} stock={rows} saved={refresh} />}
           <Records
             rows={rows.map((r) => ({ ...r, name: (r.product as Row)?.name }))}
             keys={["name", "quantity", "updatedAt"]}
@@ -811,56 +812,46 @@ function Activity({ id, revision }: { id: string; revision: number }) {
         rows={(result.data || []).map((r) => ({
           ...r,
           name: (r.product as Row)?.name,
+          type: inventoryMovementLabel(String(r.type)),
+          note: inventoryMovementNote(r.note as string | null),
         }))}
         keys={["name", "type", "quantity", "balanceAfter", "note"]}
       />
     </>
   );
 }
-function StockForm({ id, saved }: { id: string; saved: () => void }) {
+function StockForm({ id, stock, saved }: { id: string; stock: Row[]; saved: (message: string) => void }) {
   const products = useShopLoad<Row[]>(id, "/products");
-  const [mode, setMode] = useState("opening-stock");
+  const [mode, setMode] = useState("adjustments");
   return (
     <>
       <label>
         Stock action
         <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="adjustments">Adjust stock (count, add or remove)</option>
           <option value="opening-stock">
             Opening stock (once per product)
           </option>
-          <option value="adjustments">Stock adjustment</option>
         </select>
       </label>
       <Notice {...products} />
-      {products.data && (
+      {products.data && mode === "adjustments" && (
+        <StockAdjustment shopId={id} products={products.data} stock={stock} saved={saved} />
+      )}
+      {products.data && mode === "opening-stock" && products.data.every((p) => stock.some((s) => s.productId === p.id)) && (
+        <p className="muted">Every product already has its opening stock.</p>
+      )}
+      {products.data && mode === "opening-stock" && !products.data.every((p) => stock.some((s) => s.productId === p.id)) && (
         <RecordProductForm
-          key={mode}
-          products={products.data}
-          fields={[
-            field("quantity", true),
-            ...(mode === "adjustments"
-              ? [
-                  field("type", true, [
-                    "ADJUSTMENT_IN",
-                    "ADJUSTMENT_OUT",
-                    "DAMAGE",
-                    "EXPIRED",
-                    "RETURN_IN",
-                    "RETURN_OUT",
-                  ]),
-                ]
-              : []),
-            field("note"),
-          ]}
-          title={
-            mode === "opening-stock" ? "Record opening stock" : "Adjust stock"
-          }
+          products={products.data.filter((p) => !stock.some((s) => s.productId === p.id))}
+          fields={[field("quantity", true), field("note")]}
+          title="Record opening stock"
           save={async (data) => {
-            await shopApi(id, `/inventory/${mode}`, {
+            await shopApi(id, "/inventory/opening-stock", {
               method: "POST",
               body: JSON.stringify(data),
             });
-            saved();
+            saved("Opening stock recorded.");
           }}
         />
       )}

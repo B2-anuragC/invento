@@ -347,6 +347,10 @@ nav a:hover {
   box-shadow: 0 2px 4px #203c2603;
   min-width: 0;
 }
+/* Forms drawn as a card (cancel a bill, adjust stock) need their own inner spacing. */
+form.panel {
+  padding: 20px 24px;
+}
 .range,
 .audit-filters {
   display: flex;
