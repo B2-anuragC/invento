@@ -1,4 +1,5 @@
 import { usePermissions } from '@/services/permissions';
+import { BackButton } from '@/components/back-button';
 import { FormError } from '@/components/form-error';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import { hsnCodeError } from '@/services/gst';
@@ -368,7 +369,7 @@ export default function ProductDetailsScreen() {
       <AppScreen style={styles.centered}>
         <Text style={styles.error}>{error || 'Product not found.'}</Text>
         <Pressable onPress={() => router.back()} style={styles.smallAction}>
-          <Text style={styles.smallActionText}>Back to products</Text>
+          <Text style={styles.smallActionText}>Back to catalog</Text>
         </Pressable>
       </AppScreen>
     );
@@ -386,11 +387,9 @@ export default function ProductDetailsScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.backButton}>
-            <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text>
-          </Pressable>
+          <BackButton fallback="/(tabs)/products" style={styles.backButton} />
           <View style={styles.headerText}>
-            <Text style={styles.title}>{isNew ? 'Add product' : product?.name}</Text>
+            <Text style={styles.title}>{isNew ? 'New product' : product?.name}</Text>
             <Text style={styles.subtitle}>{isNew ? 'CATALOG · OWNER VIEW' : `${product?.category ? `${product.category} · ` : ''}${product?.sku} · ${product?.status.toLowerCase()}`}</Text>
           </View>
           {!isNew && !editing && can('products.update') ? (
@@ -771,8 +770,7 @@ const styles = StyleSheet.create({
 
   centered: { justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   content: { paddingHorizontal: 20, paddingBottom: 40, backgroundColor: '#F5F5F5' },
-  backButton: { alignSelf: 'center', paddingVertical: 10, paddingRight: 12 },
-  backText: { fontSize: 27, fontWeight: '500', color: '#24332A' },
+  backButton: { marginRight: 12 },
   header: { minHeight: 94, flexDirection: 'row', alignItems: 'center', marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', marginBottom: 18 },
   headerText: { flex: 1, minWidth: 0 },
   title: { color: '#1D2B25', fontSize: 27, fontWeight: '800' },

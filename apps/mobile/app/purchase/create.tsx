@@ -1,9 +1,11 @@
 import { DatePicker } from '@/components/date-picker';
+import { BackButton } from '@/components/back-button';
 import { dateKey, dayToTimestamp } from '@/services/date-limits';
 import { supplierOffersProduct } from '@/services/supplier-catalog';
 import { PurchaseAttachment } from '@/components/purchase-attachment';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { TransactionFinanceFields } from '@/components/transaction-finance-fields';
+import { purchaseLineTax, purchaseRateNote } from '@/services/gst';
 import { ChargeGstSwitch } from '@/components/charge-gst-switch';
 import { transactionTotals, validDueDate, requestKey } from '@/services/transaction-accounting';
 import { saveDraft, readDraft, clearDraft, type TransactionDraft } from '@/services/transaction-drafts';
@@ -343,7 +345,7 @@ export default function CreatePurchaseScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.backButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
+            <BackButton onPress={goBack} style={styles.backButton} />
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{step === 3 ? 'Review purchase' : 'New purchase'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · BUY PRICES'}</Text>
@@ -453,7 +455,7 @@ export default function CreatePurchaseScreen() {
           {step === 2 ? (
             <>
               <View style={styles.sectionHeading}>
-                <View><Text style={styles.sectionTitle}>Quantity & purchase price</Text><Text style={styles.helperText}>Enter what arrived on this invoice.</Text></View>
+                <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Quantity & purchase price</Text><Text style={styles.helperText}>{purchaseRateNote(chargeGst)}</Text></View>
                 <Pressable onPress={() => setStep(1)}><Text style={styles.changeText}>Add item</Text></Pressable>
               </View>
               {purchaseItems.map(({ product, quantity, price }) => {
@@ -474,7 +476,7 @@ export default function CreatePurchaseScreen() {
                         <TextInput accessibilityLabel={`${product.name} received quantity`} value={quantities[product.id] ?? ''} onChangeText={(value) => changeQuantity(product.id, value)} keyboardType="decimal-pad" style={styles.numberInput} />
                       </View>
                       <View style={styles.field}>
-                        <Text style={styles.fieldLabel}>Buy rate / {formatUnitLabel(product.unit)}</Text>
+                        <Text style={styles.fieldLabel}>Buy rate / {formatUnitLabel(product.unit)}{chargeGst ? ' · before GST' : ''}</Text>
                         <TextInput accessibilityLabel={`${product.name} purchase price`} value={prices[product.id] ?? ''} onChangeText={(value) => changePrice(product.id, value)} placeholder="0.00" keyboardType="decimal-pad" style={styles.numberInput} />
                       </View>
                     </View>
@@ -486,8 +488,9 @@ export default function CreatePurchaseScreen() {
                       </Pressable>
                     ) : null}
                     <View style={styles.lineTotal}>
-                      <Text style={styles.lineTotalLabel}>Line total</Text><Text style={styles.lineTotalValue}>{formatMoney(Math.max(0, quantity * price))}</Text>
+                      <Text style={styles.lineTotalLabel}>{chargeGst ? 'Line total · before GST' : 'Line total'}</Text><Text style={styles.lineTotalValue}>{formatMoney(Math.max(0, quantity * price))}</Text>
                     </View>
+                    {purchaseLineTax(quantity, price, product.gstRate, chargeGst) ? <Text style={styles.helperText}>{purchaseLineTax(quantity, price, product.gstRate, chargeGst)}</Text> : null}
                   </View>
                 );
               })}
@@ -561,8 +564,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
   header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },
   headerTop: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  backButton: { width: 44, minHeight: 44, alignItems: 'flex-start', justifyContent: 'center' },
-  backText: { color: '#24332A', fontSize: 32, lineHeight: 36 },
+  backButton: { marginRight: 12 },
   headerCopy: { flex: 1 },
   title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },

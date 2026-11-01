@@ -87,7 +87,7 @@ export default function TabLayout() {
         options={{
           title: 'Sales',
           href: can('sales.view') ? undefined : null,
-          tabBarIcon: ({ color }) => <IconSymbol size={23} name="dollarsign.circle.fill" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={23} name="indianrupeesign.circle.fill" color={color} />,
         }}
       />
       <Tabs.Screen name="activity" options={{ href: null, title: 'Activity' }} />

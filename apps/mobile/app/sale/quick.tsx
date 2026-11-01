@@ -1,4 +1,5 @@
 import { readProductFavorites } from '@/services/product-favorites';
+import { BackButton } from '@/components/back-button';
 import { ProductThumbnail } from '@/components/product-photo';
 import {
   readDraft,
@@ -138,7 +139,7 @@ export default function QuickBillScreen() {
     setLoading(true);
     setLoadError("");
     if (!session) {
-      setLoadError("Sign in before creating a bill.");
+      setLoadError("Sign in before starting a sale.");
       setLoading(false);
       return;
     }
@@ -191,7 +192,7 @@ export default function QuickBillScreen() {
           setLoadError(
             cause instanceof Error
               ? cause.message
-              : "Could not load bill details.",
+              : "Could not load the sale form.",
           );
       })
       .finally(() => {
@@ -447,7 +448,7 @@ export default function QuickBillScreen() {
       const saved = await createSale(session, input);
       savedOnDevice.current = true;
       await clearDraft(session, "sale", "quick").catch(() =>
-        setDraftMessage("Bill saved, but its draft could not be cleared."),
+        setDraftMessage("Sale saved, but its draft could not be cleared."),
       );
       setReceipt({
         syncState: saved.syncState,
@@ -503,7 +504,7 @@ export default function QuickBillScreen() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Could not confirm this bill. Retry safely.",
+          : "Could not confirm this sale. Retry safely.",
       );
     } finally {
       submitting.current = false;
@@ -562,12 +563,11 @@ export default function QuickBillScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.header}>
-          {icon("arrow-back", "Back to sales", () => router.back(), saving)}
+          <BackButton onPress={() => router.back()} disabled={saving} />
           <View style={styles.fill}>
-            <Text style={styles.title}>Quick bill</Text>
+            <Text style={styles.title}>New sale</Text>
             <Text style={styles.meta}>
-              Invento
-              {customer ? ` · ${customer.name}` : " · Create a sale in seconds"}
+              {customer ? `For ${customer.name}` : "Choose items, then review and save"}
             </Text>
           </View>
         </View>
@@ -589,7 +589,7 @@ export default function QuickBillScreen() {
           ) : null}
           {loading ? (
             <ActivityIndicator
-              accessibilityLabel="Loading bill details"
+              accessibilityLabel="Loading the sale form"
               color="#176B50"
             />
           ) : loadError ? (
@@ -701,11 +701,11 @@ export default function QuickBillScreen() {
                   </ScrollView>
                 </View>
               ) : null}
-              <Text style={styles.section}>Bill items</Text>
+              <Text style={styles.section}>Sale items</Text>
               {!items.length ? (
                 <View style={styles.card}>
                   <Ionicons name="receipt-outline" size={28} color="#176B50" />
-                  <Text style={styles.bold}>Start your bill</Text>
+                  <Text style={styles.bold}>Start your sale</Text>
                   <Text style={styles.meta}>
                     Search or scan a product to add it. Adjust quantity and
                     price here.
@@ -819,7 +819,7 @@ export default function QuickBillScreen() {
               ) : null}
               {reviewing ? (
                 <>
-                  <Text style={styles.section}>Review bill</Text>
+                  <Text style={styles.section}>Review sale</Text>
 
               <Pressable
                 accessibilityRole="button"
@@ -868,7 +868,7 @@ export default function QuickBillScreen() {
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Bill breakdown"
+              accessibilityLabel="Sale breakdown"
               accessibilityState={{ expanded: showBreakdown }}
               onPress={() => setShowBreakdown((current) => !current)}
               style={[styles.row, styles.breakdownToggle]}
@@ -896,7 +896,7 @@ export default function QuickBillScreen() {
                     <Text style={styles.body}>{money(totals.tax)}</Text>
                   </View>
                 ) : null}
-                <Text style={styles.meta}>{chargeGst ? "Total includes GST at each product’s rate." : "No GST is charged on this bill."}</Text>
+                <Text style={styles.meta}>{chargeGst ? "Total includes GST at each product’s rate." : "No GST is charged on this sale."}</Text>
               </View>
             ) : null}
           </View> : null}
@@ -930,12 +930,12 @@ export default function QuickBillScreen() {
           <ActionButton fullWidth
             title={
               !reviewing
-                ? `Review bill · ${items.length} item${items.length === 1 ? "" : "s"}`
+                ? `Review sale · ${items.length} item${items.length === 1 ? "" : "s"}`
                 : saving
-                ? "Saving bill…"
+                ? "Saving sale…"
                 : outcome === "unknown"
-                  ? "Retry same bill safely"
-                  : `✓  Save bill · ${money(totals.total)}`
+                  ? "Retry saving this sale"
+                  : `✓  Save sale · ${money(totals.total)}`
             }
             disabled={reviewing ? saving || (!valid && outcome !== "unknown") : loading || !!loadError || !items.length || lineErrors.some(Boolean)}
             onPress={() => {
@@ -1105,15 +1105,15 @@ export default function QuickBillScreen() {
           visible={!!leaveAction}
           title={
             outcome === "unknown"
-              ? "Bill status is unconfirmed"
-              : "Leave this bill?"
+              ? "Sale not confirmed yet"
+              : "Leave this sale?"
           }
           message={
             outcome === "unknown"
-              ? "Check Sales history before creating another bill. This bill may already have been saved."
-              : "Your unfinished bill is saved on this device. You can resume it from Quick bill."
+              ? "Check Sales history before starting another sale. This sale may already have been saved."
+              : "Your unfinished sale is saved on this device. Open New sale to continue it."
           }
-          confirmLabel="Leave bill"
+          confirmLabel="Leave sale"
           cancelLabel="Keep editing"
           onCancel={() => setLeaveAction(null)}
           onConfirm={() => {

@@ -1,6 +1,7 @@
 import { CHARGE_GST_NEEDS_GSTIN_MESSAGE, chargesGst, GST_STATES, gstRateSummary, halfRate, HSN_RULE_MESSAGE, invoiceTaxContext, isValidHsnCode, normalizeHsnCode, saleDocumentTitle, splitLineTax, type GstTaxType } from '@invento/shared';
 
 import { formatMoney } from './format';
+import { transactionTotals } from './transaction-accounting';
 
 /** GST details a sale was issued with. Purchases and sales made before GST invoices have none. */
 export type SaleGstDetails = { taxType: GstTaxType; sellerGstin: string | null; sellerStateCode: string | null; buyerGstin: string | null; placeOfSupply: string | null };
@@ -41,6 +42,26 @@ export function chargeGstSwitch(kind: 'sale' | 'purchase', on: boolean, shop: { 
   if (kind === 'purchase') return { disabled: false, note: on ? 'GST at each item’s rate, as on the supplier’s bill.' : 'No GST on this purchase.' };
   if (shop && !shop.gstin) return { disabled: true, note: CHARGE_GST_NEEDS_GSTIN_MESSAGE };
   return { disabled: false, note: on ? 'Tax invoice · GST at each item’s rate.' : 'Bill of supply · no GST on any item.' };
+}
+
+/**
+ * The note above a purchase's quantities and buy rates. Rates are always
+ * before GST: with "Supplier charged GST" on, GST is added at each item's
+ * rate; with it off (the default) nothing is added.
+ */
+export function purchaseRateNote(chargeGst: boolean): string {
+  return chargeGst
+    ? 'Enter buy rates before GST, as on the supplier’s bill. GST is added at each item’s rate.'
+    : 'Enter buy rates as on the supplier’s bill. No GST is added: if the bill charges GST, turn on “Supplier charged GST” at Review and enter rates before GST.';
+}
+
+/** A purchase line's GST while "Supplier charged GST" is on, worked out as the bill total does; null while it is off. */
+export function purchaseLineTax(quantity: number, price: number, gstRate: string | number | null | undefined, chargeGst: boolean): string | null {
+  if (!chargeGst) return null;
+  const rate = Number(gstRate ?? 0);
+  if (!Number.isFinite(rate) || rate <= 0) return 'No GST on this item (0%)';
+  const { tax, total } = transactionTotals([{ quantity, price, product: { gstRate: rate } }], {}, true);
+  return `GST ${rate}% · ${formatMoney(tax)} · With GST ${formatMoney(total)}`;
 }
 
 export function stateLabel(code: string | null | undefined): string {

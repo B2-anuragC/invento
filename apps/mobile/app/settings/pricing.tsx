@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { BackButton } from '@/components/back-button';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ConfirmationDialog, appColors } from '@/components/invento-ui';
@@ -16,7 +17,6 @@ import {
 } from '@/services/api';
 
 export default function PricingAccessScreen() {
-  const router = useRouter();
   const [access, setAccess] = useState<PricingAccess | null>(null);
   const [users, setUsers] = useState<BusinessUserRecord[]>([]);
   const [email, setEmail] = useState('');
@@ -114,7 +114,7 @@ export default function PricingAccessScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
+          <BackButton style={styles.back} />
           <View>
             <Text style={styles.title}>Pricing & access</Text>
             <Text style={styles.headerSubtitle}>Invento · {(access?.role ?? 'BUSINESS').toUpperCase()} SETTINGS</Text>
@@ -235,8 +235,7 @@ export default function PricingAccessScreen() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   header: { minHeight: 90, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  back: { alignSelf: 'center', paddingVertical: 8, paddingRight: 13 },
-  backText: { color: '#24332A', fontSize: 29, fontWeight: '500' },
+  back: { marginRight: 12 },
   eyebrow: { color: '#557267', fontSize: 10, fontWeight: '800', letterSpacing: 1.4 },
   title: { color: '#1D2B25', fontSize: 26, fontWeight: '800' },
   headerSubtitle: { color: '#737B77', fontSize: 11, marginTop: 4 },

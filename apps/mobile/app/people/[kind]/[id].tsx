@@ -1,4 +1,5 @@
 import { usePermissions } from '@/services/permissions';
+import { BackButton } from '@/components/back-button';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
 import { SupplierCatalogFields } from '@/components/supplier-catalog-fields';
 import { RecordPaymentModal } from '@/components/record-payment-modal';
@@ -174,7 +175,7 @@ export default function ContactDetailsScreen() {
     return (
       <AppScreen style={customerStyles.screen}>
         <View style={customerStyles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')}><Ionicons name="arrow-back" size={26} color="#1C2D26" /></Pressable>
+          <BackButton fallback="/(tabs)/people" />
           <Text style={customerStyles.heading}>Customer details</Text>
           {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Edit customer" onPress={() => setEditing(true)} style={customerStyles.edit}><Ionicons name="pencil-outline" size={21} color="#1C2D26" /></Pressable> : null}
         </View>
@@ -236,7 +237,7 @@ export default function ContactDetailsScreen() {
     return (
       <AppScreen style={customerStyles.screen}>
         <View style={customerStyles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')}><Ionicons name="arrow-back" size={26} color="#1C2D26" /></Pressable>
+          <BackButton fallback="/(tabs)/people" />
           <Text style={customerStyles.heading}>Supplier details</Text>
           {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Edit supplier" onPress={() => setEditing(true)} style={customerStyles.edit}><Ionicons name="pencil-outline" size={21} color="#1C2D26" /></Pressable> : null}
         </View>
@@ -295,7 +296,7 @@ export default function ContactDetailsScreen() {
   return (
     <AppScreen>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to People" onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/people')} style={styles.back}><Text style={styles.backText}>‹  People</Text></Pressable>
+        <BackButton fallback="/(tabs)/people" style={styles.back} />
         {loading ? <ActivityIndicator color={appColors.primary} style={styles.state} /> : null}
         {error && !editing ? <Text style={styles.error}>{error}</Text> : null}
         {!loading && contact ? (
@@ -411,8 +412,7 @@ export default function ContactDetailsScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 680, alignSelf: 'center', backgroundColor: '#F5F5F5' },
-  back: { alignSelf: 'stretch', marginHorizontal: -20, paddingHorizontal: 20, paddingVertical: 17, marginBottom: 12, backgroundColor: '#FFFFFF' },
-  backText: { color: '#24332A', fontSize: 18, fontWeight: '700' },
+  back: { marginBottom: 12 },
   eyebrow: { color: '#557267', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginBottom: 12 },
   state: { marginVertical: 28 },
   error: { color: '#A74737', backgroundColor: '#F6E9E6', padding: 12, borderRadius: 12, fontSize: 12 },

@@ -1,7 +1,7 @@
 import { CHARGE_GST_NEEDS_GSTIN_MESSAGE, HSN_RULE_MESSAGE } from '@invento/shared';
 import { describe, expect, it } from 'vitest';
 
-import { chargeGstSwitch, hsnCodeError, lineTaxText, provisionalSaleGst, receiptTitle, saleGstDetails, stateLabel, taxTotalRows } from './gst';
+import { chargeGstSwitch, hsnCodeError, purchaseLineTax, purchaseRateNote, lineTaxText, provisionalSaleGst, receiptTitle, saleGstDetails, stateLabel, taxTotalRows } from './gst';
 
 const SHOP_MH = '27AAPFU0939F1ZV';
 const BUYER_KA = '29AAPFU0939F1ZR';
@@ -105,5 +105,21 @@ describe('helpers', () => {
     expect(hsnCodeError('')).toBe('');
     expect(hsnCodeError(' 7005 29 ')).toBe('');
     expect(hsnCodeError('70052')).toBe(HSN_RULE_MESSAGE);
+  });
+});
+
+describe('purchase quantities and GST', () => {
+  const money = (value: string | null) => value?.replace(/ /g, ' ');
+  it('says rates are before GST, and whether GST is added', () => {
+    expect(purchaseRateNote(true)).toBe('Enter buy rates before GST, as on the supplier’s bill. GST is added at each item’s rate.');
+    expect(purchaseRateNote(false)).toContain('No GST is added');
+    expect(purchaseRateNote(false)).toContain('“Supplier charged GST” at Review');
+  });
+  it('shows each line’s GST, rounded half up to the paisa, only while GST is charged', () => {
+    expect(money(purchaseLineTax(3, 333.33, '18.00', true))).toBe('GST 18% · ₹180.00 · With GST ₹1,179.99');
+    expect(money(purchaseLineTax(1, 0.1, 5, true))).toBe('GST 5% · ₹0.01 · With GST ₹0.11');
+    expect(purchaseLineTax(2, 100, '0.00', true)).toBe('No GST on this item (0%)');
+    expect(purchaseLineTax(2, 100, undefined, true)).toBe('No GST on this item (0%)');
+    expect(purchaseLineTax(2, 100, '18', false)).toBeNull();
   });
 });

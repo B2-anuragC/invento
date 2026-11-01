@@ -1,4 +1,5 @@
 import { ProductThumbnail } from '@/components/product-photo';
+import { BackButton } from '@/components/back-button';
 import { SaleReferencePhoto } from '@/components/sale-reference-photo';
 import { discountError, sellingUnitConversion, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { TransactionFinanceFields, type DiscountMode } from '@/components/transaction-finance-fields';
@@ -423,7 +424,7 @@ export default function CreateSaleScreen() {
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.backButton}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
+            <BackButton onPress={goBack} style={styles.backButton} />
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{step === 3 ? 'Review sale' : repeatSaleId ? 'Repeat sale' : 'New sale'}</Text>
               <Text style={styles.subtitle}>{step === 3 ? `DRAFT · ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}` : 'DRAFT · SELL PRICES'}</Text>
@@ -678,8 +679,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F5F5F5' },
   header: { backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E1E1E1' },
   headerTop: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
-  backButton: { width: 44, minHeight: 44, alignItems: 'flex-start', justifyContent: 'center' },
-  backText: { color: '#24332A', fontSize: 32, lineHeight: 36 },
+  backButton: { marginRight: 12 },
   headerCopy: { flex: 1 },
   title: { color: '#1D2B25', fontSize: 24, fontWeight: '800' },
   subtitle: { color: '#737B77', fontSize: 11, marginTop: 3, letterSpacing: 0.2 },

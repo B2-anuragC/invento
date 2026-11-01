@@ -194,7 +194,7 @@ export default function DashboardScreen() {
         </View>
 
         <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={[styles.pendingShortcut, !can('sales.view') && { display: 'none' }]}>
-          <Text style={styles.activityLink}>Pending customer payments</Text>
+          <Text style={styles.activityLink}>Payments to collect</Text>
           <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.activityLink}>›</Text>
         </Pressable>
         <View style={styles.activityHeading}>

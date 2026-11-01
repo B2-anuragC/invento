@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
 import {
   type AccessConfirmation,
   addMemberConfirmation,
@@ -16,12 +15,12 @@ import {
   type Permission,
 } from "@invento/shared";
 import { AppScreen, ActionButton, ConfirmationDialog } from "@/components/invento-ui";
+import { ScreenHeading } from "@/components/screen-heading";
 import { accessRequest, appSession } from "@/services/api";
 import { usePermissions } from "@/services/permissions";
 
 export default function BusinessAccessScreen() {
   const { access, can, refresh } = usePermissions();
-  const router = useRouter();
   const [roles, setRoles] = useState<BusinessRoleRecord[]>([]);
   const [members, setMembers] = useState<MembershipRecord[]>([]);
   const [revision, setRevision] = useState(0);
@@ -178,10 +177,7 @@ export default function BusinessAccessScreen() {
         contentContainerStyle={{ padding: 20, gap: 16 }}
         keyboardShouldPersistTaps="handled"
       >
-        {button("← Back", () => router.back())}
-        <Text style={{ fontSize: 26, fontWeight: "700" }}>
-          Users & permissions
-        </Text>
+        <ScreenHeading title="Team and roles" subtitle="Who can use this shop and what they can do" />
         <Text>
           Selected business · {appSession.current?.businessName}. Your role:{" "}
           {access ? roleName(roles, access.role) : ""}. Changes apply on web and mobile.

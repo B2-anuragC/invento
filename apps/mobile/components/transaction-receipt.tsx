@@ -1,4 +1,5 @@
 import { usePermissions } from '@/services/permissions';
+import { BackButton } from '@/components/back-button';
 import { LOCAL_ONLY } from '@/services/runtime-mode';
 import { PurchaseAttachment } from './purchase-attachment';
 import { CancelBillModal } from './cancel-bill-modal';
@@ -18,6 +19,7 @@ import { savedLineKey } from '@/services/bill-lines';
 import { lineTaxText, receiptTitle, saleGstDetails, stateLabel, taxTotalRows, type SaleGstDetails } from '@/services/gst';
 import { invoiceFileName, invoiceHtml, returnNoteSource } from '@/services/invoice-document';
 import { receiptShareText } from '@/services/receipt-text';
+import { receiptShareActions, whatsappNumber } from '@/services/share-actions';
 import { chargesGst } from '@invento/shared';
 import { canSharePdf, printInvoice, shareInvoicePdf } from '@/services/invoice-print';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -162,19 +164,13 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
   };
   const viewedNote = noteId ? notes.find((note) => note.id === noteId) : undefined;
   const total = data.total == null ? 'Restricted price' : money(Number(data.total));
-  const share = async () => {
+  const shareActions = receiptShareActions({ kind: data.kind, documentName: heading, contact: data.contact, phone: data.contactPhone, canSharePdf, canShareText: Platform.OS !== 'web' || (typeof navigator !== 'undefined' && typeof navigator.share === 'function') });
+  const share = async (via: 'whatsapp' | 'text') => {
     setError('');
     try {
       const message = receiptShareText(data, { title: heading, identifier, shopName });
-      if (data.kind === 'sale') {
-        const raw = data.contactPhone?.trim() ?? '';
-        let phone = raw.replace(/\D/g, '');
-        if (raw.startsWith('00')) phone = phone.slice(2);
-        if (!raw.startsWith('+') && !raw.startsWith('00')) {
-          if (/^0[6-9]\d{9}$/.test(phone)) phone = phone.slice(1);
-          if (/^[6-9]\d{9}$/.test(phone)) phone = `91${phone}`;
-        }
-        if (!/^[1-9]\d{6,14}$/.test(phone)) { setError('Save a valid customer phone number with country code to share on WhatsApp.'); return; }
+      const phone = whatsappNumber(data.contactPhone);
+      if (via === 'whatsapp' && phone) {
         const webUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         if (Platform.OS === 'web') await Linking.openURL(webUrl);
         else { try { await Linking.openURL(`whatsapp://send?phone=${phone}&text=${encodeURIComponent(message)}`); } catch { await Linking.openURL(webUrl); } }
@@ -197,7 +193,7 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
     }
   };
   return <View style={[styles.screen, { paddingTop: inModal ? insets.top : 0, paddingLeft: inModal ? insets.left : 0, paddingRight: inModal ? insets.right : 0 }]}>
-    <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close receipt" onPress={onBack} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View style={{ flex: 1 }}><Text style={styles.title}>{heading}</Text><Text style={styles.meta} numberOfLines={1}>{[shopName, formatDate(data.date)].filter(Boolean).join(' · ')}</Text></View></View>
+    <View style={styles.header}><BackButton onPress={onBack} /><View style={{ flex: 1 }}><Text style={styles.title}>{heading}</Text><Text style={styles.meta} numberOfLines={1}>{[shopName, formatDate(data.date)].filter(Boolean).join(' · ')}</Text></View></View>
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       {cancelled ? <View style={[styles.success, styles.cancelledBanner]}><Ionicons name="close-circle-outline" size={21} color="#A74737" /><View style={{ flex: 1 }}><Text style={[styles.greenTitle, { color: '#A74737' }]}>Cancelled{data.cancelledAt ? ` · ${formatDate(data.cancelledAt)}` : ''}</Text>{data.cancelReason ? <Text style={[styles.greenCopy, { color: '#7A3A2F' }]}>Reason: {data.cancelReason}</Text> : null}<Text style={[styles.greenCopy, { color: '#7A3A2F' }]}>Stock was reversed{refunded > 0 ? ` and ${money(refunded)} refunded` : ''}. The bill keeps its number.</Text></View></View> : <View style={styles.success}><Ionicons name="checkmark-circle-outline" size={21} color="#176B50" /><View style={{ flex: 1 }}><Text style={styles.greenTitle}>{data.syncState === 'conflict' ? 'Needs attention · Saved on device' : data.syncState ? LOCAL_ONLY ? 'Saved on device · Finalizing' : 'Saved on device · Pending sync' : `Saved · ${title} recorded`}</Text><Text style={styles.greenCopy}>{LOCAL_ONLY ? 'This bill and its stock changes are stored only on this device.' : data.syncState ? 'Provisional receipt. Stock is adjusted on this device; the server has not confirmed this transaction.' : 'This is a saved transaction. Inventory has been updated.'}</Text>{data.syncError ? <Text style={styles.error}>{data.syncError}</Text> : null}{data.syncState ? <Pressable accessibilityRole="button" onPress={() => router.push('/settings/sync')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.greenTitle}>View sync status →</Text></Pressable> : null}</View></View>}
@@ -251,9 +247,11 @@ export function TransactionReceipt({ data: initialData, inModal = false, onBack,
           <Pressable accessibilityRole="button" disabled accessibilityState={{ disabled: true }} style={[styles.secondary, { opacity: 0.45 }]}><Text style={styles.buttonText}>Print and share after sync</Text></Pressable>
         ) : (
           <>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Print ${heading.toLowerCase()}`} disabled={!!preparing} accessibilityState={{ disabled: !!preparing, busy: preparing === 'print' }} onPress={() => void runDocument('print')} style={[styles.secondary, !!preparing && { opacity: 0.6 }]}><Text style={styles.buttonText}>{preparing === 'print' ? 'Opening…' : 'Print'}</Text></Pressable>
-            {canSharePdf ? <Pressable accessibilityRole="button" accessibilityLabel={`Share ${heading.toLowerCase()} as PDF`} disabled={!!preparing} accessibilityState={{ disabled: !!preparing, busy: preparing === 'pdf' }} onPress={() => void runDocument('pdf')} style={[styles.secondary, !!preparing && { opacity: 0.6 }]}><Text style={styles.buttonText}>{preparing === 'pdf' ? 'Preparing PDF…' : 'Share PDF'}</Text></Pressable> : null}
-            <Pressable accessibilityRole="button" onPress={() => void share()} style={styles.secondary}><Text style={styles.buttonText}>{data.kind === 'sale' ? 'Share on WhatsApp' : 'Share as text'}</Text></Pressable>
+            {shareActions.map((action) => {
+              const document = action.key === 'print' || action.key === 'pdf';
+              const busy = preparing === action.key;
+              return <Pressable key={action.key} accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} disabled={document && !!preparing} accessibilityState={document ? { disabled: !!preparing, busy } : undefined} onPress={() => void (action.key === 'print' || action.key === 'pdf' ? runDocument(action.key) : share(action.key))} style={[styles.secondary, document && !!preparing && { opacity: 0.6 }]}><Text style={styles.buttonText}>{busy ? (action.key === 'print' ? 'Opening…' : 'Preparing PDF…') : action.label}</Text></Pressable>;
+            })}
           </>
         )}
       </View>

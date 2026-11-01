@@ -168,7 +168,7 @@ export default function ProfileScreen() {
               { title: 'Purchase history', detail: 'Supplier invoices and replenishment', route: '/(tabs)/purchases' },
               { title: 'People & contacts', detail: 'Customers and suppliers', route: '/people' },
               { title: 'Shop details', detail: 'Address, GSTIN and invoice prefixes', route: '/settings/shop' },
-              { title: 'Users & permissions', detail: 'Manage business access', route: '/settings/access' },
+              { title: 'Team and roles', detail: 'Who can use this shop and what they can do', route: '/settings/access' },
               { title: 'Pricing access', detail: 'Control price visibility', route: '/settings/pricing' },
             ].filter(item => { const required = clientRoutePermissions(item.route); return !required.length || required.some(can); }).map((item) => (
               <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(item.route as Parameters<typeof router.push>[0])} style={styles.row}>
@@ -185,7 +185,7 @@ export default function ProfileScreen() {
           ) : (
             <ActionButton title="Edit profile" variant="secondary" onPress={beginEditing} />
           )}
-          {Platform.OS !== 'web' ? <ActionButton title="Device sync status" variant="secondary" onPress={() => router.push('/settings/sync')} /> : null}
+          {Platform.OS !== 'web' ? <ActionButton title="Sync status" variant="secondary" onPress={() => router.push('/settings/sync')} /> : null}
           <ActionButton title={loggingOut ? 'Signing out…' : 'Log out'} onPress={() => void handleLogout()} disabled={loggingOut || saving} />
         </View>
       </ScrollView>

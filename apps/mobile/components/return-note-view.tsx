@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import { BackButton } from '@/components/back-button';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDate, formatMoney, formatQuantity } from '@/services/format';
 import { taxTotalRows } from '@/services/gst';
@@ -31,7 +31,7 @@ export function ReturnNoteView({ note, shop, onClose }: { note: InvoiceSource; s
     }
   };
   return <Modal animationType="slide" statusBarTranslucent onRequestClose={onClose}><View style={[styles.screen, { paddingTop: insets.top }]}>
-    <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel={`Close ${title.toLowerCase()}`} onPress={onClose} style={styles.back}><Ionicons name="arrow-back" size={24} color="#24332A" /></Pressable><View style={{ flex: 1 }}><Text style={styles.title}>{title}</Text><Text style={styles.meta} numberOfLines={1}>{[shop.name, formatDate(note.date)].filter(Boolean).join(' · ')}</Text></View></View>
+    <View style={styles.header}><BackButton label="Back to bill" onPress={onClose} /><View style={{ flex: 1 }}><Text style={styles.title}>{title}</Text><Text style={styles.meta} numberOfLines={1}>{[shop.name, formatDate(note.date)].filter(Boolean).join(' · ')}</Text></View></View>
     <ScrollView contentContainerStyle={styles.content}>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <View style={styles.card}><Text style={styles.caption}>{title.toUpperCase()} NUMBER</Text><Text selectable style={styles.identifier}>{note.documentNumber}</Text>{note.returnOf ? <Text style={styles.meta}>Against {sale ? 'invoice' : 'purchase'} {note.returnOf.number} · {formatDate(note.returnOf.date)}</Text> : null}<Text style={styles.meta}>{sale ? 'Customer' : 'Supplier'} · {note.contact}</Text></View>

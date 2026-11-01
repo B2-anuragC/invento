@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AppScreen, ConfirmationDialog } from '@/components/invento-ui';
+import { ScreenHeading } from '@/components/screen-heading';
 import { appSession, getApiServerUrl } from '@/services/api';
 import { getSyncStatus, prepareOfflineTransactionReview, applyOfflineTransactionReview, offlineCommands, retryOfflineConflict, subscribeSyncStatus, syncOffline } from '@/services/offline-catalog';
 import type { OfflineCommand } from '@/services/offline-model';
@@ -20,8 +21,7 @@ export default function SyncScreen() {
     return () => { active = false; };
   }, [status]);
   return <AppScreen><ScrollView contentContainerStyle={styles.content}>
-    <Pressable accessibilityRole="button" onPress={() => router.back()} style={styles.button}><Text>← Back</Text></Pressable>
-    <Text style={styles.title}>{LOCAL_ONLY ? "Device storage" : "Device synchronization"}</Text>
+    <ScreenHeading title={LOCAL_ONLY ? 'Device storage' : 'Sync status'} subtitle={LOCAL_ONLY ? 'Records kept on this device' : 'Changes waiting to upload from this device'} />
     <Text selectable style={styles.meta}>{LOCAL_ONLY ? "Local-only mode · All business data stays on this device. No server connection is used." : `API server: ${getApiServerUrl()}`}</Text>
     <Text>{LOCAL_ONLY ? 'Local storage ready' : status.online ? 'API available' : 'Working offline'} · {status.pending} pending changes</Text>
     <Text style={styles.meta}>{LOCAL_ONLY ? 'Changes stay in this app’s private device storage. Nothing is uploaded.' : status.message || 'Catalog, contacts, opening stock, sales and purchases save on this device and upload automatically.'}</Text>

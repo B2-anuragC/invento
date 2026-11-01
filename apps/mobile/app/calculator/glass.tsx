@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { BackButton } from '@/components/back-button';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -43,7 +44,7 @@ export default function GlassCalculatorScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.back}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.backText}>‹</Text></Pressable>
+          <BackButton style={styles.back} />
           <View>
             <Text style={styles.title}>Glass calculator</Text>
             <Text style={styles.headerSubtitle}>QUICK MEASURE</Text>
@@ -100,8 +101,7 @@ export default function GlassCalculatorScreen() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 36, width: '100%', maxWidth: 600, alignSelf: 'center', backgroundColor: '#F5F5F5' },
   header: { minHeight: 90, marginHorizontal: -20, paddingHorizontal: 20, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  back: { alignSelf: 'center', paddingVertical: 8, paddingRight: 13 },
-  backText: { color: '#24332A', fontSize: 29, fontWeight: '500' },
+  back: { marginRight: 12 },
   title: { color: '#1D2B25', fontSize: 25, fontWeight: '800' },
   headerSubtitle: { color: '#737B77', fontSize: 11, marginTop: 4 },
   subtitle: { color: '#68746E', fontSize: 13, lineHeight: 19, marginTop: 3, marginBottom: 14 },

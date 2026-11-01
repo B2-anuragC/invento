@@ -6,8 +6,8 @@ describe('pageTitle', () => {
   it('names tabs and fixed screens', () => {
     expect(pageTitle('/')).toBe('Overview · Invento');
     expect(pageTitle('/products')).toBe('Catalog · Invento');
-    expect(pageTitle('/sale/quick')).toBe('Quick bill · Invento');
-    expect(pageTitle('/settings/access/')).toBe('Users & permissions · Invento');
+    expect(pageTitle('/sale/quick')).toBe('New sale · Invento');
+    expect(pageTitle('/settings/access/')).toBe('Team and roles · Invento');
     expect(pageTitle('/auth/login?next=%2Fsales')).toBe('Sign in · Invento');
   });
 

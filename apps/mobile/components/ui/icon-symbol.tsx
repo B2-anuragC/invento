@@ -19,7 +19,7 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'cube.fill': 'inventory-2',
-  'dollarsign.circle.fill': 'attach-money',
+  'indianrupeesign.circle.fill': 'currency-rupee',
   'cart.fill': 'shopping-cart',
   'shippingbox.fill': 'inventory-2',
   'person.fill': 'person',

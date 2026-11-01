@@ -1,11 +1,12 @@
 import { usePermissions } from '@/services/permissions';
 import { paymentBalance, isOverdue, countedAmount, netAmount } from '@/services/transaction-accounting';
 import { returnSummary } from '@/services/bill-returns';
+import { pendingPaymentsCard } from '@/services/pending-payments';
 import { getSyncStatus, subscribeSyncStatus } from '@/services/offline-catalog';
 import { ScreenHeading, screenStyles } from '@/components/screen-heading';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard } from '@/components/invento-ui';
 import { appSession, fetchSales, type SaleRecord } from '@/services/api';
@@ -17,8 +18,8 @@ export default function SalesScreen() {
   const router = useRouter();
   const { can } = usePermissions();
   const params = useLocalSearchParams<{ payment?: string }>();
-  const [pendingOnly, setPendingOnly] = useState(params.payment === 'pending');
-  useEffect(() => { setPendingOnly(params.payment === 'pending'); }, [params.payment]);
+  // The filter lives in the address, so "Payments to collect" on Overview always opens it switched on.
+  const pendingOnly = params.payment === 'pending';
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [search, setSearch] = useState('');
@@ -63,8 +64,7 @@ export default function SalesScreen() {
   // Net of returns; cancelled bills count nothing.
   const totalSales = sales.reduce((total, sale) => total + countedAmount(sale), 0);
 
-  const pendingSales = sales.filter((record) => (paymentBalance(record) ?? 0) > 0);
-  const pendingTotal = pendingSales.reduce((sum, record) => sum + (paymentBalance(record) ?? 0), 0);
+  const pendingCard = pendingPaymentsCard(sales, { ready: !loading && !error, filterOn: pendingOnly });
   const filteredRecords = sales.filter((record) => (!pendingOnly || (paymentBalance(record) ?? 0) > 0)).filter((record) =>
     transactionSearchText({ ...record, name: record.customer?.name }).includes(search.trim().toLowerCase()),
   ).sort((left, right) => right.saleDate.localeCompare(left.saleDate));
@@ -81,16 +81,22 @@ export default function SalesScreen() {
         </View>
 
         <View style={styles.buttonRow}>
-          <ActionButton permission="sales.create" title="Quick bill" onPress={() => router.push('/sale/quick')} />
+          <ActionButton permission="sales.create" title="New sale" onPress={() => router.push('/sale/quick')} />
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityState={{ selected: pendingOnly }} onPress={() => setPendingOnly((current) => !current)} style={styles.pendingCard}>
-          <Text style={styles.saleId}>Pending payments · {loading || error ? '—' : formatMoney(pendingTotal)}</Text>
-          <Text style={styles.customer}>{pendingOnly ? 'Showing unpaid bills · Tap to show all' : `${pendingSales.length} unpaid bills · Tap to view`}</Text>
-          {!loading && sales.some((sale) => paymentBalance(sale) == null) ? <Text style={styles.time}>Bills without confirmed payment balances are excluded.</Text> : null}
-        </Pressable>
+        <View accessible accessibilityLabel={pendingCard.accessibilityLabel} style={styles.pendingCard}>
+          <Text style={styles.pendingTitle}>{pendingCard.title}</Text>
+          {pendingCard.detail ? <Text style={styles.customer}>{pendingCard.detail}</Text> : null}
+          {pendingCard.note ? <Text style={styles.time}>{pendingCard.note}</Text> : null}
+        </View>
+        {pendingCard.showFilter ? (
+          <Pressable accessibilityRole="switch" accessibilityState={{ checked: pendingOnly }} aria-checked={pendingOnly} accessibilityLabel={pendingCard.filterLabel} onPress={() => router.setParams({ payment: pendingOnly ? 'all' : 'pending' })} style={styles.filterRow}>
+            <Text style={styles.filterText}>{pendingCard.filterLabel}</Text>
+            <Switch aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" pointerEvents="none" value={pendingOnly} trackColor={{ false: '#D5DDD8', true: '#80AB94' }} thumbColor={pendingOnly ? '#176B50' : '#F4F6F5'} />
+          </Pressable>
+        ) : null}
         <TextInput accessibilityLabel="Search sales" value={search} onChangeText={setSearch} placeholder="Search invoice or customer" placeholderTextColor="#89918C" style={screenStyles.search} autoCapitalize="none" />
-        <ListCard title={search ? `Search results · ${filteredRecords.length}` : pendingOnly ? 'Pending payments' : 'Sales history'}>
+        <ListCard title={search ? `Search results · ${filteredRecords.length}` : pendingOnly ? 'Unpaid sales' : 'Sales history'}>
           {loading ? (
             <ActivityIndicator color="#176B50" />
           ) : error ? (
@@ -126,7 +132,10 @@ export default function SalesScreen() {
 }
 
 const styles = StyleSheet.create({
-  pendingCard: { padding: 12, borderRadius: 12, backgroundColor: '#FFF5D8', borderWidth: 1, borderColor: '#EBDDAB', marginBottom: 12, gap: 4, minHeight: 44 },
+  pendingCard: { padding: 14, borderRadius: 12, backgroundColor: '#FFF5D8', borderWidth: 1, borderColor: '#EBDDAB', marginBottom: 8, gap: 2 },
+  pendingTitle: { fontSize: 16, fontWeight: '800', color: '#5E4519' },
+  filterRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  filterText: { color: '#24332A', fontSize: 14, fontWeight: '700' },
   pendingLabel: { color: '#795A24', fontSize: 12, fontWeight: '700', marginTop: 4 },
   cancelledLabel: { color: '#A74737', fontSize: 12, fontWeight: '700', marginTop: 4 },
   returnedLabel: { color: '#9C5B12', fontSize: 12, fontWeight: '700', marginTop: 4 },
