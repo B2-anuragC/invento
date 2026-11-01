@@ -1,4 +1,6 @@
 import { CancelBill } from "./cancel-bill";
+import { BillNotes, ReturnItems } from "./return-items";
+import { hasReturns, noteName, noteRows, returnSummary, type Bill } from "./bill-returns";
 import { StockAdjustment } from "./stock-adjustment";
 import { SaleCreator } from "./sale-creator";
 import { billGstLabel, chargeGstSwitch, saleTotals, type SaleProduct } from "./sale-model";
@@ -652,20 +654,22 @@ function ShopSection({
             rows={rows.map((r) => ({
               ...r,
               gstState: billGstLabel(section === "sales" ? "sale" : "purchase", r),
+              returnSummary: returnSummary(r as unknown as Bill) || null,
             }))}
             keys={[
               "documentNumber",
               "invoiceNumber",
               section === "sales" ? "saleDate" : "purchaseDate",
               "total",
+              "returnSummary",
               "gstState",
               "status",
               "note",
             ]}
             titles={
               section === "sales"
-                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", gstState: "Bill type" }
-                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", gstState: "GST" }
+                ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", gstState: "Bill type", returnSummary: "Returns" }
+                : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", gstState: "GST", returnSummary: "Returns" }
             }
             edit={can(`${section}.update`) ? setEditing : undefined}
           />
@@ -704,7 +708,18 @@ function ShopSection({
               }}
             />
           )}
-          {editing && editing.status === "COMPLETED" && can(`${section}.cancel`) && (
+          {editing && <BillNotes kind={section === "sales" ? "sale" : "purchase"} bill={editing} />}
+          {editing && can(`${section}.return`) && (
+            <ReturnItems
+              key={`return-${String(editing.id)}`}
+              shopId={id}
+              kind={section === "sales" ? "sale" : "purchase"}
+              bill={editing}
+              done={refresh}
+            />
+          )}
+          {/* A bill with returns cannot be cancelled. */}
+          {editing && editing.status === "COMPLETED" && !hasReturns(editing as unknown as Bill) && can(`${section}.cancel`) && (
             <CancelBill
               key={`cancel-${String(editing.id)}`}
               shopId={id}
@@ -715,6 +730,30 @@ function ShopSection({
                 refresh();
               }}
             />
+          )}
+          {noteRows(section === "sales" ? "sale" : "purchase", rows as unknown as Bill[]).length > 0 && (
+            <>
+              <div className="section-heading">
+                <div>
+                  <h2>{noteName(section === "sales" ? "sale" : "purchase")}s</h2>
+                  <p>
+                    {section === "sales" ? "Items customers returned" : "Items sent back to suppliers"} · newest first
+                  </p>
+                </div>
+              </div>
+              <Records
+                rows={noteRows(section === "sales" ? "sale" : "purchase", rows as unknown as Bill[])}
+                keys={["documentNumber", "returnDate", "billNumber", "party", "total", "settlement", "reason"]}
+                titles={{
+                  documentNumber: "Note no.",
+                  returnDate: "Date",
+                  billNumber: section === "sales" ? "Against invoice" : "Against purchase",
+                  party: section === "sales" ? "Customer" : "Supplier",
+                  total: "Value",
+                  settlement: "Settled as",
+                }}
+              />
+            </>
           )}
         </>
       )}
