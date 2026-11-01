@@ -16,4 +16,6 @@ export class InventoryAdjustmentDto {
   @ApiProperty({ enum: adjustmentTypes }) @IsIn(adjustmentTypes) type!: (typeof adjustmentTypes)[number];
   @ApiProperty({ example: '5.000' }) @IsDecimal(quantityOptions) @Matches(/^\d+(?:\.\d{1,3})?$/) quantity!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @ApiPropertyOptional({ example: '12.000', description: 'Stock the adjustment was worked out from (for a stock count). Refused with 409 when the stock has changed since.' })
+  @IsOptional() @IsDecimal(quantityOptions) @Matches(/^\d+(?:\.\d{1,3})?$/) expectedQuantity?: string;
 }

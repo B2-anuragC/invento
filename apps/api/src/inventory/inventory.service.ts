@@ -14,6 +14,8 @@ export interface ApplyMovementInput {
   unit?: string;
   note?: string;
   userId: string;
+  /** Stock (in the product's unit) the caller worked the movement out from; refused when it has changed since. */
+  expectedQuantity?: Prisma.Decimal | string;
 }
 
 export interface OpeningStockInput {
@@ -35,7 +37,7 @@ export class InventoryService {
     return this.recordOpeningStock({ businessId, productId: input.productId, quantity: input.quantity, note: input.note, userId });
   }
 
-  async adjust(userId: string, businessId: string, input: { productId: string; type: (typeof adjustmentTypes)[number]; quantity: string; note?: string }) {
+  async adjust(userId: string, businessId: string, input: { productId: string; type: (typeof adjustmentTypes)[number]; quantity: string; note?: string; expectedQuantity?: string }) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'inventory.adjust');
     await this.requireProduct(businessId, input.productId);
 
@@ -43,7 +45,7 @@ export class InventoryService {
     const delta = new Prisma.Decimal(input.quantity);
     if (delta.lessThanOrEqualTo(0)) throw new BadRequestException('Adjustment quantity must be greater than zero.');
 
-    return this.applyMovement({ businessId, productId: input.productId, type, quantity: delta, note: input.note, userId });
+    return this.applyMovement({ businessId, productId: input.productId, type, quantity: delta, note: input.note, userId, expectedQuantity: input.expectedQuantity });
   }
 
   async list(userId: string, businessId: string) {
@@ -166,6 +168,13 @@ export class InventoryService {
         throw new BadRequestException('Opening stock must be recorded before adjustments can be made.');
       }
       const current = new Prisma.Decimal(locked[0].quantity);
+      if (input.expectedQuantity !== undefined) {
+        // A stock count records the difference from the stock the person saw; a sale in between would make it wrong.
+        const shown = current.div(product.piecesPerUnit ?? 1);
+        if (!shown.equals(new Prisma.Decimal(input.expectedQuantity))) {
+          throw new ConflictException(`Stock changed while you were counting: it is now ${shown.toString()}. Check the count and try again.`);
+        }
+      }
 
       const signedDelta = isInflowTransaction(input.type) ? magnitude : magnitude.negated();
       const balanceAfter = current.plus(signedDelta);

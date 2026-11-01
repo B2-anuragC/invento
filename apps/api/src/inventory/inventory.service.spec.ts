@@ -126,6 +126,22 @@ describe('InventoryService', () => {
     expect(store.transactions).toHaveLength(transactionCountBefore);
   });
 
+  it('applies a stock count only while the stock is still what the count was based on', async () => {
+    const { prisma, store } = createFakePrisma({ product: { id: 'product-a', businessId: 'business-a', unit: 'DOZEN', piecesPerUnit: 12 } });
+    const service = new InventoryService(prisma as never);
+
+    await service.openingStock('user-a', 'business-a', { productId: 'product-a', quantity: '2' });
+    const counted = await service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'DAMAGE', quantity: '0.5', note: 'Counted 1.5', expectedQuantity: '2.000' });
+    expect(counted.balanceAfter.toString()).toBe('1.5');
+    expect(store.inventory?.quantity.toString()).toBe('18');
+
+    const before = store.transactions.length;
+    await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '1', expectedQuantity: '2' })).rejects.toThrow('Stock changed while you were counting: it is now 1.5');
+    await expect(service.adjust('user-a', 'business-a', { productId: 'product-a', type: 'ADJUSTMENT_IN', quantity: '1', expectedQuantity: '2' })).rejects.toBeInstanceOf(ConflictException);
+    expect(store.transactions).toHaveLength(before);
+    expect(store.inventory?.quantity.toString()).toBe('18');
+  });
+
   it('rejects adjustments before opening stock has been recorded', async () => {
     const { prisma } = createFakePrisma();
     const service = new InventoryService(prisma as never);

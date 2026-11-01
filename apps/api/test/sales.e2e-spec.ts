@@ -488,6 +488,25 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect(history.body.data).toHaveLength(1);
   });
 
+  it('adjusts stock by count, addition and removal, never below zero, and refuses a count when stock moved', async () => {
+    const adjust = (body: Record<string, string>) => api('post', '/inventory/adjustments').send({ productId: products[0], ...body });
+    await adjust({ type: 'ADJUSTMENT_OUT', quantity: '3.5', note: 'Counted 96.5', expectedQuantity: '100' }).expect(201);
+    await adjust({ type: 'ADJUSTMENT_IN', quantity: '1', expectedQuantity: '100' }).expect(409);
+    await adjust({ type: 'DAMAGE', quantity: '96.501' }).expect(400);
+    await adjust({ type: 'EXPIRED', quantity: '1.5', note: 'Past date' }).expect(201);
+    await adjust({ type: 'ADJUSTMENT_IN', quantity: '5', note: 'Count correction' }).expect(201);
+    await adjust({ type: 'ADJUSTMENT_IN', quantity: '1', expectedQuantity: '1.2345' }).expect(422);
+    const stock = await api('get', `/inventory/${products[0]}`).expect(200);
+    expect(stock.body.data.quantity).toBe('100');
+    const ledger = await api('get', `/inventory/${products[0]}/history`).expect(200);
+    expect(ledger.body.data.map((entry: { type: string; quantity: string; balanceAfter: string; note: string | null }) => [entry.type, entry.quantity, entry.balanceAfter, entry.note])).toEqual([
+      ['ADJUSTMENT_IN', '5', '100', 'Count correction'],
+      ['EXPIRED', '-1.5', '95', 'Past date'],
+      ['ADJUSTMENT_OUT', '-3.5', '96.5', 'Counted 96.5'],
+      ['OPENING_STOCK', '100', '100', null],
+    ]);
+  });
+
   it('rolls back the sale, first item and ledger when item two of three oversells', async () => {
     const before = await prisma.inventory.findMany({ where: { businessId }, orderBy: { productId: 'asc' } });
     const sale = input();
