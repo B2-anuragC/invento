@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
 import { formatQuantity } from '@/services/format';
+import { receiveStockNotice } from '@/services/stock-adjustment';
 
 type StockItem = {
   id: string;
@@ -23,6 +24,7 @@ export default function InventoryScreen() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const requestId = useRef(0);
 
   const loadInventory = useCallback(async () => {
@@ -61,6 +63,8 @@ export default function InventoryScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Back from adjusting stock: say what changed; the reload shows the new balance.
+      setNotice(receiveStockNotice()?.text ?? '');
       void loadInventory();
       return () => { requestId.current += 1; };
     }, [loadInventory]),
@@ -99,6 +103,10 @@ export default function InventoryScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <ScreenHeading title="Inventory" subtitle="Current stock health and reorder risk" />
+        {notice ? <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text> : null}
+        <View style={styles.actions}>
+          <ActionButton title="Adjust stock" variant="secondary" permission="inventory.adjust" onPress={() => router.push('/inventory/adjust')} />
+        </View>
 
         <TextInput
           value={search}
@@ -192,6 +200,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#24332A',
   },
+  notice: { backgroundColor: '#E9F9F1', color: '#0F766E', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 19, marginBottom: 12 },
+  actions: { flexDirection: 'row', marginBottom: 14 },
   cardsRow: {
     flexDirection: 'row',
     gap: 12,

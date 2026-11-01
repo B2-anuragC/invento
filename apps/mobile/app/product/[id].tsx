@@ -3,9 +3,10 @@ import { FormError } from '@/components/form-error';
 import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
 import { hsnCodeError } from '@/services/gst';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
-import { normalizeHsnCode, sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
-import { useEffect, useRef, useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { inventoryMovementLabel, inventoryMovementNote, normalizeHsnCode, sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { receiveStockNotice } from '@/services/stock-adjustment';
 import { addedProductNotice, openingStockError, sendAddedProduct } from '@/services/new-product';
 import { useNavigation, usePreventRemove } from 'expo-router/react-navigation';
 import {
@@ -177,6 +178,20 @@ export default function ProductDetailsScreen() {
 
     return () => { active = false; };
   }, [id, isNew, router]);
+
+  // Back from adjusting this product's stock: reload the balance and history, and say what changed.
+  useFocusEffect(useCallback(() => {
+    if (isNew) return;
+    const stockNotice = receiveStockNotice(id);
+    const session = appSession.current;
+    if (!stockNotice || !session) return;
+    setNotice(stockNotice.text);
+    let active = true;
+    Promise.all([fetchProductStock(session, id), fetchProductTransactions(session, id)])
+      .then(([stockData, transactionData]) => { if (active) { setInventory(stockData); setTransactions(transactionData); } })
+      .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'Could not reload stock.'); });
+    return () => { active = false; };
+  }, [id, isNew]));
 
   const saveProduct = async () => {
     const session = appSession.current;
@@ -558,6 +573,12 @@ export default function ProductDetailsScreen() {
               </Text>
             </View>
 
+            {!needsOpeningStock && product?.status === 'ACTIVE' && can('inventory.adjust') ? (
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/inventory/adjust', params: { productId: product.id } })} style={styles.adjustButton}>
+                <Text style={styles.adjustText}>Adjust stock</Text>
+              </Pressable>
+            ) : null}
+
             {needsOpeningStock && can('inventory.adjust') ? (
               <View style={styles.openingCard}>
                 <Text style={styles.sectionTitle}>Record opening stock</Text>
@@ -590,8 +611,9 @@ export default function ProductDetailsScreen() {
             {transactions.length ? transactions.map((transaction) => (
               <View key={transaction.id} style={styles.historyRow}>
                 <View style={styles.historyDetails}>
-                  <Text style={styles.historyType}>{transaction.type.replaceAll('_', ' ').toLowerCase()}</Text>
+                  <Text style={styles.historyType}>{inventoryMovementLabel(transaction.type)}</Text>
                   <Text style={styles.historyDate}>{formatDateTime(transaction.createdAt)}</Text>
+                  {inventoryMovementNote(transaction.note) ? <Text style={styles.historyNote}>{inventoryMovementNote(transaction.note)}</Text> : null}
                 </View>
                 <View style={styles.historyAmount}>
                   <Text style={styles.historyQuantity}>{formatQuantity(Number(transaction.quantity), product?.unit ?? 'PIECE')}</Text>
@@ -691,7 +713,10 @@ const styles = StyleSheet.create({
   historyCount: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
   historyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   historyDetails: { flex: 1, minWidth: 0, marginRight: 12 },
-  historyType: { color: '#111827', fontSize: 13, fontWeight: '700', textTransform: 'capitalize' },
+  historyType: { color: '#111827', fontSize: 13, fontWeight: '700' },
+  historyNote: { color: '#374151', fontSize: 12, marginTop: 3 },
+  adjustButton: { alignItems: 'center', borderWidth: 1, borderColor: '#176B50', borderRadius: 12, paddingVertical: 12, marginBottom: 16 },
+  adjustText: { color: '#176B50', fontSize: 14, fontWeight: '700' },
   historyDate: { color: '#6B7280', fontSize: 11, marginTop: 4 },
   historyAmount: { alignItems: 'flex-end' },
   historyQuantity: { color: '#111827', fontSize: 12, fontWeight: '700' },

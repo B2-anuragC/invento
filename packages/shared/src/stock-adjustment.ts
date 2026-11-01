@@ -131,3 +131,14 @@ const movementLabels: Record<string, string> = {
 export function inventoryMovementLabel(type: string): string {
   return movementLabels[type] ?? type.replaceAll("_", " ").toLowerCase().replace(/^./, (first) => first.toUpperCase());
 }
+
+/**
+ * The note to show beside a stock movement. Sales and purchases note their own
+ * record id, and cancellations "Cancelled sale <id>": the id means nothing to a reader.
+ */
+export function inventoryMovementNote(note: string | null | undefined): string {
+  const text = (note ?? "").trim();
+  if (/^(Sale|Purchase) \S+$/.test(text)) return "";
+  const cancelled = /^Cancelled (sale|purchase) \S+$/.exec(text);
+  return cancelled ? `Cancelled ${cancelled[1]}` : text;
+}

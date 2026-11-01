@@ -81,6 +81,10 @@ export default function RootLayout() {
               options={{ headerShown: false, animation: "slide_from_right" }}
             />
             <Stack.Screen
+              name="inventory/adjust"
+              options={{ headerShown: false, animation: "slide_from_right" }}
+            />
+            <Stack.Screen
               name="people/[kind]/[id]"
               options={{ headerShown: false, animation: "slide_from_right" }}
             />

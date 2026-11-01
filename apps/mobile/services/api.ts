@@ -1,4 +1,4 @@
-import { type EffectiveAccess, type Permission, type GstTaxType } from '@invento/shared';
+import { planStockAdjustment, type EffectiveAccess, type Permission, type GstTaxType, type StockAdjustmentInput } from '@invento/shared';
 import { LOCAL_ONLY } from './runtime-mode';
 import { localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
@@ -7,7 +7,8 @@ import { isServerUnreachable, liveOrCachedAccess } from './access-fallback';
 export type SellingOption = { id: string; name: string; unit: string; quantity: string; sellingPrice: string; piecesPerUnit?: number };
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { cachedAccess, configureOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+import { ADJUST_PENDING_MESSAGE } from './stock-adjustment';
+import { cachedAccess, configureOffline, getSyncStatus, syncOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
 
@@ -847,6 +848,32 @@ export async function cancelBill(session: AppSession, kind: 'sale' | 'purchase',
   }
   if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
   return record;
+}
+
+/**
+ * Saves a stock adjustment. It needs a connection: a count's difference is
+ * worked out from the server's stock (not the device copy), and the server
+ * refuses it if stock moves before it is saved. Changes still waiting to sync
+ * on this phone go first, so a counted sale is not taken off twice.
+ */
+export async function adjustStock(session: AppSession, input: Omit<StockAdjustmentInput, 'currentStock'>) {
+  await assertClientPermission(session, 'inventory.adjust');
+  try {
+    if (nativeOffline) {
+      await syncOffline(session, true);
+      if (getSyncStatus().pending > 0) throw new Error(ADJUST_PENDING_MESSAGE);
+    }
+    const stock = await request<InventoryRecord>(`/products/${encodeURIComponent(input.productId)}/stock`, { method: 'GET' }, session);
+    if (stock.createdAt === null) throw new Error('Record the opening stock for this product first, on its product page.');
+    const plan = planStockAdjustment({ ...input, currentStock: stock.quantity });
+    if (!plan.ok) throw new Error(plan.error);
+    const movement = await request<InventoryTransactionRecord>('/inventory/adjustments', { method: 'POST', body: JSON.stringify(plan.request) }, session);
+    if (nativeOffline) await refreshOfflineSnapshot(session).catch(() => undefined);
+    return { plan, movement };
+  } catch (error) {
+    if (isServerUnreachable(error)) throw new Error('Adjusting stock needs a connection. Try again when you are online.');
+    throw error;
+  }
 }
 
 export async function updateBusinessDetails(session: AppSession, input: BusinessDetailsInput): Promise<BusinessDetails> {

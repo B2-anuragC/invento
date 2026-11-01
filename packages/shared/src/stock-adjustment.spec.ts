@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { inventoryMovementLabel, planStockAdjustment, reasonsForMode, type StockAdjustmentInput } from './stock-adjustment.js';
+import { inventoryMovementLabel, inventoryMovementNote, planStockAdjustment, reasonsForMode, type StockAdjustmentInput } from './stock-adjustment.js';
 
 const base: StockAdjustmentInput = { productId: 'p1', mode: 'count', quantity: '8', reason: 'COUNT_CORRECTION', currentStock: '10', unit: 'KG' };
 const plan = (input: Partial<StockAdjustmentInput>) => planStockAdjustment({ ...base, ...input });
@@ -60,5 +60,16 @@ describe('inventoryMovementLabel', () => {
       'Opening stock', 'Purchase', 'Sale', 'Returned to stock', 'Returned to supplier', 'Stock added', 'Stock removed', 'Damaged', 'Expired',
     ]);
     expect(inventoryMovementLabel('NEW_KIND')).toBe('New kind');
+  });
+});
+
+describe('inventoryMovementNote', () => {
+  it('hides record ids and keeps what people wrote', () => {
+    expect(inventoryMovementNote('Sale cmabc123')).toBe('');
+    expect(inventoryMovementNote('Purchase cmabc123')).toBe('');
+    expect(inventoryMovementNote('Cancelled sale cmabc123')).toBe('Cancelled sale');
+    expect(inventoryMovementNote('Counted 8 · Two cracked sheets')).toBe('Counted 8 · Two cracked sheets');
+    expect(inventoryMovementNote('Sale to Patil was short')).toBe('Sale to Patil was short');
+    expect(inventoryMovementNote(null)).toBe('');
   });
 });
