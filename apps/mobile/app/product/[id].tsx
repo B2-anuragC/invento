@@ -1,10 +1,10 @@
 import { usePermissions } from '@/services/permissions';
 import { BackButton } from '@/components/back-button';
 import { FormError } from '@/components/form-error';
-import { formatDateTime, formatMoney, formatQuantity } from '@/services/format';
+import { formatDateTime, formatMoney, formatQuantity, unitLabel } from '@/services/format';
 import { hsnCodeError } from '@/services/gst';
 import { ProductPhoto, type ProductPhotoValue } from '@/components/product-photo';
-import { inventoryMovementLabel, inventoryMovementNote, normalizeHsnCode, sellingUnitChoices, sellingUnitConversion } from '@invento/shared';
+import { inventoryMovementLabel, inventoryMovementNote, normalizeHsnCode } from '@invento/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { receiveStockNotice } from '@/services/stock-adjustment';
@@ -29,6 +29,7 @@ import { barcodeOwner, createBarcodeCheck } from '@/services/camera-access';
 import { Ionicons } from '@/components/ui/icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formSnapshot, hasUnsavedChanges } from '@/services/unsaved-changes';
+import { chooseOptionUnit, defaultOptionName, newSellingOption, normalizeSellingOptions, optionPriceLabel, optionShape, optionSummary, optionUnitChoices, sellingOptionError, sellingOptionsForSave } from '@/services/selling-option-form';
 import {
   appSession,
   createProduct,
@@ -122,7 +123,7 @@ export default function ProductDetailsScreen() {
     setBarcodeNotice(null);
     setCategory(productData.category ?? '');
     setUnit(productData.unit);
-    setSellingOptions(productData.sellingOptions ?? []);
+    setSellingOptions(normalizeSellingOptions(productData.sellingOptions ?? [], productData.unit, productData.unit === 'DOZEN' ? 12 : productData.piecesPerUnit ?? null));
     setPiecesPerUnit(productData.piecesPerUnit ? String(productData.piecesPerUnit) : '');
     setPurchasePrice(String(productData.purchasePrice));
     setSellingPrice(String(productData.sellingPrice));
@@ -137,10 +138,7 @@ export default function ProductDetailsScreen() {
   };
 
   const addSellingOption = () => {
-    setSellingOptions((current) => current.length >= 20 ? current : [...current, {
-      id: `option_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      name: '', unit, quantity: '', sellingPrice: '',
-    }]);
+    setSellingOptions((current) => current.length >= 20 ? current : [...current, newSellingOption(`option_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, unit)]);
     if (error) setError('');
   };
 
@@ -242,16 +240,8 @@ export default function ProductDetailsScreen() {
     }
     const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || 0;
     for (const [index, option] of sellingOptions.entries()) {
-      const prefix = `Option ${index + 1}: `;
-      if (!option.name.trim()) { setError(prefix + 'enter a name.'); return; }
-      if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(option.quantity) || Number(option.quantity) <= 0) { setError(prefix + 'enter a quantity greater than zero.'); return; }
-      if (!/^\d{1,10}(?:\.\d{1,2})?$/.test(option.sellingPrice) || Number(option.sellingPrice) <= 0) { setError(prefix + 'enter a price greater than zero.'); return; }
-      const conversion = sellingUnitConversion(unit, groupSize || null, option.unit, option.piecesPerUnit);
-      if (!conversion) { setError(prefix + 'select a compatible unit and enter pieces per box or pack.'); return; }
-      const movement = (conversion.perOption ? 1 : Number(option.quantity)) * conversion.numerator / conversion.denominator;
-      const pieces = movement * (conversion.unit === 'PIECE' ? 1 : groupSize || 1);
-      if ((groupSize || unit === 'PIECE') && Math.abs(pieces - Math.round(pieces)) > 1e-8) { setError(prefix + 'the quantity must contain whole pieces.'); return; }
-      if (Math.abs(movement * 1000 - Math.round(movement * 1000)) > 1e-7) { setError(prefix + 'use a quantity that fits the stock unit’s three-decimal precision.'); return; }
+      const optionError = sellingOptionError(option, unit, groupSize || null);
+      if (optionError) { setError(`Option ${index + 1}: ${optionError}`); return; }
     }
     if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(gstRate) || Number(gstRate) > 100) { setError('Enter a GST rate from 0 to 100%.'); return; }
     const hsnError = hsnCodeError(hsnCode);
@@ -268,7 +258,7 @@ export default function ProductDetailsScreen() {
       barcode: barcode.trim(),
       category: category.trim(),
       unit,
-      sellingOptions,
+      sellingOptions: sellingOptionsForSave(sellingOptions, unit, groupSize || null),
       ...(['BOX', 'PACK'].includes(unit) && piecesPerUnit ? { piecesPerUnit: Number(piecesPerUnit) } : {}),
       purchasePrice: decimalValue(purchasePrice, 2),
       sellingPrice: decimalValue(sellingPrice, 2),
@@ -513,26 +503,35 @@ export default function ProductDetailsScreen() {
             </View>
             <View style={[styles.form, styles.formGap]}>
             <View style={styles.optionHeading}>
-              <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Selling options</Text><Text style={styles.helperText}>Choose a unit, quantity and total price for each option.</Text></View>
+              <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Selling options</Text><Text style={styles.helperText}>Other ways to sell this product, such as a pack of 10, each with its own price.</Text></View>
               <Text style={styles.optionCount}>{sellingOptions.length}/20</Text>
             </View>
-            {!sellingOptions.length ? <View style={styles.optionEmpty}><Text style={styles.optionEmptyTitle}>Make everyday sales quicker</Text><Text style={styles.optionHint}>Offer a single piece, a bundle, or a full box. Each option gets its own unit, quantity and price.</Text></View> : null}
+            {!sellingOptions.length ? <View style={styles.optionEmpty}><Text style={styles.optionEmptyTitle}>Make everyday sales quicker</Text><Text style={styles.optionHint}>For example “1 pack = 10 pieces” for ₹1,700. Each option appears as a button when billing.</Text></View> : null}
             {sellingOptions.map((option, index) => {
-              const change = (field: Exclude<keyof SellingOption, 'piecesPerUnit'>, value: string) => setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, [field]: value, ...(field === 'unit' ? { piecesPerUnit: undefined } : {}) } : entry));
-              const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || 0;
-              const choices = sellingUnitChoices(unit, unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || null);
+              const groupSize = unit === 'DOZEN' ? 12 : Number(piecesPerUnit) || null;
+              const update = (next: SellingOption) => { setSellingOptions((current) => current.map((entry) => entry.id === option.id ? next : entry)); clearErrorOnEdit(); };
+              const shape = optionShape(unit, option);
+              const summary = optionSummary(option, unit, groupSize);
+              const number = index + 1;
+              const quantityField = <TextInput accessibilityLabel={`Option ${number}: quantity in ${unitLabel(option.unit, 2)}`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) update({ ...option, quantity: value }); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput, styles.optionSmallInput]} />;
               return <View key={option.id} style={styles.optionEditor}>
-                <View style={styles.optionHeading}><Text style={styles.optionNumber}>OPTION {index + 1}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Remove selling option ${index + 1}`} onPress={() => setSellingOptions((current) => current.filter((entry) => entry.id !== option.id))} style={styles.optionRemove}><Text style={styles.optionRemoveText}>Remove</Text></Pressable></View>
-                <Text style={styles.label}>Name</Text>
-                <TextInput accessibilityLabel={`Selling option ${index + 1} name`} maxLength={60} value={option.name} onChangeText={(value) => change('name', value)} placeholder="e.g. Single piece or Family pack" style={[styles.input, styles.optionInput]} />
-                <><Text style={styles.label}>Unit for this option</Text><View style={styles.units}>{choices.map((choice) => <Pressable key={choice} accessibilityRole="button" accessibilityState={{ selected: option.unit === choice }} onPress={() => change('unit', choice)} style={[styles.unitOption, option.unit === choice && styles.unitSelected]}><Text style={[styles.unitText, option.unit === choice && styles.unitTextSelected]}>{formatUnitLabel(choice)}</Text></Pressable>)}</View></>
-                {['BOX', 'PACK'].includes(option.unit) ? <><Text style={styles.label}>Pieces in one {formatUnitLabel(option.unit)} of this option</Text><TextInput accessibilityLabel={`Selling option ${index + 1} pieces per group`} value={option.piecesPerUnit == null ? '' : String(option.piecesPerUnit)} placeholder={option.unit === unit && groupSize ? `Uses stock size: ${groupSize}` : 'e.g. 6'} keyboardType="number-pad" onChangeText={(value) => { if (/^\d{0,6}$/.test(value)) setSellingOptions((current) => current.map((entry, i) => i === index ? { ...entry, piecesPerUnit: value ? Number(value) : undefined } : entry)); }} style={[styles.input, styles.optionInput]} /><Text style={styles.optionHint}>This converts the selling box or pack into pieces for stock deduction.</Text></> : null}
-                {sellingUnitConversion(unit, groupSize || null, option.unit, option.piecesPerUnit)?.perOption ? <Text style={styles.optionHint}>Custom unit: each option sold deducts one stock unit. No dimension calculation.</Text> : null}
-                <View style={[styles.fieldsRow, { marginTop: 12 }]}>
-                  <View style={styles.field}><Text style={styles.label}>Amount in one option ({formatUnitLabel(option.unit)})</Text><TextInput accessibilityLabel={`Selling option ${index + 1} quantity`} value={option.quantity} placeholder="e.g. 6" onChangeText={(value) => { if (/^\d*(?:\.\d{0,3})?$/.test(value)) change('quantity', value); }} keyboardType="decimal-pad" style={[styles.input, styles.optionInput]} /></View>
-                  <View style={styles.field}><Text style={styles.label}>Price for this quantity</Text><View style={styles.optionPriceField}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Selling option ${index + 1} price`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) change('sellingPrice', value); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View></View>
-                </View>
-                {Number(option.quantity) > 0 && Number(option.sellingPrice) > 0 ? <View style={styles.optionPreview}><Text style={styles.optionPreviewText}>{option.quantity} {formatUnitLabel(option.unit)} for {formatMoney(Number(option.sellingPrice))}</Text><Text style={styles.optionHint}>{formatMoney(Number(option.sellingPrice) / Number(option.quantity))} / {formatUnitLabel(option.unit)}</Text></View> : null}
+                <View style={styles.optionHeading}><Text style={styles.optionNumber}>OPTION {number}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Remove option ${number}${option.name.trim() ? `, ${option.name.trim()}` : ''}`} onPress={() => setSellingOptions((current) => current.filter((entry) => entry.id !== option.id))} style={styles.optionRemove}><Text style={styles.optionRemoveText}>Remove</Text></Pressable></View>
+                <Text style={styles.label}>Sold as</Text>
+                <View accessibilityRole="radiogroup" accessibilityLabel={`Option ${number}: sold as`} style={styles.units}>{optionUnitChoices(unit, option.unit).map((choice) => <Pressable key={choice} accessibilityRole="radio" accessibilityState={{ checked: option.unit === choice }} aria-checked={option.unit === choice} onPress={() => { if (choice !== option.unit) update(chooseOptionUnit(option, choice, unit)); }} style={[styles.unitOption, option.unit === choice && styles.unitSelected]}><Text style={[styles.unitText, option.unit === choice && styles.unitTextSelected]}>{formatUnitLabel(choice)}</Text></Pressable>)}</View>
+                {shape === 'group' ? <View style={styles.optionSentence}>
+                  <Text style={styles.optionSentenceText}>1 {unitLabel(option.unit)} =</Text>
+                  <TextInput accessibilityLabel={`Option ${number}: pieces in 1 ${unitLabel(option.unit)}`} value={option.piecesPerUnit == null ? '' : String(option.piecesPerUnit)} placeholder={option.unit === unit && groupSize ? String(groupSize) : 'e.g. 10'} keyboardType="number-pad" onChangeText={(value) => { if (/^\d{0,6}$/.test(value)) update({ ...option, piecesPerUnit: value ? Number(value) : undefined }); }} style={[styles.input, styles.optionInput, styles.optionSmallInput]} />
+                  <Text style={styles.optionSentenceText}>pieces</Text>
+                </View> : shape === 'dozen' ? <Text style={[styles.optionSentenceText, styles.optionSentence]}>1 dozen = 12 pieces</Text> : <View style={styles.optionSentence}>
+                  {quantityField}
+                  <Text style={styles.optionSentenceText}>{unitLabel(option.unit, Number(option.quantity) === 1 ? 1 : 2)}</Text>
+                </View>}
+                {shape === 'custom' ? <Text style={styles.optionHint}>Saved in an older format. Choose a unit above to switch to the simpler form.</Text> : null}
+                <Text style={styles.label}>{optionPriceLabel(option, unit)}</Text>
+                <View style={styles.optionPriceField}><Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.optionCurrency}>₹</Text><TextInput accessibilityLabel={`Option ${number}: ${optionPriceLabel(option, unit).toLowerCase()}`} value={option.sellingPrice} placeholder="0.00" onChangeText={(value) => { if (/^\d*(?:\.\d{0,2})?$/.test(value)) update({ ...option, sellingPrice: value }); }} keyboardType="decimal-pad" style={styles.optionPriceInput} /></View>
+                {summary ? <Text style={[styles.optionPreviewText, styles.optionPreview]}>{summary}</Text> : null}
+                <Text style={styles.label}>Name on bills · optional</Text>
+                <TextInput accessibilityLabel={`Option ${number}: name on bills`} maxLength={60} value={option.name} onChangeText={(value) => update({ ...option, name: value })} placeholder={defaultOptionName(option, unit, groupSize) || 'e.g. Pack of 10'} style={[styles.input, styles.optionInput]} />
               </View>;
             })}
             <Pressable accessibilityRole="button" accessibilityLabel="Add another quantity and selling price" accessibilityState={{ disabled: sellingOptions.length >= 20 }} disabled={sellingOptions.length >= 20} onPress={addSellingOption} style={[styles.optionAdd, sellingOptions.length >= 20 && { opacity: 0.45 }]}><Text style={styles.optionAddText}>＋ {sellingOptions.length ? 'Add another selling option' : 'Add selling option'}</Text></Pressable>
@@ -760,6 +759,9 @@ const styles = StyleSheet.create({
   optionRemove: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
   optionRemoveText: { color: '#A34838', fontSize: 12, fontWeight: '600' },
   optionInput: { backgroundColor: '#FFFFFF' },
+  optionSmallInput: { width: 96, flexGrow: 0, marginBottom: 0 },
+  optionSentence: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  optionSentenceText: { color: '#24332A', fontSize: 16, fontWeight: '700' },
   optionPriceField: { flexDirection: 'row', alignItems: 'center', minHeight: 49, borderWidth: 1, borderColor: '#E1E1E1', backgroundColor: '#FFFFFF', borderRadius: 11, paddingHorizontal: 12 },
   optionCurrency: { color: '#737B77', fontSize: 16, marginRight: 6 },
   optionPriceInput: { flex: 1, minWidth: 0, minHeight: 47, color: '#24332A', fontSize: 14 },
