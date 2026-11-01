@@ -17,12 +17,18 @@ describe('openingStockError', () => {
     expect(openingStockError('25', 'PIECE')).toBe('');
     expect(openingStockError('12.375', 'SQFT')).toBe('');
     expect(openingStockError('1.5', 'BOX', 10)).toBe('');
+    expect(openingStockError('2.25', 'DOZEN')).toBe('');
+    expect(openingStockError('2.25', 'DOZEN', 12)).toBe('');
   });
   it('rejects malformed quantities, part pieces and part grouped pieces', () => {
     expect(openingStockError('.', 'SQFT')).toMatch(/three decimal places/);
     expect(openingStockError('1.2345', 'SQFT')).toMatch(/three decimal places/);
     expect(openingStockError('2.5', 'PIECE')).toMatch(/whole number of pieces/);
     expect(openingStockError('1.25', 'BOX', 10)).toMatch(/whole number of pieces/);
+    // A dozen is always 12 pieces, even when the form passes no group size.
+    expect(openingStockError('0.5', 'DOZEN', 12)).toBe('');
+    expect(openingStockError('0.1', 'DOZEN')).toMatch(/whole number of pieces/);
+    expect(openingStockError('0.1', 'DOZEN', null)).toMatch(/whole number of pieces/);
   });
 });
 

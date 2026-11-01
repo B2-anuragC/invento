@@ -209,7 +209,7 @@ export default function ProductDetailsScreen() {
     const hsnError = hsnCodeError(hsnCode);
     if (hsnError) { setError(hsnError); return; }
     const recordStock = isNew && openingStock !== '' && can('inventory.adjust');
-    const openingError = recordStock ? openingStockError(openingStock, unit, ['BOX', 'PACK'].includes(unit) ? Number(piecesPerUnit) || null : null) : '';
+    const openingError = recordStock ? openingStockError(openingStock, unit, ['BOX', 'PACK', 'DOZEN'].includes(unit) ? groupSize || null : null) : '';
     if (openingError) { setError(openingError); return; }
     const input: ProductInput = {
       ...photo,
