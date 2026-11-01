@@ -1,11 +1,11 @@
 import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
 import { UseInterceptors } from '@nestjs/common';
 import { CancelTransactionDto, CreateReturnDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AccessTokenGuard } from '../auth/auth.guard.js';
-import { CreateSaleDto, SaleListQueryDto, UpdateSaleDto } from './dto/sale.dto.js';
+import { CreateSaleDto, EditSaleItemsDto, SaleListQueryDto, UpdateSaleDto } from './dto/sale.dto.js';
 import { SalesService } from './sales.service.js';
 
 @ApiTags('Sales')
@@ -35,6 +35,11 @@ export class SalesController {
   @Post(':id/returns')
   createReturn(@Req() req: Request, @Param('id') id: string, @Body() dto: CreateReturnDto) {
     return this.sales.createReturn(req.user.id, this.businessId(req), id, dto);
+  }
+
+  @Put(':id/items')
+  editItems(@Req() req: Request, @Param('id') id: string, @Body() dto: EditSaleItemsDto) {
+    return this.sales.editItems(req.user.id, this.businessId(req), id, dto);
   }
 
   @Get()

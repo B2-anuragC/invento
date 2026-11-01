@@ -3,10 +3,11 @@ import { InventoryTransactionType, PaymentMethod, Prisma } from '@prisma/client'
 import type { InventoryService } from '../inventory/inventory.service.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import type { CancelTransactionDto } from './dto/transaction-finance.dto.js';
+import { readBillStockEffect } from './bill-edits.js';
 
 /**
- * Cancels a completed sale or purchase in one transaction: its stock movements
- * are reversed through the inventory engine, money already paid is refunded
+ * Cancels a completed sale or purchase in one transaction: the stock it holds
+ * (after any item edits) is put back through the inventory engine, money already paid is refunded
  * with a REFUND entry, and the bill keeps its number with status CANCELLED.
  * Cancelling a bill that is already cancelled changes nothing, so a retry is safe.
  */
@@ -23,22 +24,19 @@ export async function cancelTransaction(prisma: PrismaService, inventory: Invent
     const returns = kind === 'sale' ? await tx.saleReturn.count({ where: { saleId: id } }) : await tx.purchaseReturn.count({ where: { purchaseId: id } });
     if (returns > 0) throw new ConflictException('This bill has returns, so it cannot be cancelled. Return the remaining items instead.');
 
-    // The bill's own ledger rows, replayed in the other direction in product order (stock lock order).
-    const movements = await tx.inventoryTransaction.findMany({
-      where: { businessId, note: `${kind === 'sale' ? 'Sale' : 'Purchase'} ${id}` },
-      include: { product: { select: { piecesPerUnit: true } } },
-      orderBy: [{ productId: 'asc' }, { createdAt: 'asc' }],
-    });
-    for (const movement of movements) {
+    // The stock the bill holds (its own movements and those of its item edits), put back in product order (stock lock order).
+    const effect = await readBillStockEffect(tx, kind, businessId, id);
+    for (const productId of [...effect.keys()].sort((a, b) => a.localeCompare(b))) {
+      const product = await tx.product.findUniqueOrThrow({ where: { id: productId }, select: { piecesPerUnit: true } });
       try {
         await inventory.applyMovement(
           {
             businessId,
-            productId: movement.productId,
+            productId,
             type: kind === 'sale' ? InventoryTransactionType.RETURN_IN : InventoryTransactionType.RETURN_OUT,
             // Ledger quantities are in stored units: pieces for grouped products.
-            quantity: movement.quantity.abs().toString(),
-            unit: movement.product.piecesPerUnit ? 'PIECE' : undefined,
+            quantity: effect.get(productId)!.toFixed(),
+            unit: product.piecesPerUnit ? 'PIECE' : undefined,
             note: `Cancelled ${kind} ${id}`,
             userId,
           },

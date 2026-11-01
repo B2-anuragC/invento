@@ -259,6 +259,12 @@ model Purchase {
   cancelledAt     DateTime?
   cancelledByUserId String?
   cancelReason    String?
+  /// Raised by each edit of the items; the last edit's who, when, why and request id.
+  revision        Int           @default(1)
+  editedAt        DateTime?
+  editedByUserId  String?
+  editReason      String?
+  editRequestId   String?
   note            String?
   createdByUserId String
   createdAt       DateTime       @default(now())
@@ -379,6 +385,12 @@ model Sale {
   cancelledAt     DateTime?
   cancelledByUserId String?
   cancelReason    String?
+  /// Raised by each edit of the items; the last edit's who, when, why and request id.
+  revision        Int           @default(1)
+  editedAt        DateTime?
+  editedByUserId  String?
+  editReason      String?
+  editRequestId   String?
   note            String?
   createdByUserId String
   createdAt       DateTime      @default(now())

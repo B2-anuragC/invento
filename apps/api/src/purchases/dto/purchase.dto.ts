@@ -3,7 +3,7 @@ import { PaymentMethod } from '@prisma/client';
 import { TransactionFinanceDto } from '../../common/dto/transaction-finance.dto.js';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMinSize, IsBoolean, IsEnum, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsBoolean, IsInt, Max, Min, IsEnum, IsArray, IsDateString, IsDecimal, ValidateIf, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const quantityOptions = { decimal_digits: '0,3', force_decimal: false };
 const decimalOptions = { decimal_digits: '0,2', force_decimal: false };
@@ -29,6 +29,16 @@ export class CreatePurchaseDto extends TransactionFinanceDto {
   @ValidateNested({ each: true })
   @Type(() => PurchaseItemDto)
   items!: PurchaseItemDto[];
+}
+
+export class EditPurchaseItemsDto {
+  @ApiProperty({ description: 'Makes a retried request safe: the same requestId edits the bill once.' }) @IsString() @Matches(/^[A-Za-z0-9_-]{8,100}$/) requestId!: string;
+  @ApiPropertyOptional({ description: 'The bill revision the edit was made from; refused (409) if the bill changed since.' }) @ValidateIf((_o, v) => v !== undefined) @IsInt() @Min(1) @Max(2147483647) revision?: number;
+  @ApiProperty({ description: 'Why the bill is edited; kept with the bill.' }) @IsString() @MaxLength(200) @Matches(/\S/, { message: 'Enter why this bill is edited.' }) reason!: string;
+  @ApiProperty({ description: 'Whether the supplier charged GST. False: tax 0 on every line.' }) @Transform(({ obj, key }) => obj[key]) @IsBoolean() chargeGst!: boolean;
+  @ApiPropertyOptional({ description: 'The new total the person saw; refused (409) if prices changed it.' }) @ValidateIf((_o, v) => v !== undefined) @Matches(/^\d{1,12}(?:\.\d{1,2})?$/) expectedTotal?: string;
+  @ApiPropertyOptional({ enum: PaymentMethod, description: 'How money paid above the new total is refunded; defaults to how the bill was paid.' }) @ValidateIf((_o, v) => v !== undefined) @IsEnum(PaymentMethod) refundMethod?: PaymentMethod;
+  @ApiProperty({ type: [PurchaseItemDto] }) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => PurchaseItemDto) items!: PurchaseItemDto[];
 }
 
 export class UpdatePurchaseDto {

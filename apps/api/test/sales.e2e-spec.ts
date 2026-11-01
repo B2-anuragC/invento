@@ -62,7 +62,7 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     await prisma.$connect();
   });
 
-  function api(method: 'get' | 'post' | 'patch' | 'delete', path: string, tenant = businessId) {
+  function api(method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string, tenant = businessId) {
     return request(app.getHttpServer())[method](`/api${path}`).set('Authorization', `Bearer ${token}`).set('X-Business-Id', tenant);
   }
 
@@ -993,6 +993,131 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     await api('post', `/sales/${sale.id}/returns`).send(saleReturn()).expect(201);
     await api('post', `/purchases/${purchase.id}/returns`).send(purchaseReturn()).expect(201);
     await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'OWNER' } });
+  });
+
+  it('edits the items of a sale: priced like a new sale, stock moved by the difference, overpayment refunded, number and date kept', async () => {
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18', hsnCode: '700529' }).expect(200);
+    const now = new Date().toISOString();
+    const stock = async (id = products[0]) => (await api('get', `/inventory/${id}`).expect(200)).body.data.quantity;
+    // 10 × 50 + 18% = 590, paid in full by UPI.
+    const sale = (await api('post', '/sales').send({ ...input('10'), saleDate: now, paymentMethod: 'UPI', amountPaid: '590', chargeGst: true }).expect(201)).body.data;
+    expect(sale).toMatchObject({ total: '590', revision: 1, editedAt: null });
+    expect(await stock()).toBe('90');
+
+    // Four of the first product and three of the second, 10% off, GST still charged: priced exactly as the same new sale.
+    const edit = { requestId: randomUUID(), revision: 1, reason: 'Customer took fewer sheets', chargeGst: true, discountPercent: '10', refundMethod: 'CASH', items: [{ productId: products[0], quantity: '4', sellingPrice: '50' }, { productId: products[1], quantity: '3', sellingPrice: '60' }] };
+    const edited = (await api('put', `/sales/${sale.id}/items`).send(edit).expect(200)).body.data;
+    const same = (await api('post', '/sales').send({ ...input(), saleDate: now, chargeGst: true, discountPercent: '10', items: edit.items }).expect(201)).body.data;
+    const amounts = (bill: any) => ({ subtotal: bill.subtotal, discountTotal: bill.discountTotal, discountPercent: bill.discountPercent, taxTotal: bill.taxTotal, total: bill.total, chargeGst: bill.chargeGst, taxType: bill.taxType, items: bill.items.map((item: any) => [item.productId, item.quantity, item.sellingPrice, item.lineTotal, item.discountAmount, item.gstRate, item.taxAmount, item.hsnCode, item.stockQuantity]).sort() });
+    expect(amounts(edited)).toEqual(amounts(same));
+    // 200 + 180 = 380, less 38 = 342, GST 18% on 180 = 32.40: 374.40. 590 was paid, so 215.60 goes back in cash.
+    expect(edited).toMatchObject({ total: '374.4', amountPaid: '374.4', documentNumber: sale.documentNumber, saleDate: sale.saleDate, revision: 2, editReason: 'Customer took fewer sheets', editedByUserId: userId, paymentMethod: 'UPI', customerId });
+    expect(edited.editedAt).toBeTruthy();
+    expect(edited.payments.map((payment: any) => [payment.kind, payment.amount, payment.method])).toEqual([['PAYMENT', '590', 'UPI'], ['REFUND', '215.6', 'CASH']]);
+    expect([await stock(), await stock(products[1])]).toEqual(['92', '94']); // the same new sale took 4 and 3 more
+    const history = (await api('get', `/inventory/${products[0]}/history`).expect(200)).body.data;
+    expect(history.find((row: any) => row.note === `Edited sale ${sale.id}`)).toMatchObject({ type: 'RETURN_IN', quantity: '6' });
+
+    // A retry changes nothing; a stale revision, a shortage and a walk-in total above what was paid are refused.
+    await api('put', `/sales/${sale.id}/items`).send(edit).expect(200);
+    expect((await api('get', `/sales/${sale.id}`).expect(200)).body.data).toMatchObject({ revision: 2, payments: [expect.anything(), expect.anything()] });
+    expect((await api('put', `/sales/${sale.id}/items`).send({ ...edit, requestId: randomUUID() }).expect(409)).body.error.message).toMatch(/changed while you were editing/);
+    expect((await api('put', `/sales/${sale.id}/items`).send({ ...edit, requestId: randomUUID(), revision: 2, items: [{ productId: products[0], quantity: '101', sellingPrice: '50' }] }).expect(409)).body.error.message).toMatch(/^Not enough Product \d in stock/);
+    expect((await api('put', `/sales/${sale.id}/items`).send({ ...edit, requestId: randomUUID(), revision: 2, expectedTotal: '1.00' }).expect(409)).body.error.message).toMatch(/Prices changed/);
+    expect([await stock(), await stock(products[1])]).toEqual(['92', '94']);
+
+    // Raising the total keeps what was paid and leaves the rest due; GST off makes it a bill of supply.
+    const raised = (await api('put', `/sales/${sale.id}/items`).send({ requestId: randomUUID(), reason: 'Added handles', chargeGst: false, items: [{ productId: products[0], quantity: '10', sellingPrice: '50' }] }).expect(200)).body.data;
+    expect(raised).toMatchObject({ total: '500', taxTotal: '0', discountTotal: '0', discountPercent: null, chargeGst: false, amountPaid: '374.4', revision: 3 });
+    expect(raised.payments).toHaveLength(2);
+    expect([await stock(), await stock(products[1])]).toEqual(['86', '97']);
+
+    // Cancelling an edited sale puts back exactly what it holds now.
+    await api('post', `/sales/${sale.id}/cancel`).send({ reason: 'Mistake' }).expect(201);
+    expect([await stock(), await stock(products[1])]).toEqual(['96', '97']);
+    expect((await api('put', `/sales/${sale.id}/items`).send({ ...edit, requestId: randomUUID(), revision: 3 }).expect(409)).body.error.message).toBe('A cancelled bill cannot be edited.');
+
+    // A walk-in sale must stay paid in full.
+    const walkIn = (await api('get', '/customers').expect(200)).body.data.find((row: any) => row.isWalkIn);
+    const counter = (await api('post', '/sales').send({ ...input('1'), customerId: walkIn.id, saleDate: now, amountPaid: '50', chargeGst: false }).expect(201)).body.data;
+    expect((await api('put', `/sales/${counter.id}/items`).send({ requestId: randomUUID(), reason: 'More', chargeGst: false, items: [{ productId: products[2], quantity: '2', sellingPrice: '50' }] }).expect(400)).body.error.message).toMatch(/walk-in sale must stay paid in full/);
+    await api('put', `/sales/${counter.id}/items`).send({ requestId: randomUUID(), reason: 'Cheaper', chargeGst: false, items: [{ productId: products[2], quantity: '1', sellingPrice: '40' }] }).expect(200);
+  });
+
+  it('edits the items of a purchase, refused only when stock it added is really gone', async () => {
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    const now = new Date().toISOString();
+    const stock = async (id = products[0]) => (await api('get', `/inventory/${id}`).expect(200)).body.data.quantity;
+    const supplier = (await api('post', '/suppliers').send({ name: 'Edit supplier' }).expect(201)).body.data;
+    // 10 × 40 + 18% = 472, all paid.
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, purchaseDate: now, amountPaid: '472', paymentMethod: 'BANK_TRANSFER', items: [{ productId: products[0], quantity: '10', purchasePrice: '40' }] }).expect(201)).body.data;
+    await api('post', '/sales').send({ ...input('105'), saleDate: now }).expect(201);
+    expect(await stock()).toBe('5');
+
+    // Down to 6: only 4 go out again, which is there.
+    const body = (quantity: string, extra = {}) => ({ requestId: randomUUID(), reason: 'Supplier sent fewer', chargeGst: true, items: [{ productId: products[0], quantity, purchasePrice: '40' }], ...extra });
+    const edited = (await api('put', `/purchases/${purchase.id}/items`).send(body('6')).expect(200)).body.data;
+    expect(edited).toMatchObject({ total: '283.2', amountPaid: '283.2', revision: 2, documentNumber: purchase.documentNumber, purchaseDate: purchase.purchaseDate, editReason: 'Supplier sent fewer' });
+    expect(edited.payments.map((payment: any) => [payment.kind, payment.amount, payment.method])).toEqual([['PAYMENT', '472', 'BANK_TRANSFER'], ['REFUND', '188.8', 'BANK_TRANSFER']]);
+    expect(await stock()).toBe('1');
+    // Down to 4 would take 2 more out, but only 1 is left.
+    expect((await api('put', `/purchases/${purchase.id}/items`).send(body('4')).expect(409)).body.error.message).toMatch(/already been sold or used/);
+    expect(await stock()).toBe('1');
+
+    // Without GST, and another product added.
+    const regrouped = (await api('put', `/purchases/${purchase.id}/items`).send(body('6', { chargeGst: false, items: [{ productId: products[0], quantity: '6', purchasePrice: '40' }, { productId: products[1], quantity: '2', purchasePrice: '30' }] })).expect(200)).body.data;
+    expect(regrouped).toMatchObject({ chargeGst: false, subtotal: '300', taxTotal: '0', total: '300', amountPaid: '283.2', revision: 3 });
+    expect(await stock(products[1])).toBe('102');
+    await api('put', `/purchases/${purchase.id}/items`).send(body('6', { items: [{ productId: products[0], quantity: '6', purchasePrice: '40' }, { productId: products[0], quantity: '1', purchasePrice: '40' }] })).expect(400);
+  });
+
+  it('lets only owners and admins edit bill items, never on bills with returns or of another shop', async () => {
+    const supplier = (await api('post', '/suppliers').send({ name: 'Edit access supplier' }).expect(201)).body.data;
+    const sale = (await api('post', '/sales').send({ ...input('2') }).expect(201)).body.data;
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, purchaseDate: new Date().toISOString(), items: [{ productId: products[0], quantity: '2', purchasePrice: '5' }] }).expect(201)).body.data;
+    const saleEdit = (extra = {}) => ({ requestId: randomUUID(), reason: 'Fix', chargeGst: false, items: [{ productId: products[0], quantity: '1', sellingPrice: '50' }], ...extra });
+    const purchaseEdit = () => ({ requestId: randomUUID(), reason: 'Fix', chargeGst: false, items: [{ productId: products[0], quantity: '1', purchasePrice: '5' }] });
+
+    await api('put', `/sales/${sale.id}/items`).send(saleEdit({ reason: '  ' })).expect(422);
+    await api('put', `/sales/${sale.id}/items`).send(saleEdit({ total: '1' })).expect(422);
+    await api('put', `/sales/${sale.id}/items`).send({ ...saleEdit(), chargeGst: undefined }).expect(422);
+    const other = await api('post', '/businesses').send({ name: 'Edit tenant', slug: randomUUID() }).expect(201);
+    businessIds.push(other.body.data.id);
+    await api('put', `/sales/${sale.id}/items`, other.body.data.id).send(saleEdit()).expect(404);
+    await api('put', `/purchases/${purchase.id}/items`, other.body.data.id).send(purchaseEdit()).expect(404);
+    for (const role of ['MANAGER', 'MEMBER'] as const) {
+      await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role } });
+      await api('put', `/sales/${sale.id}/items`).send(saleEdit()).expect(403);
+      await api('put', `/purchases/${purchase.id}/items`).send(purchaseEdit()).expect(403);
+    }
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'ADMIN' } });
+    await api('put', `/purchases/${purchase.id}/items`).send(purchaseEdit()).expect(200);
+    await prisma.businessUser.update({ where: { businessId_userId: { businessId, userId } }, data: { role: 'OWNER' } });
+    expect((await api('get', `/sales/${sale.id}`).expect(200)).body.data.revision).toBe(1);
+
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: sale.items[0].id, quantity: '1' }] }).expect(201);
+    expect((await api('put', `/sales/${sale.id}/items`).send(saleEdit()).expect(409)).body.error.message).toMatch(/has returns/);
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('100');
+  });
+
+  it('serializes concurrent edits of one bill: one wins, a stale one is refused, a repeated request applies once', async () => {
+    const sale = (await api('post', '/sales').send({ ...input('10'), amountPaid: '500' }).expect(201)).body.data;
+    const edit = (quantity: string, requestId = randomUUID()) => ({ requestId, revision: 1, reason: 'Concurrent', chargeGst: false, items: [{ productId: products[0], quantity, sellingPrice: '50' }] });
+    const results = await Promise.all([api('put', `/sales/${sale.id}/items`).send(edit('4')), api('put', `/sales/${sale.id}/items`).send(edit('7'))]);
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const winner = results.find((result) => result.status === 200)!.body.data;
+    const quantity = winner.items[0].quantity;
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe(String(100 - Number(quantity)));
+    expect(winner.payments.filter((payment: any) => payment.kind === 'REFUND')).toHaveLength(1);
+
+    const again = edit('2');
+    const repeated = await Promise.all([1, 2, 3].map(() => api('put', `/sales/${sale.id}/items`).send({ ...again, revision: 2 })));
+    expect(repeated.map((result) => result.status)).toEqual([200, 200, 200]);
+    const final = (await api('get', `/sales/${sale.id}`).expect(200)).body.data;
+    expect(final).toMatchObject({ revision: 3, total: '100', amountPaid: '100' });
+    expect(final.payments.filter((payment: any) => payment.kind === 'REFUND')).toHaveLength(2);
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('98');
   });
 
   it('records when a payment was made, within the bill date and today', async () => {

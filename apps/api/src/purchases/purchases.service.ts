@@ -23,7 +23,9 @@ import {
   ProductStatus,
   SupplierStatus,
 } from '@prisma/client';
-import { chargesGst, lineGstRate } from '@invento/shared';
+import { billEditBlockReason, chargesGst, lineGstRate } from '@invento/shared';
+import { applyBillEdit } from '../common/bill-edits.js';
+import type { EditPurchaseItemsDto } from './dto/purchase.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 
@@ -167,110 +169,13 @@ export class PurchasesService {
     if (supplier.status !== SupplierStatus.ACTIVE)
       throw new ConflictException('Supplier is not active.');
 
-    if (input.items.length === 0)
-      throw new BadRequestException('At least one purchase item is required.');
-
-    const seen = new Set<string>();
-    const lines = input.items.map((item) => {
-      if (seen.has(item.productId))
-        throw new BadRequestException('Duplicate product in purchase items.');
-      seen.add(item.productId);
-      if (
-        !/^\d{1,9}(?:\.\d{1,3})?$/.test(item.quantity) ||
-        !/^\d{1,10}(?:\.\d{1,2})?$/.test(item.purchasePrice)
-      ) {
-        throw new BadRequestException(
-          'Invalid purchase quantity or price precision.',
-        );
-      }
-
-      const quantity = new Prisma.Decimal(item.quantity);
-      const purchasePrice = new Prisma.Decimal(item.purchasePrice);
-      if (quantity.lessThanOrEqualTo(0))
-        throw new BadRequestException(
-          'Purchase item quantity must be greater than zero.',
-        );
-      if (purchasePrice.lessThanOrEqualTo(0))
-        throw new BadRequestException(
-          'Purchase item price must be greater than zero.',
-        );
-
-      return {
-        productId: item.productId,
-        quantity,
-        purchasePrice,
-        gstRate: new Prisma.Decimal(0),
-        taxAmount: new Prisma.Decimal(0),
-        lineTotal: quantity
-          .times(purchasePrice)
-          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
-      };
-    });
-
-    const products = await this.prisma.product.findMany({
-      where: { businessId, id: { in: lines.map((line) => line.productId) } },
-    });
-    if (supplier.categories?.length || supplier.productIds?.length) {
-      for (const product of products)
-        if (
-          !supplier.productIds?.includes(product.id) &&
-          !(product.category && supplier.categories?.includes(product.category))
-        )
-          throw new BadRequestException(
-            'This product is not assigned to the selected supplier. Update their product list in People.',
-          );
-    }
-    const productsById = new Map(
-      products.map((product) => [product.id, product]),
-    );
-    for (const line of lines) {
-      const product = productsById.get(line.productId);
-      if (!product)
-        throw new NotFoundException(
-          `Product ${line.productId} not found in this business.`,
-        );
-      if (product.status !== ProductStatus.ACTIVE)
-        throw new ConflictException(`Product ${product.name} is not active.`);
-      if (product.unit === 'PIECE' && !line.quantity.isInteger())
-        throw new BadRequestException(
-          `${product.name} must be purchased in whole pieces.`,
-        );
-    }
-
-    // Without GST from the supplier, no line carries tax.
     const chargeGst = chargesGst(input.chargeGst);
-    for (const line of lines)
-      Object.assign(
-        line,
-        taxFor(
-          line.lineTotal,
-          lineGstRate(productsById.get(line.productId)!.gstRate?.toString(), chargeGst),
-        ),
-      );
-    const subtotal = lines.reduce(
-      (sum, line) => sum.plus(line.lineTotal),
-      new Prisma.Decimal(0),
+    const { lines, subtotal, taxTotal, total } = await this.pricePurchase(
+      businessId,
+      supplier,
+      input,
+      chargeGst,
     );
-    const taxTotal = lines.reduce(
-      (sum, line) => sum.plus(line.taxAmount),
-      new Prisma.Decimal(0),
-    );
-    const total = lines.reduce(
-      (sum, line) => sum.plus(line.lineTotal).plus(line.taxAmount),
-      new Prisma.Decimal(0),
-    );
-    if (
-      input.expectedTotal !== undefined &&
-      (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) ||
-        !total.equals(input.expectedTotal))
-    )
-      throw new ConflictException(
-        'Item rates changed the bill total. Review this pending transaction before syncing.',
-      );
-    if (total.greaterThan('999999999999.99'))
-      throw new BadRequestException(
-        'Purchase total exceeds the supported amount.',
-      );
     const purchaseDate = new Date(input.purchaseDate);
     if (Number.isNaN(purchaseDate.getTime()))
       throw new BadRequestException('Invalid purchase date.');
@@ -373,10 +278,169 @@ export class PurchasesService {
     }
   }
 
+  /**
+   * Works out a purchase's lines and totals from the items and GST choice.
+   * Creating a purchase and editing its items both use this, so an edited
+   * bill is priced exactly like a new one.
+   */
+  private async pricePurchase(
+    businessId: string,
+    supplier: { categories: string[] | null; productIds: string[] | null },
+    input: { items: PurchaseItemInput[]; expectedTotal?: string },
+    chargeGst: boolean,
+    keepProductIds?: Set<string>,
+  ) {
+    if (input.items.length === 0)
+      throw new BadRequestException('At least one purchase item is required.');
+
+    const seen = new Set<string>();
+    const lines = input.items.map((item) => {
+      if (seen.has(item.productId))
+        throw new BadRequestException('Duplicate product in purchase items.');
+      seen.add(item.productId);
+      if (
+        !/^\d{1,9}(?:\.\d{1,3})?$/.test(item.quantity) ||
+        !/^\d{1,10}(?:\.\d{1,2})?$/.test(item.purchasePrice)
+      ) {
+        throw new BadRequestException(
+          'Invalid purchase quantity or price precision.',
+        );
+      }
+
+      const quantity = new Prisma.Decimal(item.quantity);
+      const purchasePrice = new Prisma.Decimal(item.purchasePrice);
+      if (quantity.lessThanOrEqualTo(0))
+        throw new BadRequestException(
+          'Purchase item quantity must be greater than zero.',
+        );
+      if (purchasePrice.lessThanOrEqualTo(0))
+        throw new BadRequestException(
+          'Purchase item price must be greater than zero.',
+        );
+
+      return {
+        productId: item.productId,
+        quantity,
+        purchasePrice,
+        gstRate: new Prisma.Decimal(0),
+        taxAmount: new Prisma.Decimal(0),
+        lineTotal: quantity
+          .times(purchasePrice)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP),
+      };
+    });
+
+    const products = await this.prisma.product.findMany({
+      where: { businessId, id: { in: lines.map((line) => line.productId) } },
+    });
+    if (supplier.categories?.length || supplier.productIds?.length) {
+      for (const product of products)
+        if (
+          !keepProductIds?.has(product.id) &&
+          !supplier.productIds?.includes(product.id) &&
+          !(product.category && supplier.categories?.includes(product.category))
+        )
+          throw new BadRequestException(
+            'This product is not assigned to the selected supplier. Update their product list in People.',
+          );
+    }
+    const productsById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+    for (const line of lines) {
+      const product = productsById.get(line.productId);
+      if (!product)
+        throw new NotFoundException(
+          `Product ${line.productId} not found in this business.`,
+        );
+      // An edit may keep a product the shop has stopped buying since; it cannot add one.
+      if (product.status !== ProductStatus.ACTIVE && !keepProductIds?.has(product.id))
+        throw new ConflictException(`Product ${product.name} is not active.`);
+      if (product.unit === 'PIECE' && !line.quantity.isInteger())
+        throw new BadRequestException(
+          `${product.name} must be purchased in whole pieces.`,
+        );
+    }
+
+    // Without GST from the supplier, no line carries tax.
+    for (const line of lines)
+      Object.assign(
+        line,
+        taxFor(
+          line.lineTotal,
+          lineGstRate(productsById.get(line.productId)!.gstRate?.toString(), chargeGst),
+        ),
+      );
+    const subtotal = lines.reduce(
+      (sum, line) => sum.plus(line.lineTotal),
+      new Prisma.Decimal(0),
+    );
+    const taxTotal = lines.reduce(
+      (sum, line) => sum.plus(line.taxAmount),
+      new Prisma.Decimal(0),
+    );
+    const total = lines.reduce(
+      (sum, line) => sum.plus(line.lineTotal).plus(line.taxAmount),
+      new Prisma.Decimal(0),
+    );
+    if (
+      input.expectedTotal !== undefined &&
+      (!/^\d{1,12}(?:\.\d{1,2})?$/.test(input.expectedTotal) ||
+        !total.equals(input.expectedTotal))
+    )
+      throw new ConflictException(
+        'Item rates changed the bill total. Review this pending transaction before syncing.',
+      );
+    if (total.greaterThan('999999999999.99'))
+      throw new BadRequestException(
+        'Purchase total exceeds the supported amount.',
+      );
+    return { lines, productsById, subtotal, taxTotal, total };
+  }
+
   /** Cancels a completed purchase: its stock goes out again (refused if already sold), money paid is refunded. */
   async cancel(userId: string, businessId: string, id: string, input: CancelTransactionDto) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'purchases.cancel');
     await cancelTransaction(this.prisma, this.inventory, 'purchase', businessId, userId, id, input);
+    return this.get(userId, businessId, id);
+  }
+
+  /**
+   * Edits the items, quantities, prices and GST choice of a completed purchase,
+   * with a reason (owners and admins). The lines are priced exactly as a new
+   * purchase's; the number, date and supplier stay. Stock moves by the
+   * difference (refused when stock it added has already been sold), money
+   * paid above the new total is refunded, and the revision goes up (see
+   * applyBillEdit). Purchases with returns or cancelled ones cannot be edited.
+   */
+  async editItems(userId: string, businessId: string, id: string, input: EditPurchaseItemsDto) {
+    await requireBusinessPermission(this.prisma, userId, businessId, 'purchases.edit');
+    await requireBusinessPermission(this.prisma, userId, businessId, 'pricing.view');
+    const purchase = await this.prisma.purchase.findFirst({ where: { id, businessId }, include: { supplier: true, items: { select: { productId: true } }, _count: { select: { returns: true } } } });
+    if (!purchase) throw new NotFoundException('Purchase not found.');
+    // A retry of an edit that was saved.
+    if (purchase.editRequestId === input.requestId) return this.get(userId, businessId, id);
+    const blocked = billEditBlockReason({ status: purchase.status, returnedTotal: purchase.returnedTotal.toFixed(), returnCount: purchase._count.returns });
+    if (blocked) throw new ConflictException(blocked);
+    if (input.revision !== undefined && input.revision !== purchase.revision) throw new ConflictException('This bill was changed while you were editing it. Reload it and try again.');
+
+    const chargeGst = chargesGst(input.chargeGst);
+    const { lines, productsById, subtotal, taxTotal, total } = await this.pricePurchase(businessId, purchase.supplier, { items: input.items }, chargeGst, new Set(purchase.items.map((item) => item.productId)));
+    if (input.expectedTotal !== undefined && !total.equals(input.expectedTotal)) throw new ConflictException('Prices changed while you were editing. Review the new total and save again.');
+
+    // A purchase line is bought in the product's unit; the ledger keeps grouped products in pieces.
+    const stock = new Map(lines.map((line) => [line.productId, line.quantity.times(productsById.get(line.productId)!.piecesPerUnit ?? 1)]));
+    await applyBillEdit(this.prisma, this.inventory, 'purchase', businessId, userId, id, input, {
+      revision: purchase.revision,
+      total,
+      stock,
+      productNames: new Map([...productsById.values()].map((product) => [product.id, product.name])),
+      write: async (tx, fields) => {
+        await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
+        await tx.purchaseItem.createMany({ data: lines.map((line) => ({ purchaseId: id, productId: line.productId, quantity: line.quantity, purchasePrice: line.purchasePrice, lineTotal: line.lineTotal, gstRate: line.gstRate, taxAmount: line.taxAmount })) });
+        await tx.purchase.update({ where: { id }, data: { subtotal, taxTotal, total, chargeGst, ...fields } });
+      },
+    });
     return this.get(userId, businessId, id);
   }
 
@@ -460,6 +524,10 @@ export class PurchasesService {
         status: true,
         cancelledAt: true,
         cancelReason: true,
+        revision: true,
+        editedAt: true,
+        editedByUserId: true,
+        editReason: true,
         note: true,
         createdByUserId: true,
         createdAt: true,
@@ -489,14 +557,8 @@ export class PurchasesService {
 
   /**
    * Updates purchase metadata only (invoice number, purchase date, note).
-   *
-   * Line items, quantities, and prices cannot be edited once a purchase has
-   * been created, because inventory transactions have already been applied
-   * for those items and editing them after the fact could silently corrupt
-   * historical stock levels (see DEVELOPMENT_PLAN.md: "Partial purchase
-   * updates cannot occur"). To correct a purchase's items, use inventory
-   * adjustments (e.g. ADJUSTMENT_OUT + a new corrected purchase) rather than
-   * mutating a settled purchase's inventory effects.
+   * Items, prices and GST are changed with editItems, which moves stock and
+   * settles money in the same transaction.
    */
   async update(
     userId: string,
