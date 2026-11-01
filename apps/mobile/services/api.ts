@@ -9,7 +9,7 @@ export type SellingOption = { id: string; name: string; unit: string; quantity: 
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { ADJUST_PENDING_MESSAGE } from './stock-adjustment';
-import { indiaDate, todayBillTotals } from './dashboard-summary';
+import { indiaDate, lowStockRows, rangeStart, todayBillTotals, topProductDays, topProductRows, type LowStockRow, type TopProductRow } from './dashboard-summary';
 import { cachedAccess, configureOffline, getSyncStatus, syncOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
@@ -574,6 +574,22 @@ export async function fetchDashboardSummary(session: AppSession): Promise<Dashbo
     return { date: today, timezone: 'Asia/Kolkata', todaySales: sales.total, todayPurchases: canViewCosts ? purchases.total : null, saleCount: sales.count, purchaseCount: purchases.count, productCount: view.products.filter((product) => product.status === 'ACTIVE').length, lowStockCount: view.products.filter((product) => product.status === 'ACTIVE' && Number(view.inventory.find((stock) => stock.productId === product.id)?.quantity ?? 0) < Number((product as ProductRecord).minimumStock)).length, recentTransactions: view.inventoryActivity.slice(0, 10).map((record) => ({ ...record, productId: record.productId ?? record.product.id })) };
   }
   return request<DashboardSummary>('/dashboard/summary', { method: 'GET' }, session);
+}
+
+/** Active products below their minimum stock, by name (the first `limit`). */
+export async function fetchLowStock(session: AppSession, limit = 5): Promise<LowStockRow[]> {
+  await assertClientPermission(session, 'reports.view');
+  if (nativeOffline) { const view = await offlineView(session); return lowStockRows(view.products as ProductRecord[], view.inventory, limit); }
+  return request<LowStockRow[]>(`/dashboard/low-stock?limit=${limit}`, { method: 'GET' }, session);
+}
+
+/** Best-selling products by revenue over the last `topProductDays` days, net of discounts and returns. */
+export async function fetchTopProducts(session: AppSession, limit = 5): Promise<TopProductRow[]> {
+  await assertClientPermission(session, 'reports.view');
+  const to = indiaDate(Date.now());
+  const from = rangeStart(to, topProductDays);
+  if (nativeOffline) { const view = await offlineView(session); return topProductRows(view.sales, view.products as ProductRecord[], from, to, limit); }
+  return (await request<{ items: TopProductRow[] }>(`/dashboard/top-products?from=${from}&to=${to}&limit=${limit}`, { method: 'GET' }, session)).items;
 }
 
 export async function fetchProducts(

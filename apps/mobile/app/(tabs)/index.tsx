@@ -5,12 +5,15 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppScreen, appColors } from '@/components/invento-ui';
-import { formatMoney, plural } from '@/services/format';
+import { formatMoney, formatQuantity, plural } from '@/services/format';
+import { lowStockText, purchasesSummary, topProductDays, type LowStockRow, type TopProductRow } from '@/services/dashboard-summary';
 import { netAmount } from '@/services/transaction-accounting';
 import {
   appSession,
   fetchDashboardSummary,
+  fetchLowStock,
   fetchSales,
+  fetchTopProducts,
   type DashboardSummary,
   type SaleRecord,
 } from '@/services/api';
@@ -24,6 +27,8 @@ export default function DashboardScreen() {
   const sync = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [transactions, setTransactions] = useState<RecentTransaction[]>([]);
+  const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const requestId = useRef(0);
@@ -42,12 +47,16 @@ export default function DashboardScreen() {
     setLoading(true);
     setError('');
     try {
-      const [dashboard, sales] = await Promise.all([
+      const [dashboard, sales, lowStockRows, topProductRows] = await Promise.all([
         fetchDashboardSummary(session),
         can('sales.view') ? fetchSales(session) : [],
+        fetchLowStock(session),
+        fetchTopProducts(session),
       ]);
       if (requestId.current !== currentRequestId) return;
       setSummary(dashboard);
+      setLowStock(lowStockRows);
+      setTopProducts(topProductRows);
       setTransactions([
         ...sales.map((sale: SaleRecord): RecentTransaction => ({
           id: sale.id,
@@ -79,6 +88,7 @@ export default function DashboardScreen() {
   );
 
   const lowStockCount = summary?.lowStockCount ?? 0;
+  const purchases = summary ? purchasesSummary(summary) : null;
 
   return (
     <AppScreen>
@@ -121,6 +131,15 @@ export default function DashboardScreen() {
 
         </View>
 
+        <Pressable accessibilityRole="button" accessibilityLabel={purchases ? `Today's purchases: ${purchases.value}, ${purchases.detail}` : "Today's purchases"} disabled={!can('purchases.view')} onPress={() => router.push('/(tabs)/purchases')} style={styles.purchasesCard}>
+          <View style={styles.purchasesCopy}>
+            <Text style={styles.purchasesLabel}>TODAY’S PURCHASES</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.purchasesValue}>{loading || !purchases ? '—' : purchases.value}</Text>
+          </View>
+          <Text style={styles.purchasesDetail}>{loading || !purchases ? '' : purchases.detail}</Text>
+          {can('purchases.view') ? <Text style={styles.alertArrow}>›</Text> : null}
+        </Pressable>
+
         <View style={styles.actionRow}>
           <Pressable onPress={() => router.push('/sale/quick')} style={[styles.primaryAction, !can('sales.create') && { display: 'none' }]}>
             <Text style={styles.actionPlus}>＋</Text><Text style={styles.primaryActionText}>New sale</Text>
@@ -137,6 +156,42 @@ export default function DashboardScreen() {
           ) : null}
         </View>
 
+
+        {!loading && lowStock.length > 0 ? (
+          <>
+            <View style={styles.activityHeading}>
+              <Text style={styles.activityTitle}>Low stock</Text>
+              {can('inventory.view') ? <Pressable onPress={() => router.push('/(tabs)/inventory')}><Text style={styles.activityLink}>View all</Text></Pressable> : null}
+            </View>
+            <View style={styles.activityCard}>
+              {lowStock.map((item, index) => (
+                <Pressable key={item.productId} accessibilityRole="button" accessibilityLabel={`${item.name}: ${lowStockText(item)}`} disabled={!can('products.view')} onPress={() => router.push(`/product/${item.productId}`)} style={[styles.listRow, index < lowStock.length - 1 && styles.activityRowBorder]}>
+                  <Text numberOfLines={1} style={[styles.activityName, styles.listName]}>{item.name}</Text>
+                  <Text style={[styles.stockText, Number(item.quantity) <= 0 && styles.outText]}>{lowStockText(item)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        <View style={styles.activityHeading}>
+          <Text style={styles.activityTitle}>Top products</Text>
+          <Text style={styles.headingNote}>Last {topProductDays} days</Text>
+        </View>
+        <View style={styles.activityCard}>
+          {loading ? <ActivityIndicator color={appColors.primary} style={styles.loading} /> : null}
+          {!loading && !error && topProducts.length === 0 ? <Text style={styles.emptyActivity}>Your best-selling products will appear here.</Text> : null}
+          {loading ? null : topProducts.map((item, index) => (
+            <Pressable key={item.productId} accessibilityRole="button" accessibilityLabel={`${index + 1}. ${item.name}: ${formatQuantity(item.quantity, item.unit)} sold, ${formatMoney(item.revenue)}`} disabled={!can('products.view')} onPress={() => router.push(`/product/${item.productId}`)} style={[styles.listRow, index < topProducts.length - 1 && styles.activityRowBorder]}>
+              <Text style={styles.rank}>{index + 1}</Text>
+              <View style={styles.activityCopy}>
+                <Text numberOfLines={1} style={styles.activityName}>{item.name}</Text>
+                <Text style={styles.activityMeta}>{formatQuantity(item.quantity, item.unit)} sold</Text>
+              </View>
+              <Text style={styles.activityAmount}>{formatMoney(item.revenue)}</Text>
+            </Pressable>
+          ))}
+        </View>
 
         <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/sales?payment=pending')} style={[styles.pendingShortcut, !can('sales.view') && { display: 'none' }]}>
           <Text style={styles.activityLink}>Pending customer payments</Text>
@@ -195,6 +250,17 @@ const styles = StyleSheet.create({
   salesValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 12, marginTop: 17 },
   salesValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', flexShrink: 1 },
   salesCount: { color: '#D7E5DD', fontSize: 12 },
+  purchasesCard: { marginTop: 10, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E1E1E1', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  purchasesCopy: { flex: 1, minWidth: 0 },
+  purchasesLabel: { color: '#737B77', fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
+  purchasesValue: { marginTop: 4, color: '#24332A', fontSize: 20, fontWeight: '800' },
+  purchasesDetail: { color: '#737B77', fontSize: 12, flexShrink: 1, textAlign: 'right' },
+  headingNote: { color: '#737B77', fontSize: 12 },
+  listRow: { minHeight: 52, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  listName: { flex: 1, minWidth: 0 },
+  stockText: { color: '#96621B', fontSize: 12, fontWeight: '600' },
+  outText: { color: '#A74737' },
+  rank: { width: 22, color: '#176B50', fontSize: 14, fontWeight: '800', textAlign: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 14 },
   primaryAction: { paddingHorizontal: 16, paddingVertical: 10, minHeight: 52, borderRadius: 10, backgroundColor: '#176B50', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionPlus: { color: '#FFFFFF', fontSize: 21, fontWeight: '500' },

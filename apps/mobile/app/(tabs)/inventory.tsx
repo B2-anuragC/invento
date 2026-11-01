@@ -5,7 +5,9 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 
 import { ActionButton, AppScreen, ListCard, SectionHeader, SummaryCard, formatUnitLabel } from '@/components/invento-ui';
 import { appSession, fetchInventory, fetchProducts, type InventoryRecord, type ProductRecord } from '@/services/api';
-import { formatQuantity } from '@/services/format';
+import { formatMoney, formatQuantity } from '@/services/format';
+import { usePermissions } from '@/services/permissions';
+import { stockValue } from '@/services/stock-value';
 import { receiveStockNotice } from '@/services/stock-adjustment';
 
 type StockItem = {
@@ -18,6 +20,7 @@ type StockItem = {
 
 export default function InventoryScreen() {
   const router = useRouter();
+  const { can } = usePermissions();
   const [filter, setFilter] = useState<'All' | 'Low stock' | 'Out of stock'>('All');
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [inventory, setInventory] = useState<Record<string, InventoryRecord>>({});
@@ -96,6 +99,7 @@ export default function InventoryScreen() {
       return left.name.localeCompare(right.name);
     });
 
+  const value = stockValue(products, Object.values(inventory), can('pricing.view'));
   const outOfStockCount = stockItems.filter((item) => item.quantity <= 0).length;
   const reorderCount = stockItems.filter((item) => item.quantity <= 0 || item.quantity < item.minimumStock).length;
 
@@ -130,6 +134,24 @@ export default function InventoryScreen() {
             value={loading || error ? '—' : String(reorderCount)}
             delta={loading ? 'Loading…' : error ? 'Unavailable' : `${outOfStockCount} out of stock`}
             accent="amber"
+          />
+        </View>
+
+        <SectionHeader title="Stock value" />
+        <View style={styles.cardsRow}>
+          {value.atCost !== null ? (
+            <SummaryCard
+              label="At cost"
+              value={loading || error ? '—' : formatMoney(value.atCost)}
+              delta={loading ? 'Loading…' : error ? 'Unavailable' : 'Before GST'}
+              accent="blue"
+            />
+          ) : null}
+          <SummaryCard
+            label="At selling price"
+            value={loading || error ? '—' : formatMoney(value.atSellingPrice)}
+            delta={loading ? 'Loading…' : error ? 'Unavailable' : 'Before GST'}
+            accent="blue"
           />
         </View>
 
