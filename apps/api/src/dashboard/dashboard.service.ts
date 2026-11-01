@@ -38,8 +38,10 @@ export class DashboardService {
     const range = dashboardRange({ from: today, to: today });
     // A single snapshot keeps related metrics consistent during concurrent writes.
     return this.prisma.$transaction(async (tx) => {
-      const sales = await tx.sale.aggregate({ where: { businessId, status: 'COMPLETED', saleDate: { gte: range.start, lt: range.end } }, _sum: { total: true }, _count: true });
-      const purchases = await tx.purchase.aggregate({ where: { businessId, status: 'COMPLETED', purchaseDate: { gte: range.start, lt: range.end } }, _sum: { total: true }, _count: true });
+      // Net of returns: each bill counts at its total less its credit or debit notes.
+      const sales = await tx.sale.aggregate({ where: { businessId, status: 'COMPLETED', saleDate: { gte: range.start, lt: range.end } }, _sum: { total: true, returnedTotal: true }, _count: true });
+      const purchases = await tx.purchase.aggregate({ where: { businessId, status: 'COMPLETED', purchaseDate: { gte: range.start, lt: range.end } }, _sum: { total: true, returnedTotal: true }, _count: true });
+      const net = (sum: { total: Prisma.Decimal | null; returnedTotal: Prisma.Decimal | null }) => (sum.total ?? new Prisma.Decimal(0)).minus(sum.returnedTotal ?? 0);
       const productCount = await tx.product.count({ where: { businessId, status: 'ACTIVE' } });
       const [lowStock] = await tx.$queryRaw<{ count: number }[]>(Prisma.sql`
         SELECT COUNT(*)::int AS count FROM products p
@@ -54,8 +56,8 @@ export class DashboardService {
       return {
         date: today,
         timezone: dashboardTimezone,
-        todaySales: sales._sum.total ?? new Prisma.Decimal(0),
-        todayPurchases: canViewPurchasePrice ? purchases._sum.total ?? new Prisma.Decimal(0) : null,
+        todaySales: net(sales._sum),
+        todayPurchases: canViewPurchasePrice ? net(purchases._sum) : null,
         saleCount: sales._count,
         purchaseCount: purchases._count,
         productCount,
@@ -70,7 +72,7 @@ export class DashboardService {
     const range = dashboardRange(query);
     const rows = await this.prisma.$queryRaw<DayTotal[]>(Prisma.sql`
       SELECT to_char("saleDate" + interval '5 hours 30 minutes', 'YYYY-MM-DD') AS date,
-        SUM(total) AS total, COUNT(*)::int AS count
+        SUM(total - "returnedTotal") AS total, COUNT(*)::int AS count
       FROM sales WHERE "businessId" = ${businessId} AND status = 'COMPLETED'
         AND "saleDate" >= ${range.start} AND "saleDate" < ${range.end}
       GROUP BY 1 ORDER BY 1`);
@@ -82,7 +84,7 @@ export class DashboardService {
     const range = dashboardRange(query);
     const rows = await this.prisma.$queryRaw<DayTotal[]>(Prisma.sql`
       SELECT to_char("purchaseDate" + interval '5 hours 30 minutes', 'YYYY-MM-DD') AS date,
-        SUM(total) AS total, COUNT(*)::int AS count
+        SUM(total - "returnedTotal") AS total, COUNT(*)::int AS count
       FROM purchases WHERE "businessId" = ${businessId} AND status = 'COMPLETED'
         AND "purchaseDate" >= ${range.start} AND "purchaseDate" < ${range.end}
       GROUP BY 1 ORDER BY 1`);
@@ -110,12 +112,14 @@ export class DashboardService {
     await requireBusinessPermission(this.prisma, userId, businessId, 'reports.view');
     const range = dashboardRange(query);
     const items = await this.prisma.$queryRaw<(Pick<LowStock, 'productId' | 'name' | 'sku' | 'unit'> & { quantity: Prisma.Decimal; revenue: Prisma.Decimal })[]>(Prisma.sql`
-      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN i.quantity * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE i.quantity * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal" - i."discountAmount") AS revenue
+      SELECT p.id AS "productId", p.name, p.sku, p.unit, SUM(CASE WHEN i.unit = 'PIECE' THEN (i.quantity - r.quantity) * i."unitsPerOption" / COALESCE(p."piecesPerUnit", 1) ELSE (i.quantity - r.quantity) * i."unitsPerOption" END) AS quantity, SUM(i."lineTotal" - i."discountAmount" - r.revenue) AS revenue
       FROM sale_items i JOIN sales s ON s.id = i."saleId"
       JOIN products p ON p.id = i."productId" AND p."businessId" = s."businessId"
+      -- Net of returns: what came back from each line is taken off its quantity and revenue.
+      CROSS JOIN LATERAL (SELECT COALESCE(SUM(ri.quantity), 0) AS quantity, COALESCE(SUM(ri."lineTotal" - ri."discountAmount"), 0) AS revenue FROM sale_return_items ri WHERE ri."saleItemId" = i.id) r
       WHERE s."businessId" = ${businessId} AND s.status = 'COMPLETED'
         AND s."saleDate" >= ${range.start} AND s."saleDate" < ${range.end}
-      GROUP BY p.id ORDER BY revenue DESC, p.id LIMIT ${query.limit}`);
+      GROUP BY p.id HAVING SUM(i.quantity - r.quantity) > 0 ORDER BY revenue DESC, p.id LIMIT ${query.limit}`);
     return { from: range.from, to: range.to, timezone: range.timezone, items };
   }
 

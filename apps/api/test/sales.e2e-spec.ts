@@ -846,6 +846,122 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     expect((await api('get', '/sync/snapshot').expect(200)).body.data.sales.filter((row: any) => row.status === 'CANCELLED')).toHaveLength(2);
   });
 
+  it('records sales returns as credit notes: stock back, discount and GST reversed, owed amount first, then a refund', async () => {
+    await api('patch', `/businesses/${businessId}`).send({ gstin: '27AAPFU0939F1ZV' }).expect(200);
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    const now = new Date().toISOString();
+    const today = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+    const stock = async (id = products[0]) => (await api('get', `/inventory/${id}`).expect(200)).body.data.quantity;
+    // 299.99 less a 10.00 discount (3.33 and 6.67), 18% GST on 96.66 = 17.40: 307.39, of which 300 was paid.
+    const sale = (await api('post', '/sales').send({ ...input(), saleDate: now, paymentMethod: 'UPI', amountPaid: '300', chargeGst: true, discountAmount: '10', items: [{ productId: products[0], quantity: '3', sellingPrice: '33.33' }, { productId: products[1], quantity: '4', sellingPrice: '50' }] }).expect(201)).body.data;
+    expect(sale).toMatchObject({ total: '307.39', returnedTotal: '0', netTotal: '307.39' });
+    const [glass, other] = [products[0], products[1]].map((id) => sale.items.find((item: any) => item.productId === id));
+    expect(glass).toMatchObject({ discountAmount: '3.33', taxAmount: '17.4', returnedQuantity: '0' });
+
+    // One of three: 33.33 less 1.11 discount plus 5.80 GST = 38.02. It clears the 7.39 still owed and refunds 30.63 by UPI.
+    const requestId = randomUUID();
+    const first = (await api('post', `/sales/${sale.id}/returns`).send({ requestId, items: [{ itemId: glass.id, quantity: '1' }], reason: 'Cracked pane' }).expect(201)).body.data;
+    expect(first).toMatchObject({ total: '307.39', returnedTotal: '38.02', netTotal: '269.37', amountPaid: '269.37', documentNumber: sale.documentNumber });
+    expect(first.returns).toHaveLength(1);
+    expect(first.returns[0]).toMatchObject({ subtotal: '33.33', discountTotal: '1.11', taxTotal: '5.8', total: '38.02', refundAmount: '30.63', refundMethod: 'UPI', reason: 'Cracked pane' });
+    expect(first.returns[0].documentNumber).toMatch(/^CN\/\d{4}-\d{2}\/0001$/);
+    expect(first.returns[0].items[0]).toMatchObject({ saleItemId: glass.id, quantity: '1', stockQuantity: '1', lineTotal: '33.33', discountAmount: '1.11', gstRate: '18', taxAmount: '5.8' });
+    expect(first.items.find((item: any) => item.id === glass.id).returnedQuantity).toBe('1');
+    expect(first.payments.map((payment: any) => [payment.kind, payment.amount, payment.method])).toEqual([['PAYMENT', '300', 'UPI'], ['REFUND', '30.63', 'UPI']]);
+    expect(await stock()).toBe('98');
+    const history = (await api('get', `/inventory/${products[0]}/history`).expect(200)).body.data;
+    expect(history[0]).toMatchObject({ type: 'RETURN_IN', quantity: '1', note: `Credit note ${first.returns[0].documentNumber}` });
+
+    // A retry records nothing more; the same request id on another bill is refused.
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId, items: [{ itemId: glass.id, quantity: '1' }] }).expect(201);
+    expect(await stock()).toBe('98');
+    const another = (await api('post', '/sales').send({ ...input('1'), saleDate: now }).expect(201)).body.data;
+    await api('post', `/sales/${another.id}/returns`).send({ requestId, items: [{ itemId: another.items[0].id, quantity: '1' }] }).expect(409);
+
+    // Never more than sold less returned; lines of another bill, bad quantities and unknown fields are refused.
+    expect((await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: glass.id, quantity: '3' }] }).expect(400)).body.error.message).toMatch(/Only 2 can be returned/);
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: another.items[0].id, quantity: '1' }] }).expect(400);
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: glass.id, quantity: '0.0001' }] }).expect(422);
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [] }).expect(422);
+    await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: glass.id, quantity: '1' }], refund: '5' }).expect(422);
+
+    // The rest: what is left of each amount, so the two notes add up to the bill. Nothing is owed, so all 269.37 is refunded, in cash as chosen.
+    const rest = (await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), refundMethod: 'CASH', items: [{ itemId: glass.id, quantity: '2' }, { itemId: other.id, quantity: '4' }] }).expect(201)).body.data;
+    expect(rest).toMatchObject({ returnedTotal: '307.39', netTotal: '0', amountPaid: '0' });
+    expect(rest.returns[1]).toMatchObject({ subtotal: '266.66', discountTotal: '8.89', taxTotal: '11.6', total: '269.37', refundAmount: '269.37', refundMethod: 'CASH' });
+    expect(rest.returns[1].documentNumber).toMatch(/\/0002$/);
+    expect(rest.items.map((item: any) => item.returnedQuantity).sort()).toEqual(['3', '4']);
+    expect(await stock()).toBe('99'); // one is on the other bill
+    expect(await stock(products[1])).toBe('100');
+
+    // A fully returned bill takes no payment and cannot be cancelled; the dashboard and lists count it at its net amount.
+    await api('post', `/sales/${sale.id}/payments`).send({ amount: '1', method: 'CASH', requestId: randomUUID() }).expect(400);
+    expect((await api('post', `/sales/${sale.id}/cancel`).send({ reason: 'Undo' }).expect(409)).body.error.message).toMatch(/has returns/);
+    expect((await api('get', '/sales').expect(200)).body.data.find((row: any) => row.id === sale.id)).toMatchObject({ returnedTotal: '307.39', netTotal: '0' });
+    expect((await api('get', '/dashboard/summary').expect(200)).body.data).toMatchObject({ todaySales: '59', saleCount: 2 });
+    expect((await api('get', `/dashboard/sales?from=${today}&to=${today}`).expect(200)).body.data).toMatchObject({ total: '59', count: 2 });
+    const top = (await api('get', `/dashboard/top-products?from=${today}&to=${today}`).expect(200)).body.data.items;
+    expect(top.map((row: any) => [row.productId, row.quantity, row.revenue])).toEqual([[products[0], '1', '50']]);
+    const snapshot = (await api('get', '/sync/snapshot').expect(200)).body.data;
+    expect(snapshot.sales.find((row: any) => row.id === sale.id)).toMatchObject({ netTotal: '0', returns: [expect.objectContaining({ total: '38.02' }), expect.objectContaining({ total: '269.37' })] });
+
+    // A cancelled bill cannot be returned.
+    await api('post', `/sales/${another.id}/cancel`).send({ reason: 'Mistake' }).expect(201);
+    expect((await api('post', `/sales/${another.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: another.items[0].id, quantity: '1' }] }).expect(409)).body.error.message).toMatch(/cancelled bill/);
+
+    // The database keeps the amount paid within the net amount.
+    await expect(prisma.sale.update({ where: { id: sale.id }, data: { amountPaid: '1' } })).rejects.toThrow('sales_paid_bounds');
+  });
+
+  it('returns a pack or loose pieces of one product, in whole pieces', async () => {
+    const product = (await api('post', '/products').send({ name: 'Door handle', sku: 'HANDLE-R', unit: 'PIECE', purchasePrice: '120', sellingPrice: '180', minimumStock: '0', sellingOptions: [
+      { id: 'pack', name: 'Pack of 10', unit: 'PACK', piecesPerUnit: 10, quantity: '1', sellingPrice: '1700' },
+    ] }).expect(201)).body.data;
+    await api('post', '/inventory/opening-stock').send({ productId: product.id, quantity: '12' }).expect(201);
+    const sale = (await api('post', '/sales').send({ ...input(), amountPaid: '0', items: [
+      { productId: product.id, quantity: '1', sellingPrice: '1700', sellingOptionId: 'pack' },
+      { productId: product.id, quantity: '2', sellingPrice: '180', unit: 'PIECE' },
+    ] }).expect(201)).body.data;
+    const pack = sale.items.find((item: any) => item.sellingOptionId === 'pack');
+    const loose = sale.items.find((item: any) => item.unit === 'PIECE');
+    expect([pack.stockQuantity, loose.stockQuantity]).toEqual(['10', '2']);
+    expect((await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: loose.id, quantity: '0.5' }] }).expect(400)).body.error.message).toMatch(/whole pieces/);
+    // On credit: the return only lowers what the customer owes, and no refund is paid.
+    const returned = (await api('post', `/sales/${sale.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: pack.id, quantity: '1' }] }).expect(201)).body.data;
+    expect(returned).toMatchObject({ netTotal: '360', amountPaid: '0', payments: [] });
+    expect(returned.returns[0]).toMatchObject({ total: '1700', refundAmount: '0', refundMethod: null });
+    expect((await api('get', `/inventory/${product.id}`).expect(200)).body.data.quantity).toBe('10');
+    await api('post', `/sales/${sale.id}/payments`).send({ amount: '360.01', method: 'CASH', requestId: randomUUID() }).expect(400);
+    await api('post', `/sales/${sale.id}/payments`).send({ amount: '360', method: 'CASH', requestId: randomUUID() }).expect(201);
+  });
+
+  it('records purchase returns as debit notes, refused when the stock is no longer there', async () => {
+    await api('patch', `/products/${products[0]}`).send({ gstRate: '18' }).expect(200);
+    const now = new Date().toISOString();
+    const today = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+    const supplier = (await api('post', '/suppliers').send({ name: 'Return supplier' }).expect(201)).body.data;
+    // 10 × 40 + 18% = 472, of which 100 was paid.
+    const purchase = (await api('post', '/purchases').send({ supplierId: supplier.id, purchaseDate: now, amountPaid: '100', items: [{ productId: products[0], quantity: '10', purchasePrice: '40' }] }).expect(201)).body.data;
+    expect(purchase).toMatchObject({ total: '472', netTotal: '472' });
+
+    // 2.5 back: 100 + 18 GST = 118, all taken off the 372 still owed.
+    const returned = (await api('post', `/purchases/${purchase.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: purchase.items[0].id, quantity: '2.5' }] }).expect(201)).body.data;
+    expect(returned).toMatchObject({ returnedTotal: '118', netTotal: '354', amountPaid: '100' });
+    expect(returned.returns[0]).toMatchObject({ subtotal: '100', taxTotal: '18', total: '118', refundAmount: '0' });
+    expect(returned.returns[0].documentNumber).toMatch(/^DN\/\d{4}-\d{2}\/0001$/);
+    expect(returned.items[0].returnedQuantity).toBe('2.5');
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('107.5');
+
+    // Once the stock is sold, it cannot go back; nothing changes and no number is used.
+    await api('post', '/sales').send({ ...input('107'), saleDate: now }).expect(201);
+    expect((await api('post', `/purchases/${purchase.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: purchase.items[0].id, quantity: '1' }] }).expect(409)).body.error.message).toMatch(/^Not enough .* in stock to return/);
+    expect((await api('get', `/inventory/${products[0]}`).expect(200)).body.data.quantity).toBe('0.5');
+    const second = (await api('post', `/purchases/${purchase.id}/returns`).send({ requestId: randomUUID(), items: [{ itemId: purchase.items[0].id, quantity: '0.5' }] }).expect(201)).body.data;
+    expect(second.returns[1].documentNumber).toMatch(/\/0002$/);
+    expect((await api('get', `/dashboard/purchases?from=${today}&to=${today}`).expect(200)).body.data).toMatchObject({ total: '330.4', count: 1 });
+    expect((await api('get', '/sync/snapshot').expect(200)).body.data.purchases.find((row: any) => row.id === purchase.id).returns).toHaveLength(2);
+  });
+
   it('records when a payment was made, within the bill date and today', async () => {
     const sale = (await api('post', '/sales').send({ ...input('2'), saleDate: '2026-09-20T06:00:00Z', amountPaid: '0' }).expect(201)).body.data;
     const pay = (paidAt: string) => api('post', `/sales/${sale.id}/payments`).send({ amount: '10', method: 'UPI', requestId: randomUUID(), paidAt });

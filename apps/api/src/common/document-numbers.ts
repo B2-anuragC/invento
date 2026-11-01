@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { financialYearOf, formatDocumentNumber, type DocumentSeries } from '@invento/shared';
+import { DEFAULT_DOCUMENT_PREFIX, financialYearOf, formatDocumentNumber, type DocumentSeries } from '@invento/shared';
 import { Prisma } from '@prisma/client';
 
 export type AllocatedDocumentNumber = { documentNumber: string; financialYear: string; documentSeq: number };
@@ -40,6 +40,7 @@ export async function allocateDocumentNumber(tx: Prisma.TransactionClient, busin
       RETURNING "lastNumber"`,
   );
   const documentSeq = Number(counter.lastNumber);
-  const prefix = series === 'SALE' ? business.invoicePrefix : business.purchasePrefix;
+  // Credit and debit notes always use CN and DN.
+  const prefix = series === 'SALE' ? business.invoicePrefix : series === 'PURCHASE' ? business.purchasePrefix : DEFAULT_DOCUMENT_PREFIX[series];
   return { financialYear, documentSeq, documentNumber: formatDocumentNumber(prefix, financialYear, documentSeq) };
 }

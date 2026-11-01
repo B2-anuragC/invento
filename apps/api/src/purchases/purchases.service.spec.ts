@@ -67,7 +67,7 @@ function createFakeEnvironment(
           return store.purchases[where.id];
         }),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          const purchase = { id: 'purchase-a', ...data };
+          const purchase = { id: 'purchase-a', returnedTotal: new Prisma.Decimal(0), ...data };
           store.purchases[purchase.id] = purchase;
           return purchase;
         }),
@@ -150,11 +150,13 @@ describe('PurchasesService', () => {
     expect(store.counters).toEqual({});
   });
 
-  it('hides purchase totals and unit costs from members when access is disabled', async () => {
+  it('hides purchase totals, unit costs and debit note amounts from members when access is disabled', async () => {
     const purchase = {
       id: 'purchase-a',
       total: new Prisma.Decimal('120'),
-      items: [{ id: 'item-a', purchasePrice: new Prisma.Decimal('12'), lineTotal: new Prisma.Decimal('120'), quantity: new Prisma.Decimal('10') }],
+      returnedTotal: new Prisma.Decimal('24'),
+      items: [{ id: 'item-a', purchasePrice: new Prisma.Decimal('12'), lineTotal: new Prisma.Decimal('120'), quantity: new Prisma.Decimal('10'), returnItems: [{ quantity: new Prisma.Decimal('2') }] }],
+      returns: [{ id: 'return-a', documentNumber: 'DN/2026-27/0001', subtotal: new Prisma.Decimal('24'), taxTotal: new Prisma.Decimal('0'), total: new Prisma.Decimal('24'), refundAmount: new Prisma.Decimal('24'), refundMethod: 'CASH', items: [{ id: 'line-a', quantity: new Prisma.Decimal('2'), lineTotal: new Prisma.Decimal('24'), taxAmount: new Prisma.Decimal('0') }] }],
     };
     const prisma = {
       businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'MEMBER', roleDefinition: { permissions: DEFAULT_ROLE_PERMISSIONS.MEMBER.filter(p => p !== 'pricing.view') } }) },
@@ -164,7 +166,8 @@ describe('PurchasesService', () => {
     const result = await new PurchasesService(prisma as never, {} as never).list('user-a', 'business-a', {});
     expect(result).toEqual([{
       id: 'purchase-a',
-      items: [{ id: 'item-a', quantity: new Prisma.Decimal('10') }],
+      items: [{ id: 'item-a', quantity: new Prisma.Decimal('10'), returnedQuantity: new Prisma.Decimal('2') }],
+      returns: [{ id: 'return-a', documentNumber: 'DN/2026-27/0001', items: [{ id: 'line-a', quantity: new Prisma.Decimal('2') }] }],
     }]);
   });
 

@@ -69,7 +69,7 @@ function createFakeEnvironment(
           return store.sales[where.id];
         }),
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-          const sale = { id: 'sale-a', ...data };
+          const sale = { id: 'sale-a', returnedTotal: new Prisma.Decimal(0), ...data };
           store.sales[sale.id] = sale;
           return sale;
         }),
@@ -227,7 +227,7 @@ describe('SalesService', () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue({ isActive: true, isPlatformAdmin: false }) },
       businessUser: { findUnique: vi.fn().mockResolvedValue({ business: { isActive: true }, isActive: true, role: 'ADMIN', roleDefinition: { permissions: [...DEFAULT_ROLE_PERMISSIONS.ADMIN] } }) },
-      sale: { findFirst: vi.fn().mockResolvedValue({ id: 'sale-a' }), update: vi.fn().mockResolvedValue({ id: 'sale-a', note: 'corrected' }) },
+      sale: { findFirst: vi.fn().mockResolvedValue({ id: 'sale-a', total: new Prisma.Decimal(10), returnedTotal: new Prisma.Decimal(0), items: [] }), update: vi.fn().mockResolvedValue({ id: 'sale-a', note: 'corrected', total: new Prisma.Decimal(10), returnedTotal: new Prisma.Decimal(0), items: [] }) },
     };
     const inventory = { applyMovement: vi.fn() };
     const service = new SalesService(prisma as never, inventory as never);
@@ -524,7 +524,7 @@ describe('SalesService', () => {
       };
       return { prisma, service: new SalesService(prisma as never, {} as never) };
     };
-    const numbered = { id: 'sale-a', documentNumber: 'INV/2025-26/0004', financialYear: '2025-26' };
+    const numbered = { id: 'sale-a', documentNumber: 'INV/2025-26/0004', financialYear: '2025-26', total: new Prisma.Decimal(10), returnedTotal: new Prisma.Decimal(0), items: [] };
 
     it('allows a new date within the invoice financial year', async () => {
       const { service, prisma } = environment(numbered);
@@ -541,7 +541,7 @@ describe('SalesService', () => {
     });
 
     it('lets unnumbered (older) sales change date freely', async () => {
-      const { service, prisma } = environment({ id: 'sale-a', documentNumber: null, financialYear: null });
+      const { service, prisma } = environment({ ...numbered, documentNumber: null, financialYear: null });
       await service.update('user-a', 'business-a', 'sale-a', { saleDate: '2024-06-01' });
       expect(prisma.sale.update).toHaveBeenCalled();
     });

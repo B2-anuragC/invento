@@ -52,8 +52,8 @@ describe.runIf(process.env.RUN_AUTHORIZATION_DATABASE_TESTS === '1')(
             expect(
               roles.find((r) => r.businessId === 'a' && r.key === 'OWNER')
                 ?.permissions,
-              // The cancel permissions came later, with 20261031050000_cancel_bills.
-            ).toEqual(PERMISSIONS.filter((p) => !['sales.cancel', 'purchases.cancel'].includes(p)));
+              // The cancel and return permissions came later, with 20261031050000_cancel_bills and 20261101020000_returns.
+            ).toEqual(PERMISSIONS.filter((p) => !['sales.cancel', 'purchases.cancel', 'sales.return', 'purchases.return'].includes(p)));
             expect(
               roles.find((r) => r.businessId === 'a' && r.key === 'MEMBER')
                 ?.permissions,

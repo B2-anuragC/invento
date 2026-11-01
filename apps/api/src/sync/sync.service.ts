@@ -32,6 +32,7 @@ import {
 import { OpeningStockDto } from '../inventory/dto/inventory.dto.js';
 import { globalValidationPipe } from '../common/pipes/validation.pipe.js';
 import { SyncCommandDto } from './sync.dto.js';
+import { billReturnsInclude, withReturns } from '../common/returns.js';
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -70,8 +71,10 @@ export class SyncService {
             items: {
               include: {
                 product: { select: { name: true, sku: true, unit: true } },
+                returnItems: { select: { quantity: true } },
               },
             },
+            ...billReturnsInclude,
           },
           orderBy: { saleDate: 'desc' },
         });
@@ -83,18 +86,21 @@ export class SyncService {
             items: {
               include: {
                 product: { select: { name: true, sku: true, unit: true } },
+                returnItems: { select: { quantity: true } },
               },
             },
+            ...billReturnsInclude,
           },
           orderBy: { purchaseDate: 'desc' },
         });
         return {
-          sales: membership.permissions.includes('sales.view') ? sales : [],
+          // Bills carry their credit and debit notes, returned quantities and net amounts.
+          sales: membership.permissions.includes('sales.view') ? sales.map(withReturns) : [],
           purchases: membership.permissions.includes('purchases.view')
             ? await new PurchasesService(
                 tx as PrismaService,
                 inventory,
-              ).applyPriceVisibility(businessId, membership, purchases)
+              ).applyPriceVisibility(businessId, membership, purchases.map(withReturns))
             : [],
           schemaVersion: 1,
           // Shop details for receipts and invoices printed from the device.

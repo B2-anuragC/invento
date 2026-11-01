@@ -5,8 +5,9 @@ import {
   dueDateFor,
   recordTransactionPayment,
 } from '../common/transaction-accounting.js';
-import type { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import type { CancelTransactionDto, CreateReturnDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { cancelTransaction } from '../common/cancellation.js';
+import { billReturnsInclude, recordReturn, withReturns } from '../common/returns.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import {
@@ -65,6 +66,9 @@ type PriceSensitivePurchase = {
   taxTotal?: unknown;
   amountPaid?: unknown;
   payments?: unknown;
+  returnedTotal?: unknown;
+  netTotal?: unknown;
+  returns?: Array<Record<string, unknown> & { items: Array<Record<string, unknown>> }>;
   total: unknown;
   items: Array<{
     purchasePrice: unknown;
@@ -82,8 +86,12 @@ type RedactedPurchase<T extends PriceSensitivePurchase> = Omit<
   | 'amountPaid'
   | 'payments'
   | 'attachment'
+  | 'returnedTotal'
+  | 'netTotal'
+  | 'returns'
 > & {
   total?: never;
+  returns?: Array<Record<string, unknown>>;
   items: Array<
     Omit<T['items'][number], 'purchasePrice' | 'lineTotal' | 'taxAmount'>
   >;
@@ -100,6 +108,9 @@ function withoutPurchaseCost<
   } = item;
   return visibleItem;
 }
+
+// A purchase as returned after it is written: lines with what was returned of them, and its debit notes.
+const purchaseInclude = { items: { include: { returnItems: { select: { quantity: true } } } }, payments: true, supplier: true, ...billReturnsInclude } satisfies Prisma.PurchaseInclude;
 
 @Injectable()
 export class PurchasesService {
@@ -121,11 +132,11 @@ export class PurchasesService {
         where: {
           businessId_requestId: { businessId, requestId: input.requestId },
         },
-        include: { items: true, payments: true, supplier: true },
+        include: purchaseInclude,
       });
       if (existing)
         return (
-          await this.applyPriceVisibility(businessId, membership, [existing])
+          await this.applyPriceVisibility(businessId, membership, [withReturns(existing)])
         )[0];
     }
 
@@ -335,11 +346,11 @@ export class PurchasesService {
           });
         return tx.purchase.findUniqueOrThrow({
           where: { id: purchase.id },
-          include: { items: true, payments: true, supplier: true },
+          include: purchaseInclude,
         });
       });
       return (
-        await this.applyPriceVisibility(businessId, membership, [created])
+        await this.applyPriceVisibility(businessId, membership, [withReturns(created)])
       )[0];
     } catch (error) {
       if (
@@ -351,11 +362,11 @@ export class PurchasesService {
           where: {
             businessId_requestId: { businessId, requestId: input.requestId },
           },
-          include: { items: true, payments: true, supplier: true },
+          include: purchaseInclude,
         });
         if (existing)
           return (
-            await this.applyPriceVisibility(businessId, membership, [existing])
+            await this.applyPriceVisibility(businessId, membership, [withReturns(existing)])
           )[0];
       }
       throw error;
@@ -366,6 +377,13 @@ export class PurchasesService {
   async cancel(userId: string, businessId: string, id: string, input: CancelTransactionDto) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'purchases.cancel');
     await cancelTransaction(this.prisma, this.inventory, 'purchase', businessId, userId, id, input);
+    return this.get(userId, businessId, id);
+  }
+
+  /** Records a purchase return (debit note): the stock goes back to the supplier (refused if it is no longer here); the value reduces what the shop owes and the rest is refunded. Owners and admins. */
+  async createReturn(userId: string, businessId: string, id: string, input: CreateReturnDto) {
+    await requireBusinessPermission(this.prisma, userId, businessId, 'purchases.return');
+    await recordReturn(this.prisma, this.inventory, 'purchase', businessId, userId, id, input);
     return this.get(userId, businessId, id);
   }
 
@@ -438,6 +456,7 @@ export class PurchasesService {
         dueDate: true,
         requestId: true,
         total: true,
+        returnedTotal: true,
         status: true,
         cancelledAt: true,
         cancelReason: true,
@@ -446,11 +465,11 @@ export class PurchasesService {
         createdAt: true,
         updatedAt: true,
         supplier: { select: { id: true, name: true } },
-        items: true,
+        items: { include: { returnItems: { select: { quantity: true } } } },
       },
       orderBy: { purchaseDate: 'desc' },
     });
-    return this.applyPriceVisibility(businessId, membership, purchases);
+    return this.applyPriceVisibility(businessId, membership, purchases.map(withReturns));
   }
 
   async get(userId: string, businessId: string, purchaseId: string) {
@@ -509,10 +528,10 @@ export class PurchasesService {
         purchaseDate,
         note: input.note,
       },
-      include: { items: true, payments: true, supplier: true },
+      include: purchaseInclude,
     });
     return (
-      await this.applyPriceVisibility(businessId, membership, [updated])
+      await this.applyPriceVisibility(businessId, membership, [withReturns(updated)])
     )[0];
   }
 
@@ -524,13 +543,15 @@ export class PurchasesService {
         items: {
           include: {
             product: { select: { name: true, sku: true, unit: true } },
+            returnItems: { select: { quantity: true } },
           },
         },
         supplier: true,
+        ...billReturnsInclude,
       },
     });
     if (!purchase) throw new NotFoundException('Purchase not found.');
-    return purchase;
+    return withReturns(purchase);
   }
 
   async applyPriceVisibility<T extends PriceSensitivePurchase>(
@@ -547,11 +568,16 @@ export class PurchasesService {
         amountPaid: _paid,
         payments: _payments,
         attachment: _attachment,
+        returnedTotal: _returnedTotal,
+        netTotal: _netTotal,
+        returns,
         items,
         ...purchase
       }) => ({
         ...purchase,
         items: items.map(withoutPurchaseCost),
+        // Debit notes show what went back, not what it cost.
+        ...(returns ? { returns: returns.map(({ subtotal: _s, taxTotal: _t, total: _total, refundAmount: _r, refundMethod: _m, items: lines, ...note }) => ({ ...note, items: lines.map(({ lineTotal: _l, taxAmount: _x, ...line }) => line) })) } : {}),
       }),
     );
   }

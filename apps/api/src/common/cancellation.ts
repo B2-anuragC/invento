@@ -19,6 +19,9 @@ export async function cancelTransaction(prisma: PrismaService, inventory: Invent
     if (!record) throw new NotFoundException(kind === 'sale' ? 'Sale not found.' : 'Purchase not found.');
     if (record.status === 'CANCELLED') return;
     if (record.status !== 'COMPLETED') throw new ConflictException('Only a completed bill can be cancelled.');
+    // Its stock and money have partly been settled by credit or debit notes already.
+    const returns = kind === 'sale' ? await tx.saleReturn.count({ where: { saleId: id } }) : await tx.purchaseReturn.count({ where: { purchaseId: id } });
+    if (returns > 0) throw new ConflictException('This bill has returns, so it cannot be cancelled. Return the remaining items instead.');
 
     // The bill's own ledger rows, replayed in the other direction in product order (stock lock order).
     const movements = await tx.inventoryTransaction.findMany({

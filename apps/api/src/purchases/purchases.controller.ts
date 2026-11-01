@@ -1,6 +1,6 @@
 import { BusinessPermissionGuard, BusinessAccessInterceptor } from '../access/business-permission.guard.js';
 import { UseInterceptors } from '@nestjs/common';
-import { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import { CancelTransactionDto, CreateReturnDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -25,6 +25,11 @@ export class PurchasesController {
   @Post(':id/cancel')
   cancel(@Req() req: Request, @Param('id') id: string, @Body() dto: CancelTransactionDto) {
     return this.purchases.cancel(req.user.id, this.businessId(req), id, dto);
+  }
+
+  @Post(':id/returns')
+  createReturn(@Req() req: Request, @Param('id') id: string, @Body() dto: CreateReturnDto) {
+    return this.purchases.createReturn(req.user.id, this.businessId(req), id, dto);
   }
 
   @Post(':id/payments')

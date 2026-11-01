@@ -2,8 +2,9 @@ import { FilesService } from '../files/files.service.js';
 import { chargeGstError, chargesGst, discountAmountFor, discountError, invoiceTaxContext, lineGstRate, sellingUnitConversion, splitDiscount, WALK_IN_PAYMENT_MESSAGE } from '@invento/shared';
 import { taxFor, paidAmount, dueDateFor, recordTransactionPayment } from '../common/transaction-accounting.js';
 import { allocateDocumentNumber, assertNotFutureDated, assertSameFinancialYear } from '../common/document-numbers.js';
-import type { CancelTransactionDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
+import type { CancelTransactionDto, CreateReturnDto, RecordPaymentDto } from '../common/dto/transaction-finance.dto.js';
 import { cancelTransaction } from '../common/cancellation.js';
+import { billReturnsInclude, recordReturn, withReturns } from '../common/returns.js';
 import { requireBusinessPermission } from '../auth/business-access.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InventoryTransactionType, PaymentMethod, Prisma, ProductStatus, CustomerStatus } from '@prisma/client';
@@ -41,6 +42,9 @@ type UpdateSaleInput = {
   note?: string;
 };
 
+// A sale as returned after it is written: lines with what was returned of them, and its credit notes.
+const saleInclude = { items: { include: { returnItems: { select: { quantity: true } } } }, payments: true, customer: true, ...billReturnsInclude } satisfies Prisma.SaleInclude;
+
 @Injectable()
 export class SalesService {
   constructor(private readonly prisma: PrismaService, private readonly inventory: InventoryService, private readonly files?: FilesService) {}
@@ -48,8 +52,8 @@ export class SalesService {
   async create(userId: string, businessId: string, input: CreateSaleInput) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.create');
     if (input.requestId) {
-      const existing = await this.prisma.sale.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } }, include: { items: true, payments: true, customer: true } });
-      if (existing) return existing;
+      const existing = await this.prisma.sale.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } }, include: saleInclude });
+      if (existing) return withReturns(existing);
     }
 
     const referenceImage = input.referenceImage === undefined ? undefined : (await this.files!.image(businessId, input.referenceImage, 'sale')).url;
@@ -171,8 +175,12 @@ export class SalesService {
           },
           tx,
         );
+        // The stock the line took as the ledger stores it (pieces for grouped products), so a return puts back its share.
+        const movementQuantity = line.movementQuantity ?? line.quantity.times(line.unitsPerOption);
+        const piecesPerUnit = productsById.get(line.productId)!.piecesPerUnit;
+        const stockQuantity = (line.movementUnit ?? line.unit) === 'PIECE' && piecesPerUnit ? movementQuantity : movementQuantity.times(piecesPerUnit ?? 1);
         await tx.saleItem.create({
-          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, discountAmount: line.discountAmount, gstRate: line.gstRate, taxAmount: line.taxAmount, hsnCode: line.hsnCode },
+          data: { saleId: sale.id, productId: line.productId, quantity: line.quantity, unit: line.unit, sellingOptionId: line.sellingOptionId, optionName: line.optionName, unitsPerOption: line.unitsPerOption, sellingPrice: line.sellingPrice, lineTotal: line.lineTotal, discountAmount: line.discountAmount, gstRate: line.gstRate, taxAmount: line.taxAmount, hsnCode: line.hsnCode, stockQuantity },
         });
       }
 
@@ -181,12 +189,12 @@ export class SalesService {
       await tx.sale.update({ where: { id: sale.id }, data: await allocateDocumentNumber(tx, businessId, 'SALE', saleDate) });
 
       if (amountPaid?.gt(0)) await tx.transactionPayment.create({ data: { businessId, saleId: sale.id, requestId: `initial_${sale.id}`, amount: amountPaid, method: input.paymentMethod ?? PaymentMethod.CASH, createdByUserId: userId } });
-      return tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true, payments: true, customer: true } });
+      return withReturns(await tx.sale.findUniqueOrThrow({ where: { id: sale.id }, include: saleInclude }));
     });
     } catch (error) {
       if (input.requestId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const existing = await this.prisma.sale.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } }, include: { items: true, payments: true, customer: true } });
-        if (existing) return existing;
+        const existing = await this.prisma.sale.findUnique({ where: { businessId_requestId: { businessId, requestId: input.requestId } }, include: saleInclude });
+        if (existing) return withReturns(existing);
       }
       throw error;
     }
@@ -199,6 +207,13 @@ export class SalesService {
     return this.requireSale(businessId, id);
   }
 
+  /** Records a sales return (credit note): stock comes back, the value reduces what is owed and the rest is refunded. Owners and admins. */
+  async createReturn(userId: string, businessId: string, id: string, input: CreateReturnDto) {
+    await requireBusinessPermission(this.prisma, userId, businessId, 'sales.return');
+    await recordReturn(this.prisma, this.inventory, 'sale', businessId, userId, id, input);
+    return this.requireSale(businessId, id);
+  }
+
   async recordPayment(userId: string, businessId: string, id: string, input: RecordPaymentDto) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.payments');
     await recordTransactionPayment(this.prisma, 'sale', businessId, userId, id, input);
@@ -207,15 +222,16 @@ export class SalesService {
 
   async list(userId: string, businessId: string, query: { customerId?: string; search?: string }) {
     await requireBusinessPermission(this.prisma, userId, businessId, 'sales.view');
-    return this.prisma.sale.findMany({
+    const sales = await this.prisma.sale.findMany({
       where: {
         businessId,
         ...(query.customerId ? { customerId: query.customerId } : {}),
         ...(query.search ? { OR: [{ documentNumber: { contains: query.search, mode: 'insensitive' } }, { invoiceNumber: { contains: query.search, mode: 'insensitive' } }] } : {}),
       },
-      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, chargeGst: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, status: true, cancelledAt: true, cancelReason: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: true, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
+      select: { id: true, businessId: true, customerId: true, invoiceNumber: true, documentNumber: true, financialYear: true, documentSeq: true, sellerGstin: true, sellerStateCode: true, buyerGstin: true, placeOfSupply: true, taxType: true, chargeGst: true, saleDate: true, paymentMethod: true, subtotal: true, discountTotal: true, discountPercent: true, taxTotal: true, amountPaid: true, dueDate: true, requestId: true, total: true, returnedTotal: true, status: true, cancelledAt: true, cancelReason: true, note: true, createdByUserId: true, createdAt: true, updatedAt: true, customer: { select: { id: true, name: true } }, items: { include: { returnItems: { select: { quantity: true } } } }, payments: { select: { method: true, kind: true }, orderBy: { paidAt: 'asc' } } },
       orderBy: { saleDate: 'desc' },
     });
+    return sales.map(withReturns);
   }
 
   async get(userId: string, businessId: string, saleId: string) {
@@ -245,20 +261,20 @@ export class SalesService {
       assertSameFinancialYear(existing, saleDate);
     }
 
-    return this.prisma.sale.update({
+    return withReturns(await this.prisma.sale.update({
       where: { id: saleId },
       data: { invoiceNumber: input.invoiceNumber, saleDate, note: input.note },
-      include: { items: true, payments: true, customer: true },
-    });
+      include: saleInclude,
+    }));
   }
 
   private async requireSale(businessId: string, saleId: string) {
     const sale = await this.prisma.sale.findFirst({
       where: { id: saleId, businessId },
-      include: { payments: true, items: { include: { product: { select: { name: true, sku: true, unit: true } } } }, customer: true },
+      include: { payments: true, items: { include: { product: { select: { name: true, sku: true, unit: true } }, returnItems: { select: { quantity: true } } } }, customer: true, ...billReturnsInclude },
     });
     if (!sale) throw new NotFoundException('Sale not found.');
-    return sale;
+    return withReturns(sale);
   }
 
 

@@ -34,7 +34,7 @@ export async function recordTransactionPayment(prisma: PrismaService, kind: 'sal
   const paidAt = input.paidAt === undefined ? undefined : new Date(input.paidAt);
   if (paidAt) assertNotFutureDated(paidAt, 'Payment');
   return prisma.$transaction(async (tx) => {
-    const [record] = await tx.$queryRaw<{ total: Prisma.Decimal; amountPaid: Prisma.Decimal | null; status: string; billDate: Date }[]>(Prisma.sql`SELECT total, "amountPaid", status, ${Prisma.raw(kind === 'sale' ? '"saleDate"' : '"purchaseDate"')} AS "billDate" FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${id} AND "businessId" = ${businessId} FOR UPDATE`);
+    const [record] = await tx.$queryRaw<{ total: Prisma.Decimal; returnedTotal: Prisma.Decimal; amountPaid: Prisma.Decimal | null; status: string; billDate: Date }[]>(Prisma.sql`SELECT total, "returnedTotal", "amountPaid", status, ${Prisma.raw(kind === 'sale' ? '"saleDate"' : '"purchaseDate"')} AS "billDate" FROM ${Prisma.raw(kind === 'sale' ? 'sales' : 'purchases')} WHERE id = ${id} AND "businessId" = ${businessId} FOR UPDATE`);
     if (!record) throw new NotFoundException('Transaction not found.');
     if (paidAt && indiaDay(paidAt) < indiaDay(record.billDate)) throw new BadRequestException('The payment date cannot be before the bill date.');
     if (record.status !== 'COMPLETED') throw new ConflictException('Payments require a completed transaction.');
@@ -43,12 +43,14 @@ export async function recordTransactionPayment(prisma: PrismaService, kind: 'sal
       if ((kind === 'sale' ? duplicate.saleId : duplicate.purchaseId) !== id || !duplicate.amount.eq(amount) || duplicate.method !== input.method) throw new ConflictException('This payment request has already been used.');
       return duplicate;
     }
+    // Returns lower what can be paid: the bill's net amount.
+    const netTotal = new Prisma.Decimal(record.total).minus(record.returnedTotal);
     let alreadyPaid = record.amountPaid;
     if (alreadyPaid === null) {
       if (input.openingAmountPaid === undefined) throw new BadRequestException('Confirm the previously paid amount for this historical transaction first.');
-      alreadyPaid = paidAmount(input.openingAmountPaid, record.total)!;
+      alreadyPaid = paidAmount(input.openingAmountPaid, netTotal)!;
     }
-    if (alreadyPaid.plus(amount).gt(record.total)) throw new BadRequestException('Payment exceeds the remaining balance.');
+    if (alreadyPaid.plus(amount).gt(netTotal)) throw new BadRequestException('Payment exceeds the remaining balance.');
     const link = kind === 'sale' ? { saleId: id } : { purchaseId: id };
     if (record.amountPaid === null && alreadyPaid.gt(0)) await tx.transactionPayment.create({ data: { ...link, businessId, requestId: `${input.requestId}_opening`, amount: alreadyPaid, method: input.method, kind: 'OPENING_BALANCE', createdByUserId: userId } });
     const payment = await tx.transactionPayment.create({ data: { ...link, businessId, requestId: input.requestId, amount, method: input.method, paidAt, createdByUserId: userId } });
