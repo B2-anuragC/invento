@@ -94,7 +94,9 @@ export default function ProductDetailsScreen() {
   }, [editing, currentForm]);
   const unsaved = editing && hasUnsavedChanges(baselineForm.current, currentForm);
   usePreventRemove(unsaved && !saving, ({ data }) => {
-    if (!leavingAfterSave.current) setLeaveAction(data.action);
+    // After a save the guard may not have caught up with the saving state yet; let that leave go ahead.
+    if (leavingAfterSave.current) navigation.dispatch(data.action);
+    else setLeaveAction(data.action);
   });
 
   const fillForm = (productData: ProductRecord) => {
