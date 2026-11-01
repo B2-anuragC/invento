@@ -44,6 +44,26 @@ describe('returnLineAmounts', () => {
     expect(second.discountAmount).toBe('3.34');
   });
 
+  it('never gives a return more discount than line total, or a negative one', () => {
+    const line = { quantity: '3', lineTotal: '1.01', discountAmount: '1.00', taxAmount: '0' };
+    const first = returnLineAmounts(line, NOTHING_RETURNED, '1');
+    const second = returnLineAmounts(line, { quantity: '1', ...first }, '1');
+    expect(second).toEqual({ lineTotal: '0.33', discountAmount: '0.33', taxAmount: '0.00', total: '0.00' });
+    // Every split of small lines, one unit at a time: each return stays valid and they add up to the line.
+    for (const sold of [2, 3, 6, 7]) for (let lineTotal = 0; lineTotal <= 40; lineTotal++) for (let discount = 0; discount <= lineTotal; discount++) {
+      const bill = { quantity: String(sold), lineTotal: (lineTotal / 100).toFixed(2), discountAmount: (discount / 100).toFixed(2), taxAmount: '0.07' };
+      let taken = { ...NOTHING_RETURNED };
+      for (let unit = 1; unit <= sold; unit++) {
+        const amounts = returnLineAmounts(bill, taken, '1');
+        expect(Number(amounts.discountAmount)).toBeGreaterThanOrEqual(0);
+        expect(Number(amounts.discountAmount)).toBeLessThanOrEqual(Number(amounts.lineTotal));
+        expect(Number(amounts.total)).toBeGreaterThanOrEqual(0);
+        taken = { quantity: String(unit), lineTotal: sumAmounts([taken.lineTotal, amounts.lineTotal]), discountAmount: sumAmounts([taken.discountAmount, amounts.discountAmount]), taxAmount: sumAmounts([taken.taxAmount, amounts.taxAmount]) };
+      }
+      expect(taken).toEqual({ quantity: String(sold), lineTotal: bill.lineTotal, discountAmount: bill.discountAmount, taxAmount: '0.07' });
+    }
+  });
+
   it('works in thousandths of a unit and handles lines without a discount', () => {
     const purchase = { quantity: '2.5', lineTotal: '100.00', taxAmount: '5.00' };
     expect(returnLineAmounts(purchase, NOTHING_RETURNED, '0.001')).toEqual({ lineTotal: '0.04', discountAmount: '0.00', taxAmount: '0.00', total: '0.04' });

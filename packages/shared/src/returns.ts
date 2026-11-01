@@ -56,6 +56,10 @@ export function returnQuantityError(sold: string, returned: string, quantity: st
  * rounded half-up to the paisa, and this return gets the difference from what
  * earlier returns took. Returning the rest of a line therefore takes back
  * exactly what is left, and all returns of a line never add up to more than it.
+ * Rounding the line total and the discount separately could give a return
+ * more discount than line total (a discount of nearly the whole line) or a
+ * negative discount, so each return's discount is kept between zero and its
+ * line total, and the rounding difference is carried to later returns.
  */
 export function returnLineAmounts(line: ReturnableLine, returned: ReturnedSoFar, quantity: string): ReturnLineAmounts {
   const sold = thousandths(line.quantity);
@@ -67,7 +71,12 @@ export function returnLineAmounts(line: ReturnableLine, returned: ReturnedSoFar,
     return running - paise(before);
   };
   const lineTotal = share(line.lineTotal, returned.lineTotal);
-  const discountAmount = share(line.discountAmount, returned.discountAmount);
+  const runningLine = paise(returned.lineTotal) + lineTotal;
+  const before = paise(returned.discountAmount);
+  const low = [before, runningLine - (paise(line.lineTotal) - paise(line.discountAmount))].reduce((a, b) => (a > b ? a : b));
+  const high = [before + lineTotal, paise(line.discountAmount)].reduce((a, b) => (a < b ? a : b));
+  const target = before + share(line.discountAmount, returned.discountAmount);
+  const discountAmount = (target < low ? low : target > high ? high : target) - before;
   const taxAmount = share(line.taxAmount, returned.taxAmount);
   return { lineTotal: rupees(lineTotal), discountAmount: rupees(discountAmount), taxAmount: rupees(taxAmount), total: rupees(lineTotal - discountAmount + taxAmount) };
 }
