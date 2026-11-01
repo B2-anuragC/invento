@@ -1,4 +1,6 @@
 import { CancelBill } from "./cancel-bill";
+import { BillEdited, EditBillItems } from "./edit-bill-items";
+import { editedSummary } from "./bill-edit";
 import { BillNotes, ReturnItems } from "./return-items";
 import { hasReturns, noteName, noteRows, returnSummary, type Bill } from "./bill-returns";
 import { StockAdjustment } from "./stock-adjustment";
@@ -528,6 +530,8 @@ function ShopSection({
         )
       : personFields;
   const catalog = ["products", "customers", "suppliers"].includes(section);
+  // Owners and admins change a saved bill's items; a purchase's also need cost prices.
+  const mayEditItems = can(`${section}.edit`) && (section === "sales" || can("pricing.view"));
   return (
     <>
       <Notice {...result} />
@@ -655,6 +659,7 @@ function ShopSection({
               ...r,
               gstState: billGstLabel(section === "sales" ? "sale" : "purchase", r),
               returnSummary: returnSummary(r as unknown as Bill) || null,
+              edited: editedSummary(r)?.title.replace(/^Edited · /, "") ?? null,
             }))}
             keys={[
               "documentNumber",
@@ -664,6 +669,7 @@ function ShopSection({
               "returnSummary",
               "gstState",
               "status",
+              "edited",
               "note",
             ]}
             titles={
@@ -671,9 +677,9 @@ function ShopSection({
                 ? { documentNumber: "Invoice no.", invoiceNumber: "Reference", gstState: "Bill type", returnSummary: "Returns" }
                 : { documentNumber: "Purchase no.", invoiceNumber: "Supplier invoice", gstState: "GST", returnSummary: "Returns" }
             }
-            edit={can(`${section}.update`) ? setEditing : undefined}
+            edit={can(`${section}.update`) || mayEditItems ? setEditing : undefined}
           />
-          {editing && (
+          {editing && can(`${section}.update`) && (
             <Editor
               key={String(editing.id)}
               title={
@@ -706,6 +712,16 @@ function ShopSection({
                 );
                 refresh();
               }}
+            />
+          )}
+          {editing && <BillEdited bill={editing} />}
+          {editing && mayEditItems && (
+            <EditBillItems
+              key={`items-${String(editing.id)}`}
+              shopId={id}
+              kind={section === "sales" ? "sale" : "purchase"}
+              bill={editing}
+              done={refresh}
             />
           )}
           {editing && <BillNotes kind={section === "sales" ? "sale" : "purchase"} bill={editing} />}
