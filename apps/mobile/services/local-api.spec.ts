@@ -9,6 +9,7 @@ vi.mock("./offline-storage", () => ({
     if (fault.write) throw new Error("Storage full");
     disk.set(key, value);
   },
+  deleteOfflineState: async (key: string) => { disk.delete(key); },
 }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => crypto.randomUUID() }));
 let api: typeof import("./local-api");
@@ -170,4 +171,40 @@ it("applies the bill's GST choice to device bills, with the server's rule for sh
   expect(await bill("local_gst_sale", { chargeGst: true })).toMatchObject({ documentNumber: "INV/2026-27/0002", chargeGst: true, taxTotal: "3.60", total: "23.60" });
   const purchase = await send<any>("/purchases", { requestId: "local_no_gst_purchase", supplierId: "supplier", purchaseDate: "2026-10-16T10:00:00Z", amountPaid: "0", chargeGst: false, items: [{ productId: "product", quantity: "4", purchasePrice: "5.00" }] });
   expect(purchase).toMatchObject({ chargeGst: false, taxTotal: "0.00", total: "20.00" });
+});
+it("journals each change for moving the shop to an account, in order, with the device's bill ids", async () => {
+  await setup();
+  const sale = await send<any>("/sales", { requestId: "local_journal_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "1", sellingPrice: "10" }] });
+  // A repeated request, a read and a failed write add nothing.
+  await send("/sales", { requestId: "local_journal_sale", customerId: "customer", saleDate: "2026-10-16T10:00:00Z", paymentMethod: "CASH", amountPaid: "0", items: [{ productId: "product", quantity: "1", sellingPrice: "10" }] });
+  await send("/sync/snapshot");
+  fault.write = true;
+  await expect(send(`/sales/${sale.id}/payments`, { requestId: "payment_failed", amount: "1", method: "CASH" })).rejects.toThrow("Storage full");
+  fault.write = false;
+  await send(`/sales/${sale.id}/payments`, { requestId: "payment_1", amount: "5", method: "UPI" });
+  await api.localRequest(`/businesses/${session.businessId}`, { method: "PATCH", body: JSON.stringify({ address: "Shop 12" }) }, session);
+  const entries = await api.guestJournal(session.businessId);
+  expect(entries.map((entry) => `${entry.seq} ${entry.method} ${entry.path}`)).toEqual([
+    "1 POST /businesses",
+    "2 POST /sync/push", "3 POST /sync/push", "4 POST /sync/push", "5 POST /sync/push",
+    "6 POST /sales",
+    `7 POST /sales/${sale.id}/payments`,
+    `8 PATCH /businesses/${session.businessId}`,
+  ]);
+  expect(entries[0]).toMatchObject({ localId: session.businessId, body: { name: "My shop", slug: "my-shop" } });
+  expect(entries[1].body).toMatchObject({ entity: "products", entityId: "product" });
+  expect(entries[5]).toMatchObject({ localId: sale.id, localItemIds: [sale.items[0].id], body: { requestId: "local_journal_sale" } });
+  expect(entries[6].body).toEqual({ requestId: "payment_1", amount: "5", method: "UPI" });
+  // Survives a restart, and another business on the device keeps its own journal.
+  vi.resetModules();
+  api = await import("./local-api");
+  expect(await api.guestJournal(session.businessId)).toHaveLength(8);
+  expect(await api.guestJournal("another-business")).toEqual([]);
+});
+it("deletes everything on the device and returns the businesses it held", async () => {
+  await setup();
+  const id = session.businessId;
+  expect(await api.deleteLocalDatabase()).toEqual([id]);
+  expect(await send("/businesses")).toEqual([]);
+  expect(await api.guestJournal(id)).toEqual([]);
 });

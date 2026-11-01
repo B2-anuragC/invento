@@ -1,4 +1,4 @@
-import { LOCAL_ONLY } from '@/services/runtime-mode';
+import { isDeviceOnly } from '@/services/runtime-mode';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -21,12 +21,12 @@ export default function SyncScreen() {
     return () => { active = false; };
   }, [status]);
   return <AppScreen><ScrollView contentContainerStyle={styles.content}>
-    <ScreenHeading title={LOCAL_ONLY ? 'Device storage' : 'Sync status'} subtitle={LOCAL_ONLY ? 'Records kept on this device' : 'Changes waiting to upload from this device'} />
-    <Text selectable style={styles.meta}>{LOCAL_ONLY ? "Local-only mode · All business data stays on this device. No server connection is used." : `API server: ${getApiServerUrl()}`}</Text>
-    <Text>{LOCAL_ONLY ? 'Local storage ready' : status.online ? 'API available' : 'Working offline'} · {status.pending} pending changes</Text>
-    <Text style={styles.meta}>{LOCAL_ONLY ? 'Changes stay in this app’s private device storage. Nothing is uploaded.' : status.message || 'Catalog, contacts, opening stock, sales and purchases save on this device and upload automatically.'}</Text>
+    <ScreenHeading title={isDeviceOnly(appSession.current) ? 'Device storage' : 'Sync status'} subtitle={isDeviceOnly(appSession.current) ? 'Records kept on this device' : 'Changes waiting to upload from this device'} />
+    <Text selectable style={styles.meta}>{isDeviceOnly(appSession.current) ? appSession.current?.mode === 'guest' ? "Guest mode · All shop data stays on this phone until you create an account or sign in." : "Local-only mode · All business data stays on this device. No server connection is used." : `API server: ${getApiServerUrl()}`}</Text>
+    <Text>{isDeviceOnly(appSession.current) ? 'Local storage ready' : status.online ? 'API available' : 'Working offline'} · {status.pending} pending changes</Text>
+    <Text style={styles.meta}>{isDeviceOnly(appSession.current) ? 'Changes stay in this app’s private device storage. Nothing is uploaded.' : status.message || 'Catalog, contacts, opening stock, sales and purchases save on this device and upload automatically.'}</Text>
     <Text style={styles.meta}>Last downloaded: {status.lastSync ? formatDateTime(status.lastSync) : 'Not downloaded yet'}</Text>
-    <Pressable accessibilityRole="button" disabled={status.syncing} onPress={() => { if (appSession.current) void syncOffline(appSession.current, true); }} style={styles.primary}><Text style={{ color: '#FFFFFF' }}>{status.syncing ? 'Working…' : LOCAL_ONLY ? 'Refresh local records' : 'Sync now'}</Text></Pressable>
+    <Pressable accessibilityRole="button" disabled={status.syncing} onPress={() => { if (appSession.current) void syncOffline(appSession.current, true); }} style={styles.primary}><Text style={{ color: '#FFFFFF' }}>{status.syncing ? 'Working…' : isDeviceOnly(appSession.current) ? 'Refresh local records' : 'Sync now'}</Text></Pressable>
     {error ? <Text accessibilityRole="alert">{error}</Text> : null}
     {commands.map((command) => <View key={command.operationId} style={styles.card}>
       <Text style={styles.name}>{String('name' in command.localRecord ? command.localRecord.name : command.entity === 'sale' ? 'Sale bill' : command.entity === 'purchase' ? 'Purchase bill' : 'Opening stock')} · {command.action}</Text>

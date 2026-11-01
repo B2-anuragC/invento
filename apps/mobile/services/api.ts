@@ -1,7 +1,7 @@
 import type { PurchaseEditInput, SaleEditInput } from './bill-edit';
-import { planStockAdjustment, type EffectiveAccess, type Permission, type GstTaxType, type StockAdjustmentInput } from '@invento/shared';
-import { LOCAL_ONLY } from './runtime-mode';
-import { localRequest, localSession } from './local-api';
+import { DEFAULT_ROLE_PERMISSIONS, planStockAdjustment, type EffectiveAccess, type Permission, type GstTaxType, type StockAdjustmentInput } from '@invento/shared';
+import { isDeviceOnly, LOCAL_ONLY } from './runtime-mode';
+import { deleteLocalDatabase, localRequest, localSession } from './local-api';
 import { configureFileStorage, resolveUploadPayload, localizeLegacyUploads } from './file-storage';
 import { createSessionLoader } from './session-loader';
 import { isServerUnreachable, liveOrCachedAccess } from './access-fallback';
@@ -10,7 +10,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { ADJUST_PENDING_MESSAGE } from './stock-adjustment';
 import { indiaDate, lowStockRows, rangeStart, todayBillTotals, topProductDays, topProductRows, type LowStockRow, type TopProductRow } from './dashboard-summary';
-import { cachedAccess, configureOffline, getSyncStatus, syncOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
+import { cachedAccess, configureOffline, forgetOfflineBusinesses, getSyncStatus, syncOffline, refreshOfflineAccess, offlineView, saveOfflineCatalog, saveOfflineOpening, saveOfflineTransaction, refreshOfflineSnapshot, rememberConfirmedTransaction } from './offline-catalog';
 export { hasOfflineBusiness, syncOffline } from './offline-catalog';
 const nativeOffline = Platform.OS !== 'web';
 
@@ -28,6 +28,8 @@ export type AppSession = {
   businessId: string;
   businessName?: string;
   user: ApiUser;
+  /** A guest's shop lives only on this device until they create an account or sign in. */
+  mode?: 'guest';
 };
 
 export type LoginResponse = {
@@ -450,7 +452,7 @@ async function request<T>(
   session?: AppSession | null,
   canRefresh = true,
 ): Promise<T> {
-  if (LOCAL_ONLY) return localRequest<T>(path, options, session);
+  if (isDeviceOnly(session)) return localRequest<T>(path, options, session);
   if (!API_BASE_URL) throw new Error('Set EXPO_PUBLIC_API_URL to the API address before using server mode.');
   if (session) session = latestSession(session);
   if (session && path !== '/files' && typeof options.body === 'string') options = { ...options, body: JSON.stringify(await resolveUploadPayload(JSON.parse(options.body), session)) };
@@ -536,9 +538,27 @@ export async function updateProfile(
   }, session);
 }
 
+/** Opens the guest shop on this device (or shop setup the first time); nothing is sent to a server. */
+export async function startGuestSession(): Promise<AppSession> {
+  const session: AppSession = { ...(await localSession()), mode: 'guest' };
+  appSession.current = session;
+  await persistSession(session);
+  return session;
+}
+
+/** Deletes the guest shop and everything saved with it on this device, then signs the guest out. */
+export async function deleteGuestShop(session: AppSession): Promise<void> {
+  if (!isDeviceOnly(session)) throw new Error('Only a guest shop can be deleted from this device.');
+  const businessIds = await deleteLocalDatabase();
+  await forgetOfflineBusinesses(session.user.id, [...businessIds, '']);
+  appSession.current = null;
+  await clearPersistedSession();
+}
+
 export async function logoutSession(session: AppSession): Promise<void> {
   try {
-    await request('/auth/logout', {
+    // A guest has no server session; their shop stays on the device.
+    if (!isDeviceOnly(session)) await request('/auth/logout', {
       method: 'POST',
       body: JSON.stringify({ refreshToken: session.refreshToken }),
     });
@@ -1050,16 +1070,19 @@ configureFileStorage(request, () => appSession.current, API_BASE_URL, async () =
 
 // Access management always uses the shared server identity and selected business.
 export async function fetchEffectiveAccess(session: AppSession): Promise<EffectiveAccess> {
-  if (LOCAL_ONLY) throw new Error('Centralized permissions require server mode and a connection.');
+  // A device-only shop has one person, its owner, with every permission.
+  if (isDeviceOnly(session)) return { userId: session.user.id, businessId: session.businessId, role: 'OWNER', permissions: [...DEFAULT_ROLE_PERMISSIONS.OWNER], platformAccess: false };
   const live = () => request<EffectiveAccess>(`/businesses/${encodeURIComponent(session.businessId)}/access/me`, {}, session);
   // Native devices keep working offline with the permissions downloaded with the business.
   return nativeOffline ? liveOrCachedAccess(live, () => cachedAccess(session)) : live();
 }
 export async function accessRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const session = appSession.current;
-  if (!session?.businessId || LOCAL_ONLY) throw new Error('Select a business in server mode to manage access.');
+  if (isDeviceOnly(session)) throw new Error(GUEST_ACCOUNT_MESSAGE);
+  if (!session?.businessId) throw new Error('Select a business in server mode to manage access.');
   return request<T>(`/businesses/${encodeURIComponent(session.businessId)}/access/${path}`, options, session);
 }
+export const GUEST_ACCOUNT_MESSAGE = 'Create an account to add staff and choose what they can do.';
 const accessSignatures = new Map<string, string>();
 async function assertClientPermission(session: AppSession, permission: Permission) {
   const access = await fetchEffectiveAccess(session);

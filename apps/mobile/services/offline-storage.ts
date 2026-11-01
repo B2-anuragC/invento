@@ -15,3 +15,6 @@ export async function readOfflineState(scope: string): Promise<string | null> {
 export async function writeOfflineState(scope: string, value: string) {
   await (await db()).runAsync('INSERT INTO business_state (scope, value) VALUES (?, ?) ON CONFLICT(scope) DO UPDATE SET value = excluded.value', scope, value);
 }
+export async function deleteOfflineState(scope: string) {
+  await (await db()).runAsync('DELETE FROM business_state WHERE scope = ?', scope);
+}

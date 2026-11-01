@@ -1,6 +1,6 @@
 import { DEFAULT_DOCUMENT_PREFIX, DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, financialYearOf, formatDocumentNumber, GSTIN_RULE_MESSAGE, gstinStateCode, isValidDocumentPrefix, isValidGstin, normalizeDocumentPrefix, normalizeGstin } from '@invento/shared';
 import { randomUUID } from "expo-crypto";
-import { readOfflineState, writeOfflineState } from "./offline-storage";
+import { deleteOfflineState, readOfflineState, writeOfflineState } from "./offline-storage";
 import { buildOfflineTransaction } from "./offline-transactions";
 import type { OfflineSnapshot, LocalRecord } from "./offline-model";
 import type { AppSession, ApiUser, BusinessDetails, BusinessDetailsInput, SaleRecord, PurchaseRecord } from "./api";
@@ -14,7 +14,51 @@ type LocalDatabase = {
   operations: Record<string, unknown>;
   /** Last invoice number per business, series and financial year, saved with each bill. */
   documentCounters?: Record<string, number>;
+  /** Each business's changes in the order they were made, kept for moving a guest shop to an account. */
+  journals?: Record<string, GuestJournalEntry[]>;
 };
+
+/**
+ * A change made on the device, kept as the request the server would have
+ * taken. Bills and notes get server ids when uploaded, so the device's ids are
+ * kept to map later requests (payments, returns, edits) onto them.
+ */
+export type GuestJournalEntry = { seq: number; at: string; method: string; path: string; body?: unknown; localId?: string; localItemIds?: string[] };
+const unjournaled = new Set(["/auth/logout", "/auth/me", "/sync/snapshot"]);
+
+/** Adds a successful change to its business's journal, in the same storage write as the change. */
+function journal(state: LocalDatabase, method: string, path: string, body: unknown, result: unknown, businessId: string) {
+  if (method === "GET" || unjournaled.has(path) || !businessId) return;
+  const entries = ((state.journals ??= {})[businessId] ??= []);
+  const record = result as { id?: unknown; items?: { id?: unknown }[] } | null;
+  const billLike = /^\/(sales|purchases)(\/|$)/.test(path) || path === "/businesses";
+  entries.push({
+    seq: entries.length + 1,
+    at: new Date().toISOString(),
+    method,
+    path,
+    ...(body === undefined || (typeof body === "object" && body !== null && !Object.keys(body).length) ? {} : { body }),
+    ...(billLike && typeof record?.id === "string" ? { localId: record.id } : {}),
+    ...(billLike && Array.isArray(record?.items) ? { localItemIds: record.items.map((item) => String(item.id)) } : {}),
+  });
+}
+
+/** Deletes everything kept by the device-only handler and returns the ids of the businesses it held. */
+export async function deleteLocalDatabase(): Promise<string[]> {
+  const work = writes.catch(() => {}).then(async () => {
+    const ids = (await load()).businesses.map((business) => business.id);
+    await deleteOfflineState(key);
+    return ids;
+  });
+  writes = work;
+  return work;
+}
+
+/** The changes recorded for a business on this device, oldest first. */
+export async function guestJournal(businessId: string): Promise<GuestJournalEntry[]> {
+  await writes.catch(() => {});
+  return clone((await load()).journals?.[businessId] ?? []);
+}
 const key = "invento.standalone.v1";
 let writes: Promise<unknown> = Promise.resolve();
 async function load(): Promise<LocalDatabase> {
@@ -316,6 +360,8 @@ export function localRequest<T>(
             "This feature requires server mode and is unavailable in the local-only build.",
           );
       }
+      const businessId = path === "/businesses" ? (result as { id?: string } | null)?.id ?? "" : /^\/businesses\/[^/]+$/.test(path) ? decodeURIComponent(path.split("/")[2]) : session?.businessId ?? "";
+      journal(state, method, path, input, result, businessId);
       await writeOfflineState(key, JSON.stringify(state));
       return clone(result) as T;
     });

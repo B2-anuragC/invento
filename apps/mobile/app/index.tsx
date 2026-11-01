@@ -1,11 +1,15 @@
 import { useIsFocused, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
 import { signInError } from '@/services/auth-validation';
-import { appSession, fetchBusinesses, loginWithEmail, persistSession, loadSession, hasOfflineBusiness, syncOffline, type AppSession } from '@/services/api';
+import { appSession, fetchBusinesses, loginWithEmail, persistSession, loadSession, hasOfflineBusiness, startGuestSession, syncOffline, type AppSession } from '@/services/api';
+import { LOCAL_ONLY } from '@/services/runtime-mode';
+
+// Guest shops are kept in the phone app's own database; web keeps sign-in only.
+const guestAvailable = Platform.OS !== 'web' && !LOCAL_ONLY;
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -81,6 +85,20 @@ export default function LoginScreen() {
     }
   };
 
+  const handleGuest = async () => {
+    if (loading) return;
+    try {
+      setLoading(true);
+      setError('');
+      await startGuestSession();
+      router.replace('/business/setup');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not open guest mode on this phone.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (checkingSession) {
     return (
       <SafeAreaView edges={['bottom']} style={[styles.safeArea, styles.loading]}>
@@ -133,6 +151,11 @@ Your day, simplified.</Text>
             <ActionButton title="Create account" variant="secondary" onPress={() => router.push('/auth/register')} />
           </View>
         </View>
+
+        {guestAvailable ? <View style={styles.guest}>
+          <ActionButton fullWidth title="Continue as guest" variant="secondary" onPress={() => void handleGuest()} disabled={loading} />
+          <Text style={styles.guestNote}>No account needed. Your shop is saved only on this phone; create an account later to move it online.</Text>
+        </View> : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -214,5 +237,15 @@ const styles = StyleSheet.create({
   },
   secondaryRow: {
     marginTop: 12,
+  },
+  guest: {
+    marginTop: 20,
+    gap: 8,
+  },
+  guestNote: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#737B77',
+    textAlign: 'center',
   },
 });

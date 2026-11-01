@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { ActionButton, AppScreen, ListCard } from '@/components/invento-ui';
-import { appSession, logoutSession, persistSession, updateProfile } from '@/services/api';
+import { ActionButton, AppScreen, ConfirmationDialog, ListCard } from '@/components/invento-ui';
+import { GuestStrip } from '@/components/guest-strip';
+import { appSession, deleteGuestShop, logoutSession, persistSession, updateProfile } from '@/services/api';
 import { phoneError as validatePhone } from '@/services/contact-validation';
 
 export default function ProfileScreen() {
@@ -20,6 +21,8 @@ export default function ProfileScreen() {
   const [nameError, setNameError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [submitError, setSubmitError] = useState('');
+  const guest = appSession.current?.mode === 'guest';
+  const [confirming, setConfirming] = useState<'logout' | 'delete' | null>(null);
 
   const beginEditing = () => {
     setName(profile?.name ?? '');
@@ -89,7 +92,22 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleDeleteGuestShop = async () => {
+    setConfirming(null);
+    const session = appSession.current;
+    if (!session || loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await deleteGuestShop(session);
+      router.replace('/auth/login');
+    } catch (failure) {
+      setSubmitError(failure instanceof Error ? failure.message : 'Could not delete the guest shop.');
+      setLoggingOut(false);
+    }
+  };
+
   const handleLogout = async () => {
+    setConfirming(null);
     if (loggingOut) return;
     setLoggingOut(true);
     const session = appSession.current;
@@ -107,6 +125,7 @@ export default function ProfileScreen() {
     <AppScreen>
       <ScrollView contentContainerStyle={[styles.content, screenStyles.content]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <ScreenHeading title="Your account" subtitle="Profile, business and preferences" />
+        <GuestStrip />
 
         <View style={styles.card}>
           <Text style={styles.avatar}>{profile?.name?.slice(0, 1).toUpperCase() ?? 'I'}</Text>
@@ -146,7 +165,7 @@ export default function ProfileScreen() {
           ) : (
             <>
               <Text style={styles.name}>{profile?.name ?? 'Account'}</Text>
-              <Text style={styles.role}>{profile?.email ?? ''}</Text>
+              <Text style={styles.role}>{guest ? 'Guest · no account yet' : profile?.email ?? ''}</Text>
               <Text style={styles.role}>{profile?.phone || 'Phone not added'}</Text>
             </>
           )}
@@ -168,7 +187,7 @@ export default function ProfileScreen() {
               { title: 'Purchase history', detail: 'Supplier invoices and replenishment', route: '/(tabs)/purchases' },
               { title: 'People & contacts', detail: 'Customers and suppliers', route: '/people' },
               { title: 'Shop details', detail: 'Address, GSTIN and invoice prefixes', route: '/settings/shop' },
-              { title: 'Team and roles', detail: 'Who can use this shop and what they can do', route: '/settings/access' },
+              ...(guest ? [] : [{ title: 'Team and roles', detail: 'Who can use this shop and what they can do', route: '/settings/access' }]),
               { title: 'Pricing access', detail: 'Control price visibility', route: '/settings/pricing' },
             ].filter(item => { const required = clientRoutePermissions(item.route); return !required.length || required.some(can); }).map((item) => (
               <Pressable key={item.route} accessibilityRole="button" onPress={() => router.push(item.route as Parameters<typeof router.push>[0])} style={styles.row}>
@@ -176,6 +195,7 @@ export default function ProfileScreen() {
                 <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={{ color: '#737B77', fontSize: 24 }}>›</Text>
               </Pressable>
             ))}
+            {guest ? <View style={styles.row}><View style={{ flex: 1 }}><Text style={styles.value}>Team and roles</Text><Text style={styles.role}>Create an account to add staff and choose what they can do.</Text></View></View> : null}
           </ListCard>
           {editing ? (
             <>
@@ -186,8 +206,11 @@ export default function ProfileScreen() {
             <ActionButton title="Edit profile" variant="secondary" onPress={beginEditing} />
           )}
           {Platform.OS !== 'web' ? <ActionButton title="Sync status" variant="secondary" onPress={() => router.push('/settings/sync')} /> : null}
-          <ActionButton title={loggingOut ? 'Signing out…' : 'Log out'} onPress={() => void handleLogout()} disabled={loggingOut || saving} />
+          <ActionButton title={loggingOut ? 'Signing out…' : guest ? 'Leave guest mode' : 'Log out'} onPress={() => guest ? setConfirming('logout') : void handleLogout()} disabled={loggingOut || saving} />
+          {guest ? <ActionButton title="Delete guest shop" variant="danger" onPress={() => setConfirming('delete')} disabled={loggingOut || saving} /> : null}
         </View>
+        <ConfirmationDialog visible={confirming === 'logout'} title="Leave guest mode?" message="Your guest shop stays on this phone. Choose Continue as guest on the sign-in screen to open it again." confirmLabel="Leave guest mode" cancelLabel="Stay" onConfirm={() => void handleLogout()} onCancel={() => setConfirming(null)} />
+        <ConfirmationDialog danger visible={confirming === 'delete'} title={`Delete ${appSession.current?.businessName ?? 'your guest shop'}?`} message="This deletes the shop from this phone with all its products, customers, suppliers, stock, bills and payments. It was never uploaded, so it cannot be brought back." confirmLabel="Delete shop" cancelLabel="Keep shop" onConfirm={() => void handleDeleteGuestShop()} onCancel={() => setConfirming(null)} />
       </ScrollView>
     </AppScreen>
   );

@@ -1,6 +1,6 @@
 import type { EffectiveAccess } from '@invento/shared';
 import { randomUUID } from 'expo-crypto';
-import { readOfflineState, writeOfflineState } from './offline-storage';
+import { deleteOfflineState, readOfflineState, writeOfflineState } from './offline-storage';
 import { acknowledgeCommand, nextReadyCommand, isTransactionCommand, reconcileTransactions, offlineScope, projectOffline, type CatalogEntity, type LocalRecord, type OfflineCommand, type OfflineSnapshot, type OfflineState } from './offline-model';
 import { buildOfflineTransaction, productSignature, type TransactionKind, type TransactionRecord } from './offline-transactions';
 import type { AppSession, CreateSaleInput, CreatePurchaseInput, InventoryRecord, ProductRecord, SaleRecord, PurchaseRecord } from './api';
@@ -101,6 +101,17 @@ export async function offlineView(session: AppSession) {
     });
   }
   return view;
+}
+/** Deletes this device's copies of a user's businesses, with anything still waiting in them. */
+export async function forgetOfflineBusinesses(userId: string, businessIds: string[]) {
+  await serialized(async () => {
+    for (const businessId of businessIds) {
+      const scope = `${userId}:${businessId}`;
+      await deleteOfflineState(scope);
+      cache.delete(scope);
+    }
+  });
+  publish(undefined, { pending: 0, conflicts: 0, message: '' });
 }
 export function setOfflineConnectivity(online: boolean) { publish(undefined, { online }); }
 

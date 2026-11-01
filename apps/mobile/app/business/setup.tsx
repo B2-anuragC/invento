@@ -111,7 +111,7 @@ export default function BusinessSetupScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text style={styles.brand}>Invento</Text>
         <Text style={styles.title}>Choose your shop</Text>
-        <Text style={styles.subtitle}>Business data stays separate for each shop you belong to.</Text>
+        <Text style={styles.subtitle}>{appSession.current?.mode === 'guest' ? 'Guest mode · your shop is saved only on this phone. You can create an account later and move it online.' : 'Business data stays separate for each shop you belong to.'}</Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -132,7 +132,7 @@ export default function BusinessSetupScreen() {
             <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.chevron}>›</Text>
           </Pressable>
         ))}
-        {!loading && !businessesLoadFailed && businesses.length === 0 ? <Text style={styles.empty}>No business is linked to this account yet.</Text> : null}
+        {!loading && !businessesLoadFailed && businesses.length === 0 ? <Text style={styles.empty}>{appSession.current?.mode === 'guest' ? 'No shop on this phone yet.' : 'No business is linked to this account yet.'}</Text> : null}
 
         {!loading && !businessesLoadFailed ? <View style={styles.createSection}>
           <Text style={styles.sectionTitle}>Create a business</Text>

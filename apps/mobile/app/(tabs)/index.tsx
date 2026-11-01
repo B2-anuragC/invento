@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { AppScreen, appColors } from '@/components/invento-ui';
 import { HeaderIconButton, ListHeader, StatStrip, screenStyles } from '@/components/screen-heading';
+import { GuestStrip } from '@/components/guest-strip';
 import { formatMoney, formatQuantity, plural } from '@/services/format';
 import { lowStockText, purchasesSummary, topProductDays, type LowStockRow, type TopProductRow } from '@/services/dashboard-summary';
 import { netAmount } from '@/services/transaction-accounting';
@@ -101,6 +102,7 @@ export default function DashboardScreen() {
             <Text aria-hidden accessible={false} importantForAccessibility="no-hide-descendants" style={styles.avatarText}>{appSession.current?.user.name.slice(0, 1).toUpperCase() ?? 'I'}</Text>
           </Pressable>
         </>} />
+        <GuestStrip />
 
         {error ? (
           <View style={styles.errorCard}>
