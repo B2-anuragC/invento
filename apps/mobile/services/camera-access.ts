@@ -54,3 +54,19 @@ export function barcodeOwner<T extends { id: string; barcode?: string | null }>(
   if (!wanted) return undefined;
   return products.find((product) => product.id !== currentId && product.barcode?.trim() === wanted);
 }
+
+/**
+ * Tracks the duplicate check started by a barcode scan. Each scan, edit or reset makes earlier
+ * checks stale, so a slow answer cannot put its warning under a different barcode.
+ */
+export function createBarcodeCheck() {
+  let latest = 0;
+  return {
+    /** Starts a check for a scanned code and returns its token. */
+    start: () => ++latest,
+    /** Makes any check in flight stale (the field was edited or reset). */
+    cancel: () => { latest += 1; },
+    /** Whether the check with this token is still the newest one. */
+    isCurrent: (token: number) => token === latest,
+  };
+}

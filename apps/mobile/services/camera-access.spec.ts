@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barcodeOwner, cameraAccess, productForCode, scannedCode } from './camera-access';
+import { barcodeOwner, cameraAccess, createBarcodeCheck, productForCode, scannedCode } from './camera-access';
 
 describe('camera access', () => {
   it('waits while the permission is being read', () => {
@@ -43,5 +43,16 @@ describe('scanned codes', () => {
     expect(barcodeOwner(products, ' 111 ')?.id).toBe('a');
     expect(barcodeOwner(products, '111', 'a')).toBeUndefined();
     expect(barcodeOwner(products, '')).toBeUndefined();
+  });
+  it('ignores a duplicate check once the barcode was edited, reset or scanned again', () => {
+    const check = createBarcodeCheck();
+    const first = check.start();
+    expect(check.isCurrent(first)).toBe(true);
+    check.cancel();
+    expect(check.isCurrent(first)).toBe(false);
+    const second = check.start();
+    const third = check.start();
+    expect(check.isCurrent(second)).toBe(false);
+    expect(check.isCurrent(third)).toBe(true);
   });
 });

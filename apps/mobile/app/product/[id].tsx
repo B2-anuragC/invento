@@ -24,7 +24,7 @@ import {
 
 import { AppScreen, ConfirmationDialog, formatUnitLabel } from '@/components/invento-ui';
 import { BarcodeScanner } from '@/components/barcode-scanner';
-import { barcodeOwner } from '@/services/camera-access';
+import { barcodeOwner, createBarcodeCheck } from '@/services/camera-access';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formSnapshot, hasUnsavedChanges } from '@/services/unsaved-changes';
@@ -97,6 +97,7 @@ export default function ProductDetailsScreen() {
   const navigation = useNavigation();
   const [leaveAction, setLeaveAction] = useState<Parameters<typeof navigation.dispatch>[0] | null>(null);
   const leavingAfterSave = useRef(false);
+  const barcodeCheck = useRef(createBarcodeCheck());
 
   // Unsaved changes: compare the editable fields with the snapshot taken when editing began.
   const currentForm = formSnapshot({ photo, name, sku, barcode, category, unit, piecesPerUnit, sellingOptions, purchasePrice, sellingPrice, gstRate, hsnCode, minimumStock, openingStock });
@@ -116,6 +117,7 @@ export default function ProductDetailsScreen() {
     setName(productData.name);
     setSku(productData.sku);
     setBarcode(productData.barcode ?? '');
+    barcodeCheck.current.cancel();
     setBarcodeNotice(null);
     setCategory(productData.category ?? '');
     setUnit(productData.unit);
@@ -151,10 +153,13 @@ export default function ProductDetailsScreen() {
     setBarcode(code);
     clearErrorOnEdit();
     setBarcodeNotice({ text: `Scanned ${code}.`, warning: false });
+    const check = barcodeCheck.current.start();
     const session = appSession.current;
     if (!session) return;
     void Promise.all([fetchProducts(session, { search: code }), fetchProducts(session, { search: code, status: 'INACTIVE' })])
       .then(([active, inactive]) => {
+        // The field was edited or scanned again meanwhile; this answer is about an old value.
+        if (!barcodeCheck.current.isCurrent(check)) return;
         const owner = barcodeOwner([...active, ...inactive], code, isNew ? undefined : id);
         if (owner) setBarcodeNotice({ text: `${owner.name} already uses this barcode. Each product needs its own barcode.`, warning: true });
       })
@@ -455,6 +460,7 @@ export default function ProductDetailsScreen() {
                 value={barcode}
                 onChangeText={(value) => {
                   setBarcode(value);
+                  barcodeCheck.current.cancel();
                   setBarcodeNotice(null);
                   clearErrorOnEdit();
                 }}
