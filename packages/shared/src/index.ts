@@ -9,3 +9,4 @@ export * from './discount.js';
 export * from './walk-in.js';
 export * from './stock-adjustment.js';
 export * from './returns.js';
+export * from './bill-edits.js';

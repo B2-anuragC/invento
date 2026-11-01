@@ -81,6 +81,7 @@ describe('inventoryMovementNote', () => {
     expect(inventoryMovementNote('Sale cmabc123')).toBe('');
     expect(inventoryMovementNote('Purchase cmabc123')).toBe('');
     expect(inventoryMovementNote('Cancelled sale cmabc123')).toBe('Cancelled sale');
+    expect(inventoryMovementNote('Edited purchase cmabc123')).toBe('Edited purchase');
     expect(inventoryMovementNote('Counted 8 · Two cracked sheets')).toBe('Counted 8 · Two cracked sheets');
     expect(inventoryMovementNote('Sale to Patil was short')).toBe('Sale to Patil was short');
     expect(inventoryMovementNote(null)).toBe('');

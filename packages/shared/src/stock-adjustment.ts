@@ -147,11 +147,12 @@ export function inventoryMovementLabel(type: string): string {
 
 /**
  * The note to show beside a stock movement. Sales and purchases note their own
- * record id, and cancellations "Cancelled sale <id>": the id means nothing to a reader.
+ * record id, cancellations "Cancelled sale <id>" and item edits "Edited sale <id>":
+ * the id means nothing to a reader.
  */
 export function inventoryMovementNote(note: string | null | undefined): string {
   const text = (note ?? "").trim();
   if (/^(Sale|Purchase) \S+$/.test(text)) return "";
-  const cancelled = /^Cancelled (sale|purchase) \S+$/.exec(text);
-  return cancelled ? `Cancelled ${cancelled[1]}` : text;
+  const reversed = /^(Cancelled|Edited) (sale|purchase) \S+$/.exec(text);
+  return reversed ? `${reversed[1]} ${reversed[2]}` : text;
 }
