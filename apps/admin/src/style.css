@@ -1314,6 +1314,24 @@ details.panel > .panel {
 .record-details > p.muted {
   margin: 0 24px 8px;
 }
+/* Record payment sits inside a bill's details, as a section rather than a second card. */
+.record-details > .actions {
+  margin: 12px 24px 0;
+}
+.record-details .record-payment {
+  margin: 16px 24px 0;
+  padding: 0 20px 20px;
+  box-shadow: none;
+}
+.record-details .record-payment h3 {
+  margin: 18px 0 6px;
+}
+.record-details .record-payment > p {
+  margin: 0 0 14px;
+}
+.record-details .record-payment .error {
+  margin: 14px 0 0;
+}
 .detail-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

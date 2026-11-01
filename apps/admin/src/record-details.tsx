@@ -9,12 +9,14 @@ import {
   billItems,
   billPayments,
   balanceText,
+  methodName,
   partySummary,
   type BillKind,
   type DetailBill,
   type DetailLine,
   type PartyBalance,
 } from "./bill-details";
+import { canRecordPayment, PAYMENT_METHODS, paymentRecordedMessage, paymentRequest, paymentStart } from "./record-payment";
 
 function Facts({ lines }: { lines: DetailLine[] }) {
   return (
@@ -49,8 +51,124 @@ function DetailsPanel({ title, close, children }: { title: string; close: () => 
   );
 }
 
-/** The whole bill, read-only: who, when, items, amounts, balance and payments. */
-export function BillView({ shopId, kind, id, close }: { shopId: string; kind: BillKind; id: string; close: () => void }) {
+/**
+ * Records money received from the customer or paid to the supplier. One
+ * requestId per set of values, so a retried click records the payment once;
+ * changing the amount, method or date makes it a new request.
+ */
+function RecordPayment({ shopId, kind, bill, paid }: { shopId: string; kind: BillKind; bill: DetailBill; paid: (message: string) => void }) {
+  const start = paymentStart(kind, bill);
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(start.amount);
+  const [opening, setOpening] = useState("");
+  const [method, setMethod] = useState(start.method);
+  const [paidOn, setPaidOn] = useState(start.paidOn);
+  const [request, setRequest] = useState({ values: "", id: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!open)
+    return (
+      <div className="actions">
+        <button type="button" className="primary" onClick={() => setOpen(true)}>
+          Record payment…
+        </button>
+      </div>
+    );
+  const historical = bill.amountPaid == null;
+  const decimal = (value: string) => /^\d{0,12}(?:\.\d{0,2})?$/.test(value);
+  return (
+    <form
+      className="panel record-payment"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const values = JSON.stringify([amount.trim(), opening.trim(), method, paidOn]);
+        const requestId = request.values === values && request.id ? request.id : `web_${crypto.randomUUID()}`;
+        setRequest({ values, id: requestId });
+        const checked = paymentRequest(kind, bill, { amount, opening, method, paidOn }, requestId);
+        if ("error" in checked) return setError(checked.error);
+        setBusy(true);
+        setError("");
+        try {
+          await api(`/${kind === "sale" ? "sales" : "purchases"}/${encodeURIComponent(bill.id)}/payments`, {
+            method: "POST",
+            headers: { "X-Business-Id": shopId },
+            body: JSON.stringify(checked.body),
+          });
+          paid(paymentRecordedMessage(kind, bill, checked.amount));
+        } catch (e) {
+          setError((e as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h3>{kind === "sale" ? "Record a payment from the customer" : "Record a payment to the supplier"}</h3>
+      <p className="muted">
+        {historical
+          ? "Payments on this older bill were not recorded. Enter what was paid before this payment, including 0 if nothing."
+          : `Still owed: ${formatCell("amount", (start.balance ?? 0) / 100)}. This records money already ${kind === "sale" ? "received" : "paid"}; it does not move money.`}
+      </p>
+      <div className="shop-fields">
+        {historical && (
+          <label>
+            Paid before this payment (₹)
+            <input inputMode="decimal" value={opening} disabled={busy} onChange={(e) => decimal(e.target.value) && setOpening(e.target.value)} />
+          </label>
+        )}
+        <label>
+          Amount (₹)
+          <input inputMode="decimal" value={amount} disabled={busy} onChange={(e) => decimal(e.target.value) && setAmount(e.target.value)} />
+        </label>
+        <label>
+          {kind === "sale" ? "Received on" : "Paid on"}
+          <input type="date" value={paidOn} min={start.minDay} max={start.maxDay} disabled={busy} onChange={(e) => setPaidOn(e.target.value)} />
+        </label>
+        <label>
+          Method
+          <select value={method} disabled={busy} onChange={(e) => setMethod(e.target.value)}>
+            {PAYMENT_METHODS.map((value) => (
+              <option key={value} value={value}>
+                {methodName(value)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <div className="actions">
+        <button className="primary" disabled={busy}>
+          {busy ? "Recording…" : "Record payment"}
+        </button>
+        <button type="button" disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The whole bill, read-only: who, when, items, amounts, balance and payments.
+ * Members who record payments can add one here while money is still owed.
+ */
+export function BillView({
+  shopId,
+  kind,
+  id,
+  close,
+  paid,
+}: {
+  shopId: string;
+  kind: BillKind;
+  id: string;
+  close: () => void;
+  /** Set when the member may record payments; called after one is saved. */
+  paid?: (message: string) => void;
+}) {
   const [state, setState] = useState<{ data?: DetailBill; error?: string; loading: boolean }>({ loading: true });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -106,6 +224,18 @@ export function BillView({ shopId, kind, id, close }: { shopId: string; kind: Bi
           </div>
           <h3>Amounts</h3>
           <Facts lines={billAmounts(bill)} />
+          {paid && canRecordPayment(bill) && (
+            <RecordPayment
+              key={`${bill.amountPaid ?? "unknown"}-${payments.length}`}
+              shopId={shopId}
+              kind={kind}
+              bill={bill}
+              paid={(message) => {
+                setRetry((v) => v + 1);
+                paid(message);
+              }}
+            />
+          )}
           {payments.length > 0 && (
             <>
               <h3>Payments</h3>

@@ -699,6 +699,15 @@ function ShopSection({
               kind={billKindOfSection}
               id={String(viewing.id)}
               close={() => setViewing(null)}
+              paid={
+                can(`${section}.payments`)
+                  ? (message) => {
+                      // The table's balance changes; the open details stay.
+                      setRevision((v) => v + 1);
+                      setMessage(message);
+                    }
+                  : undefined
+              }
             />
           )}
           <Records
