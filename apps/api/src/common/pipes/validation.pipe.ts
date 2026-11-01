@@ -1,8 +1,22 @@
+import type { ValidationError } from 'class-validator';
 import {
   HttpStatus,
   UnprocessableEntityException,
   ValidationPipe as NestValidationPipe,
 } from '@nestjs/common';
+
+/**
+ * Every failed rule with the path of its field. Nested lines (a bill's items)
+ * keep their position, as in "items.0.quantity", so the reason reaches the user
+ * instead of only "Request validation failed.".
+ */
+export function validationDetails(errors: ValidationError[], parent = ''): { field: string; message: string }[] {
+  return errors.flatMap((error) => {
+    const field = parent ? `${parent}.${error.property}` : error.property;
+    const own = Object.values(error.constraints ?? {}).map((message) => ({ field, message }));
+    return [...own, ...validationDetails(error.children ?? [], field)];
+  });
+}
 
 export const globalValidationPipe = new NestValidationPipe({
   whitelist: true,
@@ -13,20 +27,12 @@ export const globalValidationPipe = new NestValidationPipe({
   },
   errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
   exceptionFactory: (errors) => {
-    const formattedErrors = errors.flatMap((error) => {
-      const constraints = error.constraints ? Object.values(error.constraints) : [];
-      return constraints.map((message) => ({
-        field: error.property,
-        message,
-      }));
-    });
-
     return new UnprocessableEntityException({
       success: false,
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Request validation failed.',
-        details: formattedErrors,
+        details: validationDetails(errors),
       },
     });
   },

@@ -150,6 +150,11 @@ describe.runIf(process.env.RUN_DATABASE_TESTS === '1')('Customers and sales (Pos
     await api('post', '/sales').send({ ...input, requestId: randomUUID(), referenceImage: 'https://example.com/bill.jpg' }).expect(422);
   });
 
+  it('names the bill line in validation failures', async () => {
+    const refused = await api('post', '/sales').send({ requestId: randomUUID(), customerId, paymentMethod: 'CASH', saleDate: new Date().toISOString(), items: [{ productId: products[1], quantity: '1', sellingPrice: '50' }, { productId: products[1], quantity: 'two', sellingPrice: '50' }] }).expect(422);
+    expect(refused.body.error.details).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'items.1.quantity' })]));
+  });
+
   it('sells compatible units and custom boxes with exact stock deductions', async () => {
     await api('patch', `/products/${products[0]}`).send({ sellingOptions: [{ id: 'half', name: 'Half kilogram', unit: 'GRAM', quantity: '500', sellingPrice: '30' }] }).expect(200);
     const weightSale = (await api('post', '/sales').send({ ...input('2'), items: [{ productId: products[0], quantity: '2', sellingPrice: '1', sellingOptionId: 'half' }] }).expect(201)).body.data;
