@@ -4,6 +4,8 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionButton } from '@/components/invento-ui';
+import { PASSWORD_RULE_HINT } from '@invento/shared';
+
 import { appSession, persistSession, registerWithEmail } from '@/services/api';
 import { registerError } from '@/services/auth-validation';
 
@@ -97,9 +99,7 @@ export default function RegisterScreen() {
             returnKeyType="go" onSubmitEditing={handleRegister}
             style={styles.input}
           />
-          <Text style={styles.passwordHint}>
-            At least 8 characters, with uppercase and lowercase letters, a number, and a symbol.
-          </Text>
+          <Text style={styles.passwordHint}>{PASSWORD_RULE_HINT}</Text>
           <ActionButton fullWidth title={loading ? 'Creating account…' : 'Create account'} onPress={handleRegister} disabled={loading} />
         </View>
 

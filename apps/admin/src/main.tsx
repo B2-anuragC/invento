@@ -4,7 +4,9 @@ import { login, logout, setSessionExpired, type PanelAccess } from "./api";
 import { label } from "./components";
 import { Overview, Directory, Detail, Audit } from "./pages";
 import { ShopWorkspace } from "./shop";
-import { platformPageTitle } from "./page-title";
+import { platformPageTitle, signedOutPageTitle } from "./page-title";
+import { AuthLayout, RegisterPage, ShopSetupPage } from "./onboarding";
+import { entryRoute, guardRoute } from "./registration";
 import "./style.css";
 
 function App() {
@@ -21,97 +23,115 @@ function App() {
     });
     return () => window.removeEventListener("hashchange", handler);
   }, []);
+  // The page actually shown: signed-out visitors, members without a shop and
+  // platform admins are redirected (see registration.ts).
+  const shown = guardRoute(route, access);
+  useEffect(() => {
+    if (access && shown !== route) location.replace(`#${shown}`);
+  }, [access, shown, route]);
   // Shop workspace pages set their own title (see ShopWorkspace).
-  const [, routeSection, routeId] = route.split("/");
+  const [, routeSection, routeId] = shown.split("/");
   const inShop =
     !!access &&
+    shown !== "/setup" &&
     (!access.isPlatformAdmin ||
       routeSection === "shops" ||
       (routeSection === "businesses" && !!routeId));
   useEffect(() => {
-    if (!inShop) document.title = platformPageTitle(access ? route : null);
-  }, [access, route, inShop]);
+    if (!inShop)
+      document.title = access
+        ? platformPageTitle(shown)
+        : signedOutPageTitle(route);
+  }, [access, route, shown, inShop]);
+  const signOut = async () => {
+    await logout();
+    setAccess(null);
+  };
+  if (!access && shown === "/register")
+    return (
+      <RegisterPage
+        onRegistered={(panel) => {
+          setError("");
+          setAccess(panel);
+          location.hash = entryRoute(panel);
+        }}
+      />
+    );
   if (!access)
     return (
-      <main className="login">
-        <section className="login-brand">
-          <div className="brand">
-            <span className="brand-icon" aria-hidden>
-              i
-            </span>{" "}
-            invento
-            <span className="brand-sub">PLATFORM</span>
-          </div>
-          <h1>
-            Your shops.
-            <br />
-            One clear view.
-          </h1>
-          <p>
-            Manage your shop, support your team, and keep every action
-            accountable.
-          </p>
-        </section>
-        <section className="login-form">
-          <p className="eyebrow">SHOP & PLATFORM ADMINISTRATION</p>
-          <h2>Welcome back</h2>
-          <p className="muted">Sign in with your authorized Invento account.</p>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const values = new FormData(e.currentTarget);
-              setBusy(true);
-              setError("");
-              try {
-                const panel = await login(
-                  String(values.get("email")),
-                  String(values.get("password")),
-                );
-                setAccess(panel);
-                location.hash = panel.isPlatformAdmin ? "/overview" : "/shops";
-              } catch (err) {
-                setError((err as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <label>
-              Email
-              <input
-                autoComplete="username"
-                name="email"
-                type="email"
-                required
-              />
-            </label>
-            <label>
-              Password
-              <input
-                autoComplete="current-password"
-                name="password"
-                type="password"
-                required
-              />
-            </label>
-            {error && (
-              <p role="alert" className="error">
-                {error}
-              </p>
-            )}
-            <button className="primary" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-              {!busy && <span aria-hidden> →</span>}
-            </button>
-          </form>
-          <p className="muted fine">
-            Business members can manage their own shops. Platform administrators
-            can manage all shops.
-          </p>
-        </section>
-      </main>
+      <AuthLayout>
+        <p className="eyebrow">SHOP & PLATFORM ADMINISTRATION</p>
+        <h2>Welcome back</h2>
+        <p className="muted">Sign in with your authorized Invento account.</p>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const values = new FormData(e.currentTarget);
+            setBusy(true);
+            setError("");
+            try {
+              const panel = await login(
+                String(values.get("email")),
+                String(values.get("password")),
+              );
+              setAccess(panel);
+              location.hash = entryRoute(panel);
+            } catch (err) {
+              setError((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label>
+            Email
+            <input
+              autoComplete="username"
+              name="email"
+              type="email"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              autoComplete="current-password"
+              name="password"
+              type="password"
+              required
+            />
+          </label>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+          <button className="primary" disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
+            {!busy && <span aria-hidden> →</span>}
+          </button>
+        </form>
+        <p className="form-switch">
+          New to Invento? <a href="#/register">Create an account</a>
+        </p>
+        <p className="muted fine">
+          Business members can manage their own shops. Platform administrators
+          can manage all shops.
+        </p>
+      </AuthLayout>
     );
-  const [, section, id, shopSection] = route.split("/");
+  if (shown === "/setup")
+    return (
+      <ShopSetupPage
+        shops={access.shops}
+        onSignOut={signOut}
+        onCreated={(shopId, panel) => {
+          setAccess(panel);
+          location.hash = `/shops/${shopId}`;
+        }}
+      />
+    );
+  const [, section, id, shopSection] = shown.split("/");
   const activeSection =
     access.isPlatformAdmin && section === "shops" ? "businesses" : section;
   return (
@@ -153,14 +173,7 @@ function App() {
         </nav>
         <div className="sidebar-footer">
           <span className="dot" /> Connected to Invento
-          <button
-            onClick={async () => {
-              await logout();
-              setAccess(null);
-            }}
-          >
-            Sign out
-          </button>
+          <button onClick={signOut}>Sign out</button>
         </div>
       </aside>
       <main className="content">

@@ -368,6 +368,11 @@ export function ShopWorkspace({
               Choose a business to open its management workspace.
             </p>
           </div>
+          {!platform && (
+            <a className="button-link" href="#/setup">
+              Add a business
+            </a>
+          )}
         </div>
       )}
       {id ? (

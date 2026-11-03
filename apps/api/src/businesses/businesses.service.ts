@@ -1,8 +1,9 @@
-import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, GST_STATES, gstinStateCode, isValidDocumentPrefix, normalizeDocumentPrefix, WALK_IN_CUSTOMER_NAME } from '@invento/shared';
+import { DEFAULT_ROLE_PERMISSIONS, DOCUMENT_PREFIX_RULE_MESSAGE, GST_STATES, gstinStateCode, isValidDocumentPrefix, normalizeDocumentPrefix, SHOP_ID_MIN, SHOP_ID_RULE_MESSAGE, SHOP_ID_TAKEN_MESSAGE, shopIdFrom, WALK_IN_CUSTOMER_NAME } from '@invento/shared';
+import { Prisma } from '@prisma/client';
 import { storedGstin } from '../common/validators/is-gstin.js';
 import { AccessManagementService, lockBusiness, lockAuthorizationChanges } from '../access/access.service.js';
 import { requireBusinessMembership, requireBusinessPermission } from '../auth/business-access.js';
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 
@@ -11,11 +12,18 @@ export class BusinessesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, input: { name: string; slug: string; email?: string; phone?: string; address?: string }) {
+    // Normalized rather than rejected: moving a guest shop replays the slug the
+    // phone made earlier, and older clients may send other formats.
+    const slug = shopIdFrom(input.slug);
+    if (slug.length < SHOP_ID_MIN) throw new BadRequestException(SHOP_ID_RULE_MESSAGE);
     return this.prisma.$transaction(async (tx) => {
       await lockAuthorizationChanges(tx);
       const account = await tx.user.findUnique({ where: { id: userId }, select: { isActive: true } });
       if (!account?.isActive) throw new ForbiddenException('Account is inactive.');
-      const business = await tx.business.create({ data: { name: input.name.trim(), slug: input.slug.trim().toLowerCase(), email: input.email?.trim().toLowerCase(), phone: input.phone?.trim(), address: input.address?.trim() } });
+      const business = await tx.business.create({ data: { name: input.name.trim(), slug, email: input.email?.trim().toLowerCase(), phone: input.phone?.trim(), address: input.address?.trim() } }).catch((error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && String(error.meta?.target ?? '').includes('slug')) throw new ConflictException(SHOP_ID_TAKEN_MESSAGE);
+        throw error;
+      });
       await tx.businessRole.createMany({ data: Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([key, permissions]) => ({ businessId: business.id, key, name: key[0] + key.slice(1).toLowerCase(), permissions: [...permissions], isSystem: true })) });
       await tx.customer.create({ data: { id: `walkin_${business.id}`, businessId: business.id, name: WALK_IN_CUSTOMER_NAME, isWalkIn: true } });
       await tx.businessUser.create({ data: { businessId: business.id, userId, role: 'OWNER' } });

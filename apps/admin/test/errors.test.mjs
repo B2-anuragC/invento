@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { EMAIL_TAKEN_MESSAGE, PASSWORD_RULE_MESSAGE } from "@invento/shared";
 import { apiErrorMessage, fieldName, readableDetail } from "../src/errors.ts";
 
 test("validation failures show the field reasons instead of the generic summary", () => {
@@ -74,4 +75,21 @@ test("one reason per field, preferring a specific one", () => {
     { field: "sku", message: "sku must match /^\\w+$/ regular expression" },
   ] } };
   assert.equal(apiErrorMessage(body, 422), "Selling price must be a number. Minimum stock must be a number. SKU is not in the right format.");
+});
+
+test("a weak password says what is required", () => {
+  const body = { error: { details: [{ field: "password", message: "password is not strong enough" }] } };
+  assert.equal(apiErrorMessage(body, 422), PASSWORD_RULE_MESSAGE);
+});
+
+test("registration problems on several fields read one per field", () => {
+  const body = { error: { message: "Request validation failed.", details: [
+    { field: "name", message: "name must be longer than or equal to 2 characters" },
+    { field: "password", message: "password is not strong enough" },
+  ] } };
+  assert.equal(apiErrorMessage(body, 422), `Name must be at least 2 characters. ${PASSWORD_RULE_MESSAGE}`);
+});
+
+test("a taken email keeps the API's own words", () => {
+  assert.equal(apiErrorMessage({ error: { message: EMAIL_TAKEN_MESSAGE } }, 409), EMAIL_TAKEN_MESSAGE);
 });

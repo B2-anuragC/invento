@@ -2,6 +2,8 @@
 
 One User identity and the existing access/refresh token flow serve Expo (native and web) and the admin web workspace. A BusinessUser membership has exactly one BusinessRole, identified by (businessId, key). Effective permissions are that role's code-recognized permissions. OWNER is a protected, full-access ownership role. Unknown permissions and unknown roles fail closed. Business membership status is independent of account status.
 
+Self-registration (`POST /auth/register`, from the web panel or the phone) creates an ordinary account with no memberships and no platform rights. The request accepts only name, email, password and phone; any other field, such as `isPlatformAdmin` or `role`, is rejected, and `isPlatformAdmin` keeps its database default `false`. Platform rights are granted only by an operator. Creating a shop (`POST /businesses`) makes the creator OWNER of that one shop and nothing else; it gives no access to other businesses.
+
 ## Initial matrix and migration
 
 | Role | Default authority |

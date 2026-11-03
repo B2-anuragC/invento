@@ -278,6 +278,17 @@ Its default uses DATABASE_URL credentials with the database name changed to
 invento_phase8_verify; TEST_DATABASE_URL can override this with a test/verify
 database. The old run-phase6-verification.mjs entrypoint delegates to this runner.
 
+## Web user creation
+
+New users can create an account on the web panel (`#/register`) and then their
+first shop (`#/setup`), as on the phone. Web sign-in no longer rejects accounts
+with no shop; they go to setup. Members can add another shop from Businesses.
+Form checks, the shop-ID rule and their messages live in `@invento/shared` and
+are used by both apps. The API normalizes the shop ID instead of rejecting older
+formats (guest-shop moves replay them) and reports a taken ID as *This shop ID
+is already taken. Choose a different one.* Weak passwords now say what is
+required on the web. Spec and sign-off: `docs/features/web-user-creation/`.
+
 ## Remaining Boundaries
 
 No known critical defect remains in the reviewed Phase 6-8 workflows.

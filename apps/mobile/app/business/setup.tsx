@@ -3,11 +3,9 @@ import { useRouter } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { appSession, createBusiness, fetchBusinesses, persistSession, type BusinessMembership } from '@/services/api';
+import { canCreateShop, SHOP_ID_MAX, SHOP_NAME_MAX, shopIdFrom } from '@invento/shared';
 
-function toSlug(value: string) {
-  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
-}
+import { appSession, createBusiness, fetchBusinesses, persistSession, type BusinessMembership } from '@/services/api';
 
 export default function BusinessSetupScreen() {
   const router = useRouter();
@@ -91,8 +89,8 @@ export default function BusinessSetupScreen() {
   const handleCreate = async () => {
     const session = appSession.current;
     const cleanName = name.trim();
-    const cleanSlug = toSlug(slug);
-    if (!session || cleanName.length < 2 || cleanSlug.length < 2 || saving) return;
+    const cleanSlug = shopIdFrom(slug);
+    if (!session || !canCreateShop({ name: cleanName, shopId: cleanSlug }) || saving) return;
 
     setSaving(true);
     setError('');
@@ -105,6 +103,8 @@ export default function BusinessSetupScreen() {
       setSaving(false);
     }
   };
+
+  const canCreate = canCreateShop({ name, shopId: slug });
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.safeArea}>
@@ -143,32 +143,32 @@ export default function BusinessSetupScreen() {
             onChangeText={(value) => {
               setName(value);
               clearErrorOnEdit();
-              if (!slugEdited) setSlug(toSlug(value));
+              if (!slugEdited) setSlug(shopIdFrom(value));
             }}
             placeholder="e.g. Shree Aluminium & Hardware"
             placeholderTextColor="#9CA3AF"
             style={styles.input}
-            maxLength={120}
+            maxLength={SHOP_NAME_MAX}
           />
           <Text style={styles.label}>Unique shop ID</Text>
           <TextInput accessibilityLabel="Unique shop ID"
             value={slug}
             onChangeText={(value) => {
               setSlugEdited(true);
-              setSlug(toSlug(value));
+              setSlug(shopIdFrom(value));
               clearErrorOnEdit();
             }}
             placeholder="shree-aluminium"
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
             style={styles.input}
-            maxLength={80}
+            maxLength={SHOP_ID_MAX}
           />
           <Pressable
             accessibilityRole="button"
-            disabled={saving || name.trim().length < 2 || slug.trim().length < 2}
+            disabled={saving || !canCreate}
             onPress={() => void handleCreate()}
-            style={[styles.createButton, (saving || name.trim().length < 2 || slug.trim().length < 2) && styles.disabled]}>
+            style={[styles.createButton, (saving || !canCreate) && styles.disabled]}>
             <Text style={styles.createButtonText}>{saving ? 'Creating…' : 'Create shop'}</Text>
           </Pressable>
         </View> : null}

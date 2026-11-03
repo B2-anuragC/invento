@@ -928,6 +928,88 @@ details.panel > .panel {
 .fine {
   font-size: 12px;
 }
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.form-switch {
+  font-size: 13px;
+  color: var(--muted);
+}
+.setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.login-form .setup-heading button {
+  min-height: 34px;
+}
+.login-form h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.login-form h3 + .form-hint {
+  margin: 4px 0 0;
+}
+.setup-shops {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.setup-shops a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.setup-shops a:hover {
+  border-color: #a7bfae;
+  text-decoration: none;
+}
+.setup-shops small {
+  display: block;
+  font-weight: 400;
+}
+.setup-initial {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #e5f2dc;
+  color: var(--green);
+  font-weight: 750;
+}
+a.button-link {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 9px 15px;
+  border: 1px solid #d8e2da;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+a.button-link:hover {
+  background: #f0f6f1;
+  border-color: #a7bfae;
+  text-decoration: none;
+}
 .sr-only {
   position: absolute;
   width: 1px;

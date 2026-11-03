@@ -18,7 +18,7 @@ Configure `apps/api/.env` using its example. Apply the additive migration to you
 npm --prefix apps/api run prisma:migrate:deploy
 ```
 
-Use an existing Invento account. Every active business member can sign in directly; assigned permissions determine their workspace. No platform grant is needed. Platform operators can grant global access using the command below. Run these in separate terminals:
+New users can create an account from the sign-in page (**New to Invento? Create an account**, `#/register`) with their name, email and password, then create their first shop on `#/setup`. They become its OWNER and land in its workspace. The account is the same one the mobile app uses, so it signs in on either. An account with no shop yet (for example, one registered on the phone, or one whose owner closed the tab before creating a shop) is sent to `#/setup` after signing in instead of being refused. Members can add another shop from **Businesses → Add a business**. Every active business member can sign in directly; assigned permissions determine their workspace. No platform grant is needed, and registering never grants one. Platform operators can grant global access using the command below. Run these in separate terminals:
 
 ```sh
 npm run start:backend
@@ -94,4 +94,4 @@ RUN_DATABASE_TESTS=1 NODE_ENV=test DATABASE_URL='<test-postgres-url>' \
 
 The tests create and remove their own fixtures. Database suites run sequentially because dashboard assertions inspect platform-wide totals. Coverage includes unauthenticated/business-user denial, public privilege-injection rejection, cross-business access and relationships, suspension, disablement, access/refresh revocation, confirmation validation, last-admin protection under concurrency, audit rollback, pagination, and aggregate calculations.
 
-Known limits: existing authentication has no MFA, account recovery, or login rate limiting. This feature reuses that authentication; it does not claim to add those capabilities. Browser visual QA depends on an available connected browser. OCR/job monitoring, safe retries, subscriptions, usage limits, exports, and support roles remain outside this version.
+Known limits: existing authentication has no MFA, account recovery, email verification, or login and registration rate limiting. This feature reuses that authentication; it does not claim to add those capabilities. Browser visual QA depends on an available connected browser. OCR/job monitoring, safe retries, subscriptions, usage limits, exports, and support roles remain outside this version.

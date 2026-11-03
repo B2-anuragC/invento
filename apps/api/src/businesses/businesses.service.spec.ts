@@ -1,5 +1,6 @@
-import { DEFAULT_ROLE_PERMISSIONS } from '@invento/shared';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { DEFAULT_ROLE_PERMISSIONS, SHOP_ID_RULE_MESSAGE, SHOP_ID_TAKEN_MESSAGE, WALK_IN_CUSTOMER_NAME } from '@invento/shared';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { BusinessesService } from './businesses.service.js';
 
 describe('BusinessesService authorization', () => {
@@ -134,6 +135,76 @@ describe('BusinessesService authorization', () => {
       const { service, prisma } = owner();
       await service.update('user-a', 'business-a', { email: '', phone: ' ', address: '', stateCode: '' });
       expect(prisma.business.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ email: null, phone: null, address: null, stateCode: null }) }));
+    });
+  });
+
+  describe('create', () => {
+    // A transaction stub that only commits the rows when the callback succeeds.
+    const creating = (overrides: { isActive?: boolean; businessCreate?: ReturnType<typeof vi.fn>; membershipCreate?: ReturnType<typeof vi.fn> } = {}) => {
+      const committed: string[] = [];
+      const tx = {
+        $queryRaw: vi.fn(),
+        $executeRaw: vi.fn(),
+        user: { findUnique: vi.fn().mockResolvedValue({ isActive: overrides.isActive ?? true }) },
+        business: { create: overrides.businessCreate ?? vi.fn(async ({ data }) => ({ id: 'business-1', ...data })) },
+        businessRole: { createMany: vi.fn().mockResolvedValue({ count: 3 }) },
+        customer: { create: vi.fn().mockResolvedValue({}) },
+        businessUser: { create: overrides.membershipCreate ?? vi.fn().mockResolvedValue({}) },
+        platformAuditLog: { create: vi.fn().mockResolvedValue({}) },
+      };
+      const prisma = { $transaction: vi.fn(async (callback) => { const result = await callback(tx); committed.push('business-1'); return result; }) };
+      return { tx, committed, service: new BusinessesService(prisma as never) };
+    };
+    const uniqueViolation = (target: string[]) => new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '5.22.0', meta: { target } });
+
+    it('creates the shop with its owner, default roles, walk-in customer and audit entry', async () => {
+      const { tx, service } = creating();
+      await service.create('user-a', { name: ' Shree Aluminium ', slug: 'shree-aluminium' });
+      expect(tx.business.create).toHaveBeenCalledWith({ data: expect.objectContaining({ name: 'Shree Aluminium', slug: 'shree-aluminium' }) });
+      expect(tx.businessRole.createMany.mock.calls[0][0].data.map((role: { key: string }) => role.key).sort()).toEqual(Object.keys(DEFAULT_ROLE_PERMISSIONS).sort());
+      expect(tx.customer.create).toHaveBeenCalledWith({ data: expect.objectContaining({ businessId: 'business-1', name: WALK_IN_CUSTOMER_NAME, isWalkIn: true }) });
+      expect(tx.businessUser.create).toHaveBeenCalledWith({ data: { businessId: 'business-1', userId: 'user-a', role: 'OWNER' } });
+      expect(tx.platformAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'BUSINESS_OWNER_CREATED', businessId: 'business-1' }) });
+    });
+
+    it('normalizes the shop ID instead of rejecting older formats', async () => {
+      const { tx, service } = creating();
+      await service.create('user-a', { name: 'My Shop', slug: 'My Shop!' });
+      expect(tx.business.create).toHaveBeenCalledWith({ data: expect.objectContaining({ slug: 'my-shop' }) });
+    });
+
+    it.each(['--', '!!'])('rejects a shop ID with fewer than two letters or numbers (%s)', async (slug) => {
+      const { tx, service } = creating();
+      const create = service.create('user-a', { name: 'My Shop', slug });
+      await expect(create).rejects.toBeInstanceOf(BadRequestException);
+      await expect(create).rejects.toThrow(SHOP_ID_RULE_MESSAGE);
+      expect(tx.business.create).not.toHaveBeenCalled();
+    });
+
+    it('reports a taken shop ID in plain words', async () => {
+      const { service } = creating({ businessCreate: vi.fn().mockRejectedValue(uniqueViolation(['slug'])) });
+      const create = service.create('user-a', { name: 'Shop', slug: 'shop' });
+      await expect(create).rejects.toBeInstanceOf(ConflictException);
+      await expect(create).rejects.toThrow(SHOP_ID_TAKEN_MESSAGE);
+    });
+
+    it('passes other unique violations through unchanged', async () => {
+      const violation = uniqueViolation(['id']);
+      const { service } = creating({ businessCreate: vi.fn().mockRejectedValue(violation) });
+      await expect(service.create('user-a', { name: 'Shop', slug: 'shop' })).rejects.toBe(violation);
+    });
+
+    it('refuses an inactive account and creates nothing', async () => {
+      const { tx, service } = creating({ isActive: false });
+      await expect(service.create('user-a', { name: 'Shop', slug: 'shop' })).rejects.toThrow(new ForbiddenException('Account is inactive.'));
+      expect(tx.business.create).not.toHaveBeenCalled();
+    });
+
+    it('commits nothing when adding the owner fails', async () => {
+      const failure = new Error('membership write failed');
+      const { committed, service } = creating({ membershipCreate: vi.fn().mockRejectedValue(failure) });
+      await expect(service.create('user-a', { name: 'Shop', slug: 'shop' })).rejects.toBe(failure);
+      expect(committed).toEqual([]);
     });
   });
 });

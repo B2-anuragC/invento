@@ -1,3 +1,5 @@
+import { PASSWORD_RULE_MESSAGE } from "@invento/shared";
+
 type ErrorBody = {
   message?: unknown;
   error?: { message?: unknown; details?: unknown };
@@ -29,6 +31,7 @@ export function fieldName(key: string): string {
 // class-validator's default wording, rewritten. Each gets the field's name and the captured values.
 const rules: [RegExp, (name: string, ...values: string[]) => string][] = [
   [/^must be an email$/, () => "Enter a valid email address."],
+  [/^is not strong enough$/, () => PASSWORD_RULE_MESSAGE],
   [/^should not be empty$/, (name) => `${name} is required.`],
   [/^(?:is not a valid decimal number\.?|must be a number string|must be a number conforming to the specified constraints)$/, (name) => `${name} must be a number.`],
   [/^must be an integer number$/, (name) => `${name} must be a whole number.`],

@@ -11,3 +11,5 @@ export * from './stock-adjustment.js';
 export * from './returns.js';
 export * from './bill-edits.js';
 export * from './access-changes.js';
+export * from './auth-validation.js';
+export * from './shop-id.js';

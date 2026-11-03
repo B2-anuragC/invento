@@ -1,3 +1,4 @@
+import { EMAIL_TAKEN_MESSAGE } from '@invento/shared';
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -13,7 +14,7 @@ export class AuthService {
   async register(input: { name: string; email: string; password: string; phone?: string }) {
     const email = input.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) throw new ConflictException('An account with this email already exists.');
+    if (existing) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     const user = await this.prisma.user.create({
       data: { name: input.name.trim(), email, phone: input.phone?.trim(), passwordHash: await hashPassword(input.password) },
     });

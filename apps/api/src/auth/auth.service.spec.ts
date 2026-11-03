@@ -1,7 +1,8 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { EMAIL_TAKEN_MESSAGE } from '@invento/shared';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service.js';
-import { hashPassword, signToken } from './auth.crypto.js';
+import { hashPassword, signToken, verifyPassword } from './auth.crypto.js';
 
 describe('AuthService', () => {
   const config = new ConfigService({
@@ -53,6 +54,48 @@ describe('AuthService', () => {
     expect(result.user.email).toBe('owner@example.com');
     expect(result.accessToken).toBeTruthy();
     expect(result.refreshToken).toBeTruthy();
+  });
+
+  describe('register', () => {
+    const registering = (existing: object | null = null) => ({
+      user: {
+        findUnique: vi.fn().mockResolvedValue(existing),
+        create: vi.fn().mockImplementation(async ({ data }) => ({ id: 'user-1', phone: null, avatarUrl: null, isPlatformAdmin: false, sessionVersion: 0, ...data })),
+      },
+      refreshToken: { create: vi.fn().mockResolvedValue({}) },
+    });
+    const input = { name: '  Shop Owner  ', email: '  OWNER@Example.com ', password: 'Correct Horse Battery Staple1!' };
+
+    it('stores the email trimmed and lowercased, and the name trimmed', async () => {
+      const prisma = registering();
+      await new AuthService(prisma as never, config).register(input);
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { email: 'owner@example.com' } });
+      expect(prisma.user.create).toHaveBeenCalledWith({ data: expect.objectContaining({ email: 'owner@example.com', name: 'Shop Owner' }) });
+    });
+
+    it('rejects an email that already has an account without creating another', async () => {
+      const prisma = registering({ id: 'user-0' });
+      const register = new AuthService(prisma as never, config).register(input);
+      await expect(register).rejects.toBeInstanceOf(ConflictException);
+      await expect(register).rejects.toThrow(EMAIL_TAKEN_MESSAGE);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('stores a hash of the password, never the password itself', async () => {
+      const prisma = registering();
+      await new AuthService(prisma as never, config).register(input);
+      const { passwordHash } = prisma.user.create.mock.calls[0][0].data;
+      expect(passwordHash).not.toBe(input.password);
+      await expect(verifyPassword(input.password, passwordHash)).resolves.toBe(true);
+    });
+
+    it('cannot grant platform rights and returns no private account fields', async () => {
+      const prisma = registering();
+      const result = await new AuthService(prisma as never, config).register({ ...input, isPlatformAdmin: true } as never);
+      expect(prisma.user.create.mock.calls[0][0].data).not.toHaveProperty('isPlatformAdmin');
+      expect(Object.keys(result.user).sort()).toEqual(['avatarUrl', 'email', 'id', 'name', 'phone']);
+      expect(prisma.refreshToken.create).toHaveBeenCalledOnce();
+    });
   });
 
   it('updates only the authenticated user profile fields and clears a blank phone', async () => {

@@ -7,7 +7,13 @@ const platformPages: Record<string, [list: string, detail: string]> = {
   users: ["Users", "User"],
   "audit-logs": ["Audit log", "Audit log"],
   roles: ["Businesses", "Businesses"],
+  setup: ["Create your shop", "Create your shop"],
 };
+
+/** Title while signed out: create account, or the sign-in page for any other route. */
+export function signedOutPageTitle(route: string): string {
+  return `${route === "/register" ? "Create account" : "Sign in"} · ${APP}`;
+}
 
 /** Title for a hash route ("/businesses/abc") outside a shop's workspace. */
 export function platformPageTitle(route: string | null): string {
